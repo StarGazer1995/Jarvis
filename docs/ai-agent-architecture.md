@@ -272,940 +272,508 @@ Multiple specialized agents working together:
 
 ### 1. Model Context Protocol (MCP) Overview
 MCP provides a standardized protocol for AI agents to interact with external tools and data sources:
-- **Standardized Communication**: Consistent interface across all tools
+- **Standardized Communication**: Consistent interface across all tools using official modelcontextprotocol SDK
 - **Dynamic Discovery**: Automatically find and connect to available tools
-- **Secure Execution**: Built-in sandboxing and permission management
+- **Secure Execution**: Built-in sandboxing and permission management through ARK security framework
 - **Extensibility**: Easy to add new capabilities without modifying core agent code
 
 ### 2. ARK MCP Client Implementation
+The actual implementation uses the official MCP SDK and provides comprehensive server management:
+
 ```python
 class ARKMCPClient:
-    """ARK's MCP client for communicating with MCP servers."""
+    """ARK's MCP client for communicating with MCP servers using official SDK."""
     
     def __init__(self):
-        self.connected_servers = {}
-        self.available_tools = {}
-        self.ark_logger = logging.getLogger('ark.mcp')
+        self.servers: Dict[str, MCPServerConnection] = {}
+        self.tools: Dict[str, ToolInfo] = {}
+        self.built_in_tools = {
+            "echo": self._echo_tool,
+            "get_time": self._get_time_tool
+        }
+        self.logger = logging.getLogger(__name__)
     
-    async def connect_to_server(self, server_config: dict):
-        """Connect to an MCP server and discover its tools."""
-        # Start server process
-        # Establish communication channel
-        # Perform capability negotiation
-        self.ark_logger.info(f"ARK connecting to MCP server: {server_config['name']}")
-        pass
+    async def initialize_from_config(self, config_path: Optional[str] = None) -> None:
+        """Initialize MCP client from configuration file."""
+        if config_path is None:
+            config_path = os.path.join(os.path.dirname(__file__), "..", "..", "config", "mcp_servers.json")
+        
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+                for server_config in config.get('servers', []):
+                    await self.connect_to_server(server_config)
+        else:
+            # Initialize demo servers for development
+            await self._initialize_demo_servers()
     
-    async def list_tools(self) -> List[dict]:
-        """Get all available tools from connected servers."""
-        tools = []
-        for server in self.connected_servers.values():
-            server_tools = await server.list_tools()
-            tools.extend(server_tools)
-        return tools
+    async def connect_to_server(self, server_config: SimpleMCPServerConfig) -> bool:
+        """Connect to an MCP server using StdioServerParameters."""
+        try:
+            server_params = StdioServerParameters(
+                command=server_config.command,
+                args=server_config.args,
+                env=server_config.env
+            )
+            
+            connection = MCPServerConnection(server_config.name, server_params)
+            await connection.connect()
+            
+            self.servers[server_config.name] = connection
+            await self._discover_tools(server_config.name)
+            
+            self.logger.info(f"Successfully connected to MCP server: {server_config.name}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Failed to connect to server {server_config.name}: {e}")
+            return False
     
-    async def call_tool(self, tool_name: str, arguments: dict) -> dict:
-        """Execute a tool via MCP protocol."""
+    async def list_tools(self) -> List[ToolInfo]:
+        """Get all available tools from connected servers and built-in tools."""
+        all_tools = []
+        
+        # Add built-in tools
+        for name, func in self.built_in_tools.items():
+            all_tools.append(ToolInfo(name=name, description=f"Built-in {name} tool"))
+        
+        # Add tools from connected servers
+        for server_name, connection in self.servers.items():
+            try:
+                server_tools = await connection.list_tools()
+                all_tools.extend(server_tools)
+            except Exception as e:
+                self.logger.error(f"Failed to list tools from {server_name}: {e}")
+        
+        return all_tools
+    
+    async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> ToolResult:
+        """Execute a tool via MCP protocol or built-in implementation."""
+        # Check built-in tools first
+        if tool_name in self.built_in_tools:
+            return await self.built_in_tools[tool_name](arguments)
+        
         # Find server that provides this tool
-        # Validate arguments
-        # Execute tool call
-        # Return structured result
-        self.ark_logger.debug(f"ARK executing tool: {tool_name}")
-        pass
+        for server_name, connection in self.servers.items():
+            if tool_name in connection.available_tools:
+                try:
+                    return await connection.call_tool(tool_name, arguments)
+                except Exception as e:
+                    self.logger.error(f"Tool call failed on {server_name}: {e}")
+                    raise
+        
+        raise ValueError(f"Tool '{tool_name}' not found in any connected server")
 ```
 
 ### 3. Jarvis Agent Enhanced with ARK-MCP Integration
+The actual implementation integrates MCP capabilities into the existing Jarvis agent architecture:
+
 ```python
 class JarvisAgent:
-    """Jarvis - AI assistant powered by ARK engine with MCP capabilities."""
+    """Jarvis - AI assistant with MCP server integration capabilities."""
     
-    def __init__(self, name: str = "Jarvis"):
+    def __init__(self, name: str = "Jarvis", config_path: Optional[str] = None):
         self.name = name
-        self.ark = ARKEngine()
+        self.config_path = config_path
+        self.mcp_servers: Dict[str, SimpleMCPServerConfig] = {}
+        self.logger = logging.getLogger(__name__)
     
-    async def initialize(self):
-        """Initialize Jarvis and ARK systems."""
-        await self.ark.initialize()
-        self.logger.info(f"{self.name} powered by ARK is ready")
+    def add_mcp_server(self, name: str, command: str, args: List[str] = None, 
+                       env: Dict[str, str] = None) -> None:
+        """Add an MCP server configuration to Jarvis."""
+        server_config = SimpleMCPServerConfig(
+            name=name,
+            command=command,
+            args=args or [],
+            env=env or {}
+        )
+        self.mcp_servers[name] = server_config
+        self.logger.info(f"Added MCP server configuration: {name}")
     
-    async def process_user_input(self, user_input: str) -> str:
-        """Process user input through ARK engine."""
-        return await self.ark.process_input_with_mcp(user_input)
+    def get_mcp_servers(self) -> Dict[str, SimpleMCPServerConfig]:
+        """Get all configured MCP servers."""
+        return self.mcp_servers.copy()
 
 class ARKEngine:
     """ARK - Agent Reactor Kernel: The core engine powering Jarvis."""
     
-    def __init__(self):
-        self.mcp_client = ARKMCPClient()
-        self.tool_registry = ARKMCPToolRegistry(self.mcp_client)
-        self.intent_recognizer = ARKIntentRecognizer(self.mcp_client)
-        self.context = ConversationContext()
-        self.security_manager = ARKSecurityManager()
-        self.logger = logging.getLogger('ark.engine')
+    def __init__(self, config_path: Optional[str] = None):
+        self.config_path = config_path
+        self.mcp_client: Optional[ARKMCPClient] = None
+        self.conversation_manager = ConversationManager()
+        self.tool_manager = ToolManager()
+        self.security_manager = SecurityManager()
+        self.workflow_engine = WorkflowEngine()
+        self.circuit_breaker = CircuitBreaker()
+        self.logger = logging.getLogger(__name__)
+        self._initialized = False
     
-    async def initialize(self):
+    async def initialize(self) -> None:
         """Initialize ARK engine and all subsystems."""
-        # Connect to MCP servers
-        server_configs = ARKConfig.load_server_configs()
+        if self._initialized:
+            return
         
-        # Connect to each configured server
-        for config in server_configs:
-            await self.mcp_client.connect_to_server(config)
-        
-        # Discover available tools
-        await self.tool_registry.refresh_tools()
-        
-        # Initialize intent recognizer with available tools
-        await self.intent_recognizer.initialize()
-        
-        self.logger.info(f"ARK initialized with {len(server_configs)} MCP servers")
-        self.logger.info(f"ARK discovered {len(self.tool_registry.tool_cache)} tools")
+        try:
+            self.logger.info("Initializing ARK engine...")
+            
+            # Initialize MCP client
+            self.mcp_client = ARKMCPClient()
+            await self.mcp_client.initialize_from_config(self.config_path)
+            
+            # Initialize other components
+            await self.conversation_manager.initialize()
+            await self.tool_manager.initialize(self.mcp_client)
+            await self.security_manager.initialize()
+            await self.workflow_engine.initialize(self.mcp_client)
+            
+            self._initialized = True
+            self.logger.info("ARK engine initialization complete")
+            
+        except Exception as e:
+            self.logger.error(f"ARK engine initialization failed: {e}")
+            raise
     
-    async def process_input_with_mcp(self, user_input: str) -> str:
-        """Process user input using ARK's MCP capabilities."""
-        # 1. Recognize intent and extract entities
-        intent, entities = self.intent_recognizer.recognize_intent(user_input)
+    async def process_input(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> str:
+        """Process user input using ARK's integrated capabilities."""
+        if not self._initialized:
+            await self.initialize()
         
-        # 2. Find appropriate tool for this intent
-        tool = self.tool_registry.get_tool_for_intent(intent)
+        try:
+            # Use circuit breaker pattern for reliability
+            return await self.circuit_breaker.call(
+                self._process_input_internal, user_input, context
+            )
+        except Exception as e:
+            self.logger.error(f"ARK processing error: {e}")
+            return f"I encountered an error processing your request: {str(e)}"
+    
+    async def _process_input_internal(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> str:
+        """Internal processing logic with MCP tool integration."""
+        # 1. Security validation
+        if not self.security_manager.validate_input(user_input):
+            return "I cannot process that request due to security restrictions."
         
-        if tool and self.security_manager.validate_tool_call(tool['name'], entities, self.context):
+        # 2. Check for available tools
+        available_tools = await self.mcp_client.list_tools()
+        
+        # 3. Determine if this is a tool-based request
+        tool_match = self.tool_manager.find_matching_tool(user_input, available_tools)
+        
+        if tool_match:
+            # 4. Execute tool through MCP
             try:
-                # 3. Prepare tool parameters
-                params = self.prepare_tool_parameters(user_input, tool, entities)
-                
-                # 4. Execute tool via ARK's MCP client
-                result = await self.mcp_client.call_tool(tool['name'], params)
-                
-                # 5. Format and return response
-                response = self.format_tool_result(result, intent)
-                self.context.add_exchange(user_input, response)
-                return response
-                
+                tool_args = self.tool_manager.extract_arguments(user_input, tool_match)
+                result = await self.mcp_client.call_tool(tool_match.name, tool_args)
+                return self.tool_manager.format_result(result)
             except Exception as e:
-                self.logger.error(f"ARK tool execution failed: {e}")
-                return self.generate_error_response(user_input, e)
+                self.logger.error(f"Tool execution failed: {e}")
+                return f"I encountered an error using the {tool_match.name} tool: {str(e)}"
         else:
-            # Fallback to regular processing or LLM
-            return await self.generate_fallback_response(user_input)
+            # 5. Fallback to conversation processing
+            return await self.conversation_manager.process_input(user_input, context)
 ```
 
 ### 4. MCP Server Configuration
+The project implements comprehensive server configuration through structured dataclasses:
+
 ```python
-# config/mcp_servers.json
+@dataclass
+class SimpleMCPServerConfig:
+    """Simple MCP server configuration for basic setups."""
+    name: str
+    command: str
+    args: List[str] = field(default_factory=list)
+    env: Dict[str, str] = field(default_factory=dict)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert configuration to dictionary format."""
+        return {
+            'name': self.name,
+            'command': self.command,
+            'args': self.args,
+            'env': self.env
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'SimpleMCPServerConfig':
+        """Create configuration from dictionary."""
+        return cls(
+            name=data['name'],
+            command=data['command'],
+            args=data.get('args', []),
+            env=data.get('env', {})
+        )
+
+@dataclass
+class MCPServerConfig:
+    """Comprehensive MCP server configuration with advanced features."""
+    name: str
+    connection: ServerConnection
+    environment: Dict[str, str] = field(default_factory=dict)
+    authentication: Optional[ServerCredentials] = None
+    health_check: Optional[ServerHealthCheck] = None
+    limits: Optional[ServerLimits] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    # Configuration management
+    config_type: ConfigType = ConfigType.SIMPLE
+    created_at: datetime = field(default_factory=datetime.now)
+    updated_at: datetime = field(default_factory=datetime.now)
+```
+
+Example configuration usage:
+```json
 {
     "servers": [
         {
             "name": "filesystem",
             "command": "npx",
             "args": ["@modelcontextprotocol/server-filesystem", "/home/user/allowed"],
-            "capabilities": ["read_file", "write_file", "list_directory"]
+            "env": {}
         },
         {
             "name": "web-search",
             "command": "python",
             "args": ["-m", "mcp_server_web_search"],
-            "env": {"API_KEY": "${SEARCH_API_KEY}"},
-            "capabilities": ["web_search", "url_fetch"]
+            "env": {"API_KEY": "${SEARCH_API_KEY}"}
         },
         {
             "name": "weather",
             "command": "python", 
             "args": ["-m", "mcp_server_weather"],
-            "env": {"WEATHER_API_KEY": "${WEATHER_API_KEY}"},
-            "capabilities": ["current_weather", "forecast", "weather_alerts"]
-        },
-        {
-            "name": "calculator",
-            "command": "python",
-            "args": ["-m", "mcp_server_calculator"],
-            "capabilities": ["calculate", "evaluate_expression", "unit_conversion"]
+            "env": {"WEATHER_API_KEY": "${WEATHER_API_KEY}"}
         }
     ]
 }
 ```
 
-### 5. Intent-to-Tool Mapping with ARK-MCP
+### 5. Tool Management and Discovery
+The actual implementation uses a comprehensive tool management system:
+
 ```python
-class ARKIntentMapper:
-    """ARK's intelligent intent-to-tool mapping system."""
+class ToolManager:
+    """Manages MCP tool discovery, matching, and execution."""
     
     def __init__(self):
-        self.intent_mappings = {
-            'file_operations': {
-                'tools': ['filesystem'],
-                'capabilities': ['read_file', 'write_file', 'list_directory'],
-                'examples': ['read my file', 'save this content', 'list documents'],
-                'ark_priority': 'high'  # High priority for ARK engine
-            },
-            'web_search': {
-                'tools': ['web-search'],
-                'capabilities': ['web_search', 'url_fetch'],
-                'examples': ['search for news', 'find information about', 'browse website'],
-                'ark_priority': 'medium'
-            },
-            'weather': {
-                'tools': ['weather'],
-                'capabilities': ['current_weather', 'forecast'],
-                'examples': ['what\'s the weather', 'tomorrow\'s forecast', 'will it rain'],
-                'ark_priority': 'medium'
-            },
-            'calculation': {
-                'tools': ['calculator'],
-                'capabilities': ['calculate', 'evaluate_expression'],
-                'examples': ['calculate 2+2', 'convert units', 'solve equation'],
-                'ark_priority': 'high'  # Fast execution in ARK
-            }
-        }
+        self.available_tools: List[Tool] = []
+        self.tool_cache: Dict[str, Tool] = {}
+        self.logger = logging.getLogger(__name__)
     
-    def get_tools_for_intent(self, intent: str, available_tools: List[dict]) -> List[dict]:
-        """Get matching MCP tools for a given intent, prioritized by ARK."""
-        if intent not in self.intent_mappings:
-            return []
+    async def initialize(self, mcp_client: ARKMCPClient) -> None:
+        """Initialize tool manager with MCP client."""
+        self.mcp_client = mcp_client
+        await self.refresh_tools()
+    
+    async def refresh_tools(self) -> None:
+        """Refresh available tools from all connected MCP servers."""
+        try:
+            self.available_tools = await self.mcp_client.list_tools()
+            self.tool_cache = {tool.name: tool for tool in self.available_tools}
+            self.logger.info(f"Refreshed {len(self.available_tools)} tools")
+        except Exception as e:
+            self.logger.error(f"Failed to refresh tools: {e}")
+    
+    def find_matching_tool(self, user_input: str, available_tools: List[Tool]) -> Optional[Tool]:
+        """Find the best matching tool for user input."""
+        # Simple keyword-based matching (can be enhanced with ML)
+        user_input_lower = user_input.lower()
         
-        mapping = self.intent_mappings[intent]
-        tool_names = mapping['tools']
-        required_capabilities = mapping['capabilities']
-        priority = mapping['ark_priority']
+        # Check built-in tools first
+        if any(keyword in user_input_lower for keyword in ['time', 'date', 'clock']):
+            return self.tool_cache.get('get_time')
         
-        matching_tools = []
+        if any(keyword in user_input_lower for keyword in ['echo', 'repeat', 'say']):
+            return self.tool_cache.get('echo')
+        
+        # Check external tools
         for tool in available_tools:
-            if (tool['name'] in tool_names and 
-                any(cap in tool.get('capabilities', []) for cap in required_capabilities)):
-                tool['ark_priority'] = priority
-                matching_tools.append(tool)
-        
-        # Sort by ARK priority (high priority tools first)
-        priority_order = {'high': 0, 'medium': 1, 'low': 2}
-        matching_tools.sort(key=lambda x: priority_order.get(x.get('ark_priority', 'low'), 2))
-        
-        return matching_tools
-```
-
-### 6. Advanced MCP Features
-
-**A) ARK Workflow Engine**
-```python
-class ARKWorkflowEngine:
-    """ARK's advanced workflow execution engine using multiple MCP tools."""
-    
-    def __init__(self, ark_mcp_client: ARKMCPClient):
-        self.client = ark_mcp_client
-        self.workflow_templates = {}
-        self.ark_logger = logging.getLogger('ark.workflows')
-    
-    async def execute_workflow(self, workflow_name: str, inputs: dict) -> dict:
-        """Execute a predefined workflow using multiple tools."""
-        workflow = self.workflow_templates[workflow_name]
-        results = {'inputs': inputs}
-        
-        self.ark_logger.info(f"ARK executing workflow: {workflow_name}")
-        
-        for step in workflow['steps']:
-            tool_name = step['tool']
-            param_template = step['parameters']
+            if tool.name.lower() in user_input_lower:
+                return tool
             
-            # Substitute variables from previous results
-            params = self.substitute_variables(param_template, results)
-            
-            # Execute tool through ARK
-            self.ark_logger.debug(f"ARK workflow step: {step['name']} using {tool_name}")
-            step_result = await self.client.call_tool(tool_name, params)
-            results[step['name']] = step_result
-            
-            # Check for early termination conditions
-            if step.get('break_on_error', False) and step_result.get('error'):
-                self.ark_logger.warning(f"ARK workflow {workflow_name} terminated early due to error")
-                break
-        
-        return results
-    
-    def register_workflow(self, name: str, workflow_definition: dict):
-        """Register a new workflow template in ARK."""
-        # Example workflow: "research_topic"
-        # 1. web_search for topic
-        # 2. fetch URLs from results
-        # 3. summarize content
-        # 4. save_file with summary
-        self.workflow_templates[name] = workflow_definition
-        self.ark_logger.info(f"ARK registered workflow: {name}")
-```
-
-**B) Dynamic Tool Discovery and Hot-Loading**
-```python
-class DynamicMCPDiscovery:
-    """Discover and connect to new MCP servers at runtime."""
-    
-    async def discover_local_servers(self) -> List[dict]:
-        """Find MCP servers running on the local system."""
-        # Scan common ports
-        # Check process list for MCP servers
-        # Parse service discovery files
-        pass
-    
-    async def hot_reload_server(self, server_name: str):
-        """Reload a specific MCP server without restarting agent."""
-        # Gracefully disconnect from old server
-        # Reconnect with new configuration
-        # Update tool registry
-        # Notify user of changes
-        pass
-```
-
-## Proposed Enhancements for Project Jarvis
-
-### 1. ARK-Based MCP Capability System
-```python
-class ARKMCPCapability:
-    """ARK-powered MCP capability that delegates to external tools."""
-    
-    def __init__(self, ark_mcp_client: ARKMCPClient, tool_name: str):
-        self.client = ark_mcp_client
-        self.tool_name = tool_name
-        self.tool_info = None
-        self.ark_logger = logging.getLogger(f'ark.capabilities.{tool_name}')
-    
-    async def initialize(self):
-        """Initialize and validate the MCP tool in ARK."""
-        tools = await self.client.list_tools()
-        self.tool_info = next((t for t in tools if t['name'] == self.tool_name), None)
-        if not self.tool_info:
-            raise ValueError(f"ARK: MCP tool '{self.tool_name}' not found")
-        self.ark_logger.info(f"ARK capability '{self.tool_name}' initialized")
-    
-    def can_handle(self, input: str) -> bool:
-        """Determine if this ARK capability can handle the input."""
-        if not self.tool_info:
-            return False
-        
-        # Use tool description and capabilities to determine compatibility
-        keywords = self.tool_info.get('keywords', [])
-        return any(keyword in input.lower() for keyword in keywords)
-    
-    async def execute(self, input: str, context: dict) -> str:
-        """Execute the MCP tool through ARK and return formatted result."""
-        try:
-            # Extract parameters from input using tool schema
-            params = self.extract_parameters(input, self.tool_info.get('input_schema', {}))
-            
-            # Call MCP tool through ARK
-            self.ark_logger.debug(f"ARK executing {self.tool_name} with params: {params}")
-            result = await self.client.call_tool(self.tool_name, params)
-            
-            # Format result for user
-            return self.format_result(result)
-            
-        except Exception as e:
-            self.ark_logger.error(f"ARK capability {self.tool_name} failed: {str(e)}")
-            return f"ARK Error executing {self.tool_name}: {str(e)}"
-
-class WeatherARKCapability(ARKMCPCapability):
-    """Weather capability powered by ARK."""
-    
-    def __init__(self, ark_mcp_client: ARKMCPClient):
-        super().__init__(ark_mcp_client, "weather")
-    
-    def extract_parameters(self, input: str, schema: dict) -> dict:
-        """Extract weather-specific parameters from user input."""
-        # Parse location, date, forecast type from natural language
-        # ARK can enhance this with more sophisticated NLP
-        return {"location": "default", "type": "current"}
-```
-
-### 2. Enhanced Intent Recognition with ARK-MCP Tool Awareness
-```python
-class ARKIntentRecognizer:
-    """ARK's intelligent intent recognition with MCP tool awareness."""
-    
-    def __init__(self, ark_mcp_client: ARKMCPClient):
-        self.client = ark_mcp_client
-        self.available_tools = {}
-        self.intent_patterns = {}
-        self.ark_logger = logging.getLogger('ark.intent')
-    
-    async def initialize(self):
-        """Initialize ARK intent recognizer with current MCP tool capabilities."""
-        tools = await self.client.list_tools()
-        self.available_tools = {tool['name']: tool for tool in tools}
-        
-        # Build dynamic intent patterns based on available tools
-        self.intent_patterns = self.build_intent_patterns_from_tools(tools)
-        self.ark_logger.info(f"ARK intent recognizer initialized with {len(tools)} tools")
-    
-    def build_intent_patterns_from_tools(self, tools: List[dict]) -> dict:
-        """Create intent patterns based on available MCP tools in ARK."""
-        patterns = {}
-        
-        for tool in tools:
-            # Extract keywords from tool name, description, and capabilities
-            tool_keywords = []
-            tool_keywords.extend(tool.get('keywords', []))
-            tool_keywords.extend(tool['name'].split('_'))
-            
-            # Map to intent categories with ARK enhancement
-            if any(kw in ['weather', 'forecast', 'temperature'] for kw in tool_keywords):
-                patterns.setdefault('weather', []).extend(tool_keywords)
-            elif any(kw in ['file', 'filesystem', 'read', 'write'] for kw in tool_keywords):
-                patterns.setdefault('file_operations', []).extend(tool_keywords)
-            elif any(kw in ['search', 'web', 'browse', 'url'] for kw in tool_keywords):
-                patterns.setdefault('web_search', []).extend(tool_keywords)
-            elif any(kw in ['calc', 'math', 'compute', 'evaluate'] for kw in tool_keywords):
-                patterns.setdefault('calculation', []).extend(tool_keywords)
-        
-        return patterns
-    
-    def recognize_intent(self, user_input: str) -> tuple[str, List[str]]:
-        """Recognize intent and return matching tool names via ARK."""
-        input_lower = user_input.lower()
-        
-        for intent, keywords in self.intent_patterns.items():
-            if any(keyword in input_lower for keyword in keywords):
-                # Find tools that can handle this intent
-                matching_tools = [
-                    tool_name for tool_name, tool_info in self.available_tools.items()
-                    if any(kw in tool_info.get('keywords', []) for kw in keywords)
-                ]
-                self.ark_logger.debug(f"ARK recognized intent '{intent}' with tools: {matching_tools}")
-                return intent, matching_tools
-        
-        return 'unknown', []
-```
-
-### 3. Context Management
-```python
-class ConversationContext:
-    """Manage conversation state and history."""
-    
-    def __init__(self):
-        self.history = []
-        self.current_topic = None
-        self.user_preferences = {}
-        self.session_data = {}
-    
-    def add_exchange(self, user_input: str, agent_response: str):
-        """Add a conversation exchange to history."""
-        self.history.append({
-            'timestamp': datetime.now(),
-            'user': user_input,
-            'agent': agent_response
-        })
-    
-    def get_recent_context(self, n: int = 5) -> List[dict]:
-        """Get the last n conversation exchanges."""
-        return self.history[-n:]
-```
-
-### 4. Enhanced Jarvis Architecture with ARK-MCP Integration
-```python
-class JarvisAgent:
-    """Jarvis - AI Assistant powered by ARK engine with full MCP integration."""
-    
-    def __init__(self, name: str = "Jarvis"):
-        self.name = name
-        self.ark = ARKEngine()
-        self.logger = logging.getLogger('jarvis')
-    
-    async def initialize(self):
-        """Initialize Jarvis and ARK systems."""
-        self.logger.info(f"Initializing {self.name}...")
-        await self.ark.initialize()
-        self.logger.info(f"{self.name} powered by ARK is ready")
-    
-    async def process_user_input(self, user_input: str) -> str:
-        """Process user input through ARK engine."""
-        self.logger.debug(f"{self.name} received: {user_input}")
-        response = await self.ark.process_input_with_mcp(user_input)
-        self.logger.debug(f"{self.name} responding: {response}")
-        return response
-    
-    def run(self) -> None:
-        """Run the main Jarvis conversation loop."""
-        print(f"{self.name} (powered by ARK) is ready. Type 'exit' to quit.")
-        
-        while True:
-            try:
-                user_input = input(f"{self.name}> ").strip()
-                if user_input.lower() in ['exit', 'quit', 'bye']:
-                    print(f"Goodbye! ARK is powering down.")
-                    break
-                elif user_input:
-                    # Process through ARK engine
-                    response = asyncio.run(self.process_user_input(user_input))
-                    print(response)
-            except (KeyboardInterrupt, EOFError):
-                print(f"\n{self.name} shutting down ARK engine...")
-                break
-
-class ARKEngine:
-    """ARK - Agent Reactor Kernel: The core engine powering Jarvis."""
-    
-    def __init__(self):
-        self.mcp_client = ARKMCPClient()
-        self.capabilities = []
-        self.intent_recognizer = ARKIntentRecognizer(self.mcp_client)
-        self.context = ConversationContext()
-        self.workflow_engine = ARKWorkflowEngine(self.mcp_client)
-        self.security_manager = ARKSecurityManager()
-        self.tool_registry = ARKMCPToolRegistry(self.mcp_client)
-        self.logger = logging.getLogger('ark')
-    
-    async def initialize(self):
-        """Initialize all ARK engine components."""
-        self.logger.info("ARK engine starting initialization...")
-        
-        # Connect to MCP servers
-        await self.mcp_client.initialize_from_config()
-        
-        # Initialize intent recognizer with available tools
-        await self.intent_recognizer.initialize()
-        
-        # Setup ARK-based capabilities
-        await self.setup_ark_capabilities()
-        
-        # Register common workflows
-        self.register_default_workflows()
-        
-        self.logger.info("ARK engine initialization complete")
-    
-    async def setup_ark_capabilities(self):
-        """Initialize ARK-based capabilities dynamically."""
-        tools = await self.mcp_client.list_tools()
-        
-        for tool in tools:
-            try:
-                capability = ARKMCPCapability(self.mcp_client, tool['name'])
-                await capability.initialize()
-                self.capabilities.append(capability)
-                self.logger.debug(f"ARK capability '{tool['name']}' loaded")
-            except Exception as e:
-                self.logger.warning(f"Failed to initialize ARK capability for tool {tool['name']}: {e}")
-    
-    async def process_input_with_mcp(self, user_input: str) -> str:
-        """Process user input using ARK's enhanced MCP capabilities."""
-        try:
-            # 1. Recognize intent and get matching tools
-            intent, matching_tools = self.intent_recognizer.recognize_intent(user_input)
-            
-            # 2. Check for multi-step workflows
-            if self.is_complex_request(user_input, intent):
-                response = await self.handle_complex_workflow(user_input, intent, matching_tools)
-            else:
-                # 3. Handle with single MCP tool through ARK
-                response = await self.handle_simple_request(user_input, intent, matching_tools)
-            
-            # 4. Update context and return response
-            self.context.add_exchange(user_input, response)
-            return response
-            
-        except Exception as e:
-            self.logger.error(f"ARK processing error: {e}")
-            return f"ARK encountered an error: {str(e)}"
-    
-    async def handle_simple_request(self, user_input: str, intent: str, matching_tools: List[str]) -> str:
-        """Handle single-tool requests through ARK."""
-        if not matching_tools:
-            return self.generate_fallback_response(user_input)
-        
-        # Use the best matching tool with ARK prioritization
-        tool_name = self.select_best_tool(matching_tools, user_input)
-        
-        # ARK security check
-        if not self.security_manager.validate_tool_call(tool_name, {}, self.context):
-            return "ARK security protocols prevent that action."
-        
-        # Execute tool through ARK
-        try:
-            params = self.extract_tool_parameters(user_input, tool_name)
-            result = await self.mcp_client.call_tool(tool_name, params)
-            return self.format_tool_result(result, intent)
-        except Exception as e:
-            return f"ARK couldn't complete that request: {str(e)}"
-    
-    async def handle_complex_workflow(self, user_input: str, intent: str, matching_tools: List[str]) -> str:
-        """Handle multi-step workflows through ARK workflow engine."""
-        # Analyze request to determine workflow type
-        workflow_type = self.determine_workflow_type(user_input, intent)
-        
-        if workflow_type in self.workflow_engine.workflow_templates:
-            inputs = self.extract_workflow_inputs(user_input)
-            result = await self.workflow_engine.execute_workflow(workflow_type, inputs)
-            return self.format_workflow_result(result)
-        else:
-            # Fallback to simple request handling
-            return await self.handle_simple_request(user_input, intent, matching_tools)
-    
-    def register_default_workflows(self):
-        """Register common workflows in ARK."""
-        # Example: Research workflow
-        research_workflow = {
-            'name': 'research_topic',
-            'description': 'Research a topic using web search and save results',
-            'steps': [
-                {
-                    'name': 'search',
-                    'tool': 'web-search',
-                    'parameters': {'query': '${topic}', 'max_results': 5}
-                },
-                {
-                    'name': 'summarize',
-                    'tool': 'text-summarizer',
-                    'parameters': {'text': '${search.results}'}
-                },
-                {
-                    'name': 'save',
-                    'tool': 'filesystem',
-                    'parameters': {'action': 'write', 'path': '${topic}_research.md', 'content': '${summarize.summary}'}
-                }
-            ]
-        }
-        
-        self.workflow_engine.register_workflow('research_topic', research_workflow)
-        self.logger.info("ARK default workflows registered")
-```
-
-## Technical Considerations
-
-### 1. Language Model Integration with MCP
-**Enhanced Options with MCP Support:**
-- **OpenAI API**: GPT-3.5/4 with MCP tool calling integration
-- **Anthropic**: Claude models with MCP function calling
-- **Local Models**: Ollama, Hugging Face with MCP adapter layers
-- **Hybrid**: Local for privacy-sensitive tasks, cloud for complex reasoning
-
-**MCP-Aware Implementation:**
-```python
-class ARKLLMInterface:
-    """ARK's enhanced LLM interface with MCP tool integration."""
-    
-    def __init__(self, provider: str, model: str, ark_mcp_client: ARKMCPClient):
-        self.provider = provider
-        self.model = model
-        self.ark_client = ark_mcp_client
-        self.ark_logger = logging.getLogger('ark.llm')
-    
-    async def generate_response_with_tools(self, prompt: str, context: dict) -> str:
-        """Generate LLM response with ARK-managed tool access."""
-        # Get available tools from ARK
-        available_tools = await self.ark_client.list_tools()
-        
-        # Enhance prompt with ARK context
-        enhanced_prompt = self.enhance_prompt_with_ark_context(prompt, available_tools)
-        
-        # Send to LLM with tool definitions
-        response = await self.llm_call_with_tools(enhanced_prompt, available_tools)
-        
-        # If LLM wants to use a tool, execute via ARK
-        if response.get('tool_calls'):
-            tool_results = []
-            for tool_call in response['tool_calls']:
-                self.ark_logger.info(f"ARK executing LLM-requested tool: {tool_call['name']}")
-                result = await self.ark_client.call_tool(
-                    tool_call['name'], 
-                    tool_call['arguments']
-                )
-                tool_results.append(result)
-            
-            # Send tool results back to LLM for final response
-            return await self.llm_finalize_with_results(prompt, tool_results)
-        
-        return response['content']
-    
-    def enhance_prompt_with_ark_context(self, prompt: str, tools: List[dict]) -> str:
-        """Enhance prompts with ARK-specific context and capabilities."""
-        ark_context = f"""
-You are Jarvis, an AI assistant powered by ARK (Agent Reactor Kernel).
-ARK provides you with access to {len(tools)} specialized tools and capabilities.
-
-Available ARK-managed tools:
-{self.format_tools_for_prompt(tools)}
-
-When responding, you can use these tools through ARK to provide accurate, real-time information.
-Always mention that you're using ARK when executing tools.
-        """
-        return f"{ark_context}\n\nUser: {prompt}"
-```
-
-### 2. MCP Server Management and Dependencies
-**Package Requirements:**
-```txt
-# Core MCP dependencies
-mcp>=1.0.0                    # MCP client library
-asyncio-subprocess>=0.1.0     # For running MCP servers
-pydantic>=2.0.0              # For data validation and schemas
-aiofiles>=0.8.0              # For async file operations
-httpx>=0.24.0                # For HTTP-based MCP servers
-
-# Optional MCP servers (install as needed)
-mcp-server-filesystem>=0.1.0  # File system operations
-mcp-server-web-search>=0.1.0  # Web search capabilities
-mcp-server-weather>=0.1.0     # Weather information
-mcp-server-calculator>=0.1.0  # Mathematical calculations
-```
-
-**Server Lifecycle Management:**
-```python
-class MCPServerManager:
-    """Manage MCP server lifecycle and health monitoring."""
-    
-    def __init__(self):
-        self.running_servers = {}
-        self.health_check_interval = 30  # seconds
-    
-    async def start_server(self, config: dict) -> bool:
-        """Start an MCP server and verify it's running."""
-        try:
-            process = await asyncio.create_subprocess_exec(
-                config['command'], *config['args'],
-                env=config.get('env', {}),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            
-            # Wait for server to be ready
-            await self.wait_for_server_ready(process, config['name'])
-            
-            self.running_servers[config['name']] = {
-                'process': process,
-                'config': config,
-                'status': 'running'
-            }
-            
-            return True
-        except Exception as e:
-            self.logger.error(f"Failed to start MCP server {config['name']}: {e}")
-            return False
-    
-    async def monitor_server_health(self):
-        """Continuously monitor server health and restart if needed."""
-        while True:
-            for name, server_info in self.running_servers.items():
-                if server_info['process'].returncode is not None:
-                    # Server has died, attempt restart
-                    self.logger.warning(f"MCP server {name} has stopped, restarting...")
-                    await self.restart_server(name)
-            
-            await asyncio.sleep(self.health_check_interval)
-```
-
-### 2. Vector Databases for Memory
-**Use Cases:**
-- Semantic search over conversation history
-- Relevant context retrieval
-- Knowledge base integration
-
-**Popular Options:**
-- ChromaDB (embedded)
-- Pinecone (cloud)
-- Weaviate (open source)
-
-### 3. Security and Sandboxing with ARK-MCP
-**Enhanced Security Framework:**
-```python
-class ARKSecurityManager:
-    """ARK's advanced security management for MCP tool execution."""
-    
-    def __init__(self):
-        self.allowed_tools = set()
-        self.tool_permissions = {}
-        self.user_contexts = {}
-        self.audit_log = []
-        self.ark_logger = logging.getLogger('ark.security')
-    
-    def validate_tool_call(self, tool_name: str, params: dict, user_context: dict) -> bool:
-        """Comprehensive validation of MCP tool calls through ARK."""
-        # 1. Check if tool is explicitly allowed in ARK
-        if tool_name not in self.allowed_tools:
-            self.log_security_event("DENIED", tool_name, "Tool not in ARK allowlist")
-            return False
-        
-        # 2. Validate parameters against ARK security rules
-        if not self.validate_parameters_security(tool_name, params):
-            self.log_security_event("DENIED", tool_name, "ARK parameter validation failed")
-            return False
-        
-        # 3. Check user permissions for this tool in ARK
-        if not self.check_user_permissions(tool_name, user_context):
-            self.log_security_event("DENIED", tool_name, "Insufficient ARK permissions")
-            return False
-        
-        # 4. ARK rate limiting check
-        if not self.check_rate_limits(tool_name, user_context):
-            self.log_security_event("DENIED", tool_name, "ARK rate limit exceeded")
-            return False
-        
-        self.log_security_event("ALLOWED", tool_name, "All ARK security checks passed")
-        return True
-    
-    def sanitize_parameters(self, tool_name: str, params: dict) -> dict:
-        """Sanitize parameters before passing to MCP tools via ARK."""
-        sanitized = params.copy()
-        
-        # File path sanitization through ARK
-        if 'path' in sanitized:
-            sanitized['path'] = self.sanitize_file_path(sanitized['path'])
-        
-        # URL sanitization through ARK
-        if 'url' in sanitized:
-            sanitized['url'] = self.sanitize_url(sanitized['url'])
-        
-        # Remove sensitive keys (ARK protection)
-        sensitive_keys = ['password', 'token', 'secret', 'key']
-        for key in sensitive_keys:
-            if key in sanitized:
-                sanitized[key] = "[REDACTED BY ARK]"
-        
-        return sanitized
-    
-    def create_sandbox_config(self, tool_name: str) -> dict:
-        """Create ARK-managed sandbox configuration for tool execution."""
-        return {
-            'filesystem_restrictions': {
-                'allowed_paths': ['/tmp/jarvis', '/home/user/public'],
-                'readonly_paths': ['/etc', '/usr'],
-                'max_file_size': 10 * 1024 * 1024,  # 10MB enforced by ARK
-                'ark_isolation': True
-            },
-            'network_restrictions': {
-                'allowed_domains': ['api.weather.com', 'search.api.com'],
-                'blocked_ips': ['127.0.0.1', '0.0.0.0'],
-                'max_connections': 5,
-                'ark_firewall': True
-            },
-            'resource_limits': {
-                'max_memory': 100 * 1024 * 1024,  # 100MB managed by ARK
-                'max_cpu_time': 30,  # 30 seconds enforced by ARK
-                'max_processes': 3,
-                'ark_monitoring': True
-            }
-        }
-    
-    def log_security_event(self, action: str, tool_name: str, reason: str):
-        """Log security events to ARK audit system."""
-        event = {
-            'timestamp': time.time(),
-            'action': action,
-            'tool': tool_name,
-            'reason': reason,
-            'ark_session': self.get_current_session_id()
-        }
-        self.audit_log.append(event)
-        self.ark_logger.info(f"ARK Security {action}: {tool_name} - {reason}")
-```
-
-### 4. Error Handling & Reliability with ARK-MCP
-**Enhanced Error Handling Strategies:**
-```python
-class ARKErrorHandler:
-    """ARK's comprehensive error handling for MCP operations."""
-    
-    def __init__(self):
-        self.ark_logger = logging.getLogger('ark.errors')
-    
-    async def call_tool_with_resilience(self, tool_name: str, params: dict, max_retries: int = 3) -> dict:
-        """Call MCP tool through ARK with advanced error handling and recovery."""
-        last_error = None
-        
-        for attempt in range(max_retries):
-            try:
-                # Add timeout to prevent hanging
-                self.ark_logger.debug(f"ARK attempt {attempt + 1} for tool {tool_name}")
-                result = await asyncio.wait_for(
-                    self.ark_mcp_client.call_tool(tool_name, params),
-                    timeout=30.0
-                )
-                return result
-                
-            except asyncio.TimeoutError:
-                last_error = f"ARK: Tool {tool_name} timed out"
-                self.ark_logger.warning(last_error)
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(2 ** attempt)  # Exponential backoff
-                    
-            except MCPConnectionError as e:
-                last_error = f"ARK: Connection error: {e}"
-                self.ark_logger.warning(last_error)
-                # Try to reconnect to the server through ARK
-                await self.attempt_server_reconnection(tool_name)
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(2 ** attempt)
-                    
-            except MCPToolError as e:
-                # Tool-specific errors shouldn't be retried
-                last_error = f"ARK: Tool error: {e}"
-                self.ark_logger.error(last_error)
-                break
-                
-            except Exception as e:
-                last_error = f"ARK: Unexpected error: {e}"
-                self.ark_logger.error(last_error)
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(2 ** attempt)
-        
-        # All retries failed, try ARK fallback
-        fallback_result = await self.try_ark_fallback_tool(tool_name, params)
-        if fallback_result:
-            return fallback_result
-        
-        # No fallback available, raise the last error
-        raise ARKExecutionError(f"ARK failed to execute {tool_name} after {max_retries} attempts: {last_error}")
-    
-    async def try_ark_fallback_tool(self, failed_tool: str, params: dict) -> Optional[dict]:
-        """ARK-managed fallback tool execution."""
-        fallback_mappings = {
-            'web-search-advanced': 'web-search-basic',
-            'weather-detailed': 'weather-simple',
-            'filesystem-extended': 'filesystem-basic'
-        }
-        
-        fallback_tool = fallback_mappings.get(failed_tool)
-        if fallback_tool:
-            try:
-                self.ark_logger.info(f"ARK attempting fallback: {fallback_tool}")
-                # Adapt parameters for fallback tool if needed
-                adapted_params = self.adapt_params_for_fallback(params, fallback_tool)
-                return await self.ark_mcp_client.call_tool(fallback_tool, adapted_params)
-            except Exception as e:
-                self.ark_logger.warning(f"ARK fallback tool {fallback_tool} also failed: {e}")
+            # Check tool description for relevance
+            if hasattr(tool, 'description') and tool.description:
+                description_words = tool.description.lower().split()
+                input_words = user_input_lower.split()
+                if any(word in description_words for word in input_words):
+                    return tool
         
         return None
+    
+    def extract_arguments(self, user_input: str, tool: Tool) -> Dict[str, Any]:
+        """Extract arguments for tool execution from user input."""
+        # Simple argument extraction (can be enhanced)
+        args = {}
+        
+        if tool.name == 'echo':
+            # Extract message after 'echo' or 'say'
+            for keyword in ['echo', 'say', 'repeat']:
+                if keyword in user_input.lower():
+                    message = user_input.lower().split(keyword, 1)[-1].strip()
+                    args['message'] = message
+                    break
+        
+        return args
+    
+    def format_result(self, result: Any) -> str:
+        """Format tool execution result for user display."""
+        if isinstance(result, dict):
+            if 'content' in result:
+                return str(result['content'])
+            elif 'result' in result:
+                return str(result['result'])
+            else:
+                return str(result)
+        else:
+            return str(result)
+```
 
-class ARKCircuitBreaker:
-    """ARK's circuit breaker pattern for tool reliability."""
+### 6. Security and Reliability Features
+
+The implementation includes comprehensive security and reliability mechanisms:
+
+```python
+class SecurityManager:
+    """Manages security validation for MCP tool execution."""
+    
+    def __init__(self):
+        self.allowed_tools: Set[str] = set()
+        self.blocked_patterns: List[str] = []
+        self.logger = logging.getLogger(__name__)
+    
+    async def initialize(self) -> None:
+        """Initialize security manager with default policies."""
+        # Load security policies from configuration
+        self.allowed_tools = {'echo', 'get_time'}  # Built-in tools are always allowed
+        self.blocked_patterns = [
+            r'rm\s+-rf',  # Dangerous file operations
+            r'sudo\s+',   # Privilege escalation
+            r'eval\s*\(',  # Code evaluation
+        ]
+    
+    def validate_input(self, user_input: str) -> bool:
+        """Validate user input for security concerns."""
+        for pattern in self.blocked_patterns:
+            if re.search(pattern, user_input, re.IGNORECASE):
+                self.logger.warning(f"Blocked potentially dangerous input: {pattern}")
+                return False
+        return True
+
+class CircuitBreaker:
+    """Circuit breaker pattern for MCP tool reliability."""
     
     def __init__(self, failure_threshold: int = 5, timeout: int = 60):
         self.failure_threshold = failure_threshold
         self.timeout = timeout
         self.failure_count = 0
         self.last_failure_time = None
-        self.state = "closed"  # closed, open, half-open
-        self.ark_logger = logging.getLogger('ark.circuit_breaker')
+        self.state = 'CLOSED'  # CLOSED, OPEN, HALF_OPEN
     
-    async def call_with_circuit_breaker(self, tool_call_func):
-        """Execute tool call with ARK circuit breaker protection."""
-        if self.state == "open":
+    async def call(self, func, *args, **kwargs):
+        """Execute function with circuit breaker protection."""
+        if self.state == 'OPEN':
             if time.time() - self.last_failure_time > self.timeout:
-                self.state = "half-open"
-                self.ark_logger.info("ARK circuit breaker moving to half-open state")
+                self.state = 'HALF_OPEN'
             else:
-                raise ARKCircuitBreakerOpenError("ARK circuit breaker is open")
+                raise Exception("Circuit breaker is OPEN")
         
         try:
-            result = await tool_call_func()
-            # Success resets the ARK circuit breaker
-            self.failure_count = 0
-            if self.state == "half-open":
-                self.state = "closed"
-                self.ark_logger.info("ARK circuit breaker closed - service recovered")
+            result = await func(*args, **kwargs)
+            if self.state == 'HALF_OPEN':
+                self.state = 'CLOSED'
+                self.failure_count = 0
             return result
         except Exception as e:
             self.failure_count += 1
             self.last_failure_time = time.time()
             
             if self.failure_count >= self.failure_threshold:
-                self.state = "open"
-                self.ark_logger.error(f"ARK circuit breaker opened - failure threshold reached")
+                self.state = 'OPEN'
             
             raise e
+
+## Implementation Status and Integration
+
+### Current Implementation Features
+
+The MCP integration in Project Jarvis includes:
+
+1. **Official MCP SDK Integration**: Using the official `mcp` Python package for standardized protocol compliance
+2. **Server Configuration Management**: Structured configuration using dataclasses for type safety
+3. **Built-in Tool Support**: Echo and time tools available without external servers
+4. **Security Framework**: Input validation and circuit breaker patterns for reliability
+5. **Tool Discovery and Management**: Dynamic tool loading and matching capabilities
+6. **Error Handling**: Comprehensive error handling with logging and fallback mechanisms
+
+### Configuration Example
+
+```python
+# Example server configuration in practice
+servers = [
+    SimpleMCPServerConfig(
+        name="filesystem",
+        command="uvx",
+        args=["mcp-server-filesystem", "/path/to/allowed/directory"],
+        env={"PYTHONPATH": "/usr/local/lib/python3.12/site-packages"}
+    ),
+    SimpleMCPServerConfig(
+        name="git",
+        command="uvx", 
+        args=["mcp-server-git", "--repository", "/path/to/repo"],
+        env={}
+    )
+]
+
+# Initialize ARK engine with MCP integration
+ark_engine = ARKEngine()
+await ark_engine.initialize_from_config(servers)
 ```
+
+### Integration with Jarvis Agent
+
+The Jarvis agent seamlessly integrates MCP capabilities through the ARK engine:
+
+```python
+# User input processing with MCP tool integration
+async def process_user_input(self, user_input: str) -> str:
+    """Process user input and execute appropriate tools."""
+    # Security validation
+    if not self.security_manager.validate_input(user_input):
+        return "I cannot process that request for security reasons."
+    
+    # Find matching tools
+    matching_tools = self.tool_manager.find_matching_tools(user_input)
+    
+    if matching_tools:
+        # Execute the best matching tool
+        tool = matching_tools[0]
+        result = await self.ark_engine.execute_tool(tool['name'], user_input)
+        return self.tool_manager.format_result(result)
+    else:
+        return "I don't have the right tools to help with that request."
+```
+
+### Key Benefits of the Implementation
+
+1. **Standardized Protocol**: Uses the official MCP SDK ensuring compatibility with the broader MCP ecosystem
+2. **Type Safety**: Leverages Python type hints and dataclasses for robust configuration management
+3. **Security First**: Built-in security validation and circuit breaker patterns protect against malicious inputs
+4. **Extensible Architecture**: Easy to add new MCP servers and tools without code changes
+5. **Comprehensive Logging**: Detailed logging for debugging and monitoring tool execution
+6. **Error Resilience**: Graceful error handling with fallback mechanisms
+
+### Future Enhancement Opportunities
+
+While the current implementation provides a solid foundation, potential enhancements include:
+
+- **Dynamic Server Discovery**: Automatic detection of available MCP servers
+- **Tool Caching**: Caching tool results for improved performance
+- **Advanced Parameter Extraction**: More sophisticated natural language processing for parameter extraction
+- **Workflow Orchestration**: Chaining multiple tools together for complex tasks
+- **Performance Monitoring**: Metrics collection for tool execution times and success rates
+## Conclusion
+
+The MCP integration in Project Jarvis provides a robust, standardized foundation for tool management and execution. The implementation focuses on practical functionality while maintaining security, reliability, and extensibility. This architecture enables the agent to seamlessly interact with various external tools and services through the Model Context Protocol, creating a powerful and flexible AI assistant framework.
+
 
 ## Evaluation and Testing
 
@@ -1227,117 +795,117 @@ class ARKCircuitBreaker:
 - **User Feedback**: Collect and incorporate feedback
 - **Model Fine-tuning**: Improve based on usage data
 
-## Next Steps for Project Jarvis with ARK-MCP Integration
+## Next Steps for Project Jarvis
 
-### Immediate Enhancements (Phase 1) - ARK Foundation
-1. **Install and Configure ARK-MCP Dependencies**
+### Immediate Enhancements (Phase 1)
+1. **Install and Configure MCP Dependencies**
    - Add MCP client libraries to requirements.txt
-   - Set up basic ARK engine infrastructure with MCP client
-   - Create configuration system for ARK-managed MCP servers
+   - Set up basic MCP client infrastructure
+   - Create configuration system for MCP servers
 
-2. **Basic ARK-MCP Server Integration**
-   - Connect ARK to filesystem MCP server for file operations
-   - Connect ARK to calculator MCP server for math operations
-   - Implement basic tool discovery and calling through ARK
+2. **Basic MCP Server Integration**
+   - Connect to filesystem MCP server for file operations
+   - Connect to calculator MCP server for math operations
+   - Implement basic tool discovery and calling
 
-3. **Enhanced Intent Recognition via ARK**
-   - Implement ARK-aware intent recognition system
-   - Dynamic tool mapping based on available ARK-managed MCP servers
-   - Parameter extraction for MCP tool calls through ARK engine
+3. **Enhanced Intent Recognition**
+   - Implement intent recognition system
+   - Dynamic tool mapping based on available MCP servers
+   - Parameter extraction for MCP tool calls
 
-4. **ARK Security Framework**
-   - Basic tool allowlisting and parameter validation through ARK
-   - Simple sandboxing for file system operations via ARK
-   - Audit logging for all ARK-managed tool executions
+4. **Security Framework**
+   - Basic tool allowlisting and parameter validation
+   - Simple sandboxing for file system operations
+   - Audit logging for all tool executions
 
-### Medium-term Goals (Phase 2) - Advanced ARK Features
-1. **Advanced Tool Integration through ARK**
-   - Web search MCP server integration via ARK
-   - Weather API MCP server managed by ARK
-   - Database connectivity via ARK-managed MCP servers
-   - Custom domain-specific MCP servers under ARK control
+### Medium-term Goals (Phase 2)
+1. **Advanced Tool Integration**
+   - Web search MCP server integration
+   - Weather API MCP server
+   - Database connectivity via MCP servers
+   - Custom domain-specific MCP servers
 
-2. **ARK Workflow Engine Implementation**
-   - Multi-step workflow execution using ARK-orchestrated MCP tools
-   - Workflow templates for common task patterns in ARK
-   - Error recovery and retry mechanisms in ARK workflows
+2. **Workflow Engine Implementation**
+   - Multi-step workflow execution using MCP tools
+   - Workflow templates for common task patterns
+   - Error recovery and retry mechanisms
 
-3. **Language Model Integration with ARK**
-   - LLM-driven tool selection and parameter extraction via ARK
-   - Natural language to ARK-MCP tool call translation
-   - Tool result interpretation and response generation through ARK
+3. **Language Model Integration**
+   - LLM-driven tool selection and parameter extraction
+   - Natural language to MCP tool call translation
+   - Tool result interpretation and response generation
 
-4. **Dynamic ARK Server Management**
-   - Hot-loading of new MCP servers into ARK
-   - ARK server health monitoring and auto-restart
-   - Runtime server discovery and connection via ARK
+4. **Dynamic Server Management**
+   - Hot-loading of new MCP servers
+   - Server health monitoring and auto-restart
+   - Runtime server discovery and connection
 
-### Long-term Vision (Phase 3) - Production-Ready ARK-Powered Agent
-1. **Enterprise-Grade ARK Security**
-   - Role-based access control for ARK tool usage
-   - Advanced sandboxing and resource limiting via ARK
-   - Comprehensive audit and compliance logging in ARK
+### Long-term Vision (Phase 3)
+1. **Enterprise-Grade Security**
+   - Role-based access control for tool usage
+   - Advanced sandboxing and resource limiting
+   - Comprehensive audit and compliance logging
 
-2. **High Availability ARK Architecture**
-   - ARK-managed MCP server clustering and load balancing
-   - Distributed tool execution across multiple ARK-managed servers
-   - Caching and optimization for frequently used ARK tools
+2. **High Availability Architecture**
+   - MCP server clustering and load balancing
+   - Distributed tool execution across multiple servers
+   - Caching and optimization for frequently used tools
 
-3. **AI-Powered ARK Orchestration**
-   - Intelligent tool chaining and workflow optimization in ARK
-   - Learning from user patterns and preferences via ARK
-   - Predictive tool pre-loading and caching in ARK engine
+3. **AI-Powered Orchestration**
+   - Intelligent tool chaining and workflow optimization
+   - Learning from user patterns and preferences
+   - Predictive tool pre-loading and caching
 
-4. **ARK Ecosystem Integration**
-   - Integration with popular MCP server ecosystem via ARK
-   - Custom MCP server development tools for ARK
-   - Community tool sharing and marketplace through ARK
+4. **Ecosystem Integration**
+   - Integration with popular MCP server ecosystem
+   - Custom MCP server development tools
+   - Community tool sharing and marketplace
 
 ### Implementation Milestones
 
-**Week 1-2: ARK-MCP Foundation**
-- [ ] Install MCP dependencies and basic ARK engine setup
-- [ ] Connect ARK to first MCP server (filesystem)
-- [ ] Basic tool calling functionality through ARK
-- [ ] Simple intent recognition for file operations via ARK
+**Week 1-2: MCP Foundation**
+- [ ] Install MCP dependencies and basic setup
+- [ ] Connect to first MCP server (filesystem)
+- [ ] Basic tool calling functionality
+- [ ] Simple intent recognition for file operations
 
-**Week 3-4: ARK Tool Ecosystem**
-- [ ] Add calculator and web search MCP servers to ARK
-- [ ] Implement parameter extraction from natural language via ARK
-- [ ] Basic error handling and fallback mechanisms in ARK
-- [ ] Security validation for tool calls through ARK
+**Week 3-4: Tool Ecosystem**
+- [ ] Add calculator and web search MCP servers
+- [ ] Implement parameter extraction from natural language
+- [ ] Basic error handling and fallback mechanisms
+- [ ] Security validation for tool calls
 
-**Month 2: Advanced ARK Features**
-- [ ] ARK workflow engine for multi-step operations
-- [ ] Dynamic tool discovery and hot-loading in ARK
-- [ ] Integration with language model for better understanding via ARK
-- [ ] Comprehensive logging and monitoring of ARK operations
+**Month 2: Advanced Features**
+- [ ] Workflow engine for multi-step operations
+- [ ] Dynamic tool discovery and hot-loading
+- [ ] Integration with language model for better understanding
+- [ ] Comprehensive logging and monitoring
 
-**Month 3: Production-Ready ARK**
-- [ ] Advanced security and sandboxing through ARK
-- [ ] Performance optimization and caching in ARK engine
-- [ ] Comprehensive test suite for ARK-MCP integration
-- [ ] Documentation and deployment guides for ARK-powered Jarvis
+**Month 3: Production-Ready**
+- [ ] Advanced security and sandboxing
+- [ ] Performance optimization and caching
+- [ ] Comprehensive test suite for MCP integration
+- [ ] Documentation and deployment guides
 
 ### Success Metrics
 
 **Technical Metrics:**
-- Number of successfully integrated MCP servers in ARK
-- ARK tool execution success rate (target: >95%)
-- Average response time for ARK tool calls (target: <2s)
-- ARK security incident rate (target: 0 critical incidents)
+- Number of successfully integrated MCP servers
+- Tool execution success rate (target: >95%)
+- Average response time for tool calls (target: <2s)
+- Security incident rate (target: 0 critical incidents)
 
 **User Experience Metrics:**
-- Task completion rate via ARK-powered tools
-- User satisfaction with ARK-enhanced responses
-- Reduction in "I don't know" responses through ARK capabilities
-- ARK workflow automation adoption rate
+- Task completion rate via MCP-powered tools
+- User satisfaction with enhanced responses
+- Reduction in "I don't know" responses through MCP capabilities
+- Workflow automation adoption rate
 
 **System Reliability:**
-- ARK-managed MCP server uptime (target: >99.5%)
-- ARK error recovery success rate
-- ARK resource utilization efficiency
-- ARK scalability under load
+- MCP server uptime (target: >99.5%)
+- Error recovery success rate
+- Resource utilization efficiency
+- Scalability under load
 
 ## Conclusion
 
