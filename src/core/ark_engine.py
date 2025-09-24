@@ -142,7 +142,10 @@ class ARKEngine:
             
             # Step 2: Context Analysis
             context_summary = self.context_manager.get_context_summary()
+            recent_turns = self.context_manager.get_recent_turns()
             similar_exchanges = self.context_manager.find_similar_exchanges(user_input)
+            # Check for relevant memory information
+            user_memory = self.context_manager.get_memory("user_preferences", {})
             
             # Step 3: Decision Making
             decision = await self._make_decision(intent_result, context_summary, similar_exchanges)
@@ -185,7 +188,18 @@ class ARKEngine:
     async def _discover_tools(self) -> None:
         """Discover and catalog available tools from MCP servers."""
         try:
-            self.available_tools = await self.mcp_client.discover_tools()
+            self.available_tools = {}
+            
+            # Discover tools from all connected servers
+            for server_name in self.mcp_client.sessions.keys():
+                try:
+                    server_tools = await self.mcp_client.discover_tools(server_name)
+                    for tool in server_tools:
+                        tool_name = tool.get('name', f"unknown_tool_{len(self.available_tools)}")
+                        self.available_tools[tool_name] = tool
+                except Exception as e:
+                    self.ark_logger.warning(f"ARK: Failed to discover tools from server '{server_name}': {e}")
+            
             self.ark_logger.info(f"ARK: Discovered {len(self.available_tools)} tools")
             
             # Initialize usage stats for all tools
@@ -307,6 +321,23 @@ class ARKEngine:
                 if 'calculator_tool' in self.available_tools:
                     selected_tools.append('calculator_tool')
         
+        # Handle specific intent types
+        elif intent_result.intent == IntentType.TIME:
+            if 'time_tool' in self.available_tools:
+                selected_tools.append('time_tool')
+        
+        elif intent_result.intent == IntentType.WEATHER:
+            if 'weather_tool' in self.available_tools:
+                selected_tools.append('weather_tool')
+        
+        elif intent_result.intent == IntentType.CALCULATION:
+            if 'calculator_tool' in self.available_tools:
+                selected_tools.append('calculator_tool')
+        
+        elif intent_result.intent == IntentType.SEARCH:
+            if 'search_tool' in self.available_tools:
+                selected_tools.append('search_tool')
+        
         # Question answering might need search tools
         elif intent_result.intent == IntentType.QUESTION:
             if 'search_tool' in self.available_tools and not selected_tools:
@@ -407,6 +438,8 @@ class ARKEngine:
                     parameters['timezone'] = entity.value
                 elif tool_name == 'search_tool':
                     parameters['query'] = intent_result.raw_text
+                elif tool_name == 'calculator_tool' and entity.type.upper() == 'MATH':
+                    parameters['expression'] = entity.value
                 elif tool_name == 'calculator_tool' and entity.type.upper() == 'NUMBER':
                     parameters['expression'] = intent_result.raw_text
             
@@ -601,6 +634,19 @@ class ARKEngine:
         from datetime import datetime
         return datetime.now().isoformat()
     
+    def get_status(self) -> Dict[str, Any]:
+        """
+        Get basic engine status for testing and monitoring.
+        
+        Returns:
+            Dictionary containing basic engine status
+        """
+        return {
+            "state": self.state.value,
+            "available_tools": len(self.available_tools),
+            "decision_history_count": len(self.decision_history)
+        }
+    
     def get_engine_status(self) -> Dict[str, Any]:
         """
         Get current ARK engine status and metrics.
@@ -622,16 +668,33 @@ class ARKEngine:
             }
         }
     
+    async def close(self) -> None:
+        """
+        Close the ARK engine and clean up resources.
+        
+        Alias for shutdown() method for compatibility.
+        """
+        await self.shutdown()
+    
     async def shutdown(self) -> None:
         """Shutdown the ARK engine gracefully."""
         self.state = ARKState.SHUTDOWN
         self.ark_logger.info("ARK: Initiating shutdown sequence")
         
-        # Disconnect from MCP servers
-        await self.mcp_client.disconnect_all()
+        # Close MCP client connections
+        try:
+            if hasattr(self.mcp_client, 'close'):
+                await self.mcp_client.close()
+            elif hasattr(self.mcp_client, 'disconnect_all'):
+                await self.mcp_client.disconnect_all()
+        except Exception as e:
+            self.ark_logger.warning(f"ARK: Error during MCP client shutdown: {e}")
         
         # Export conversation if needed
-        conversation_export = self.context_manager.export_conversation()
-        self.ark_logger.debug("ARK: Conversation exported for archival")
+        try:
+            conversation_export = self.context_manager.export_conversation()
+            self.ark_logger.debug("ARK: Conversation exported for archival")
+        except Exception as e:
+            self.ark_logger.warning(f"ARK: Error exporting conversation: {e}")
         
         self.ark_logger.info("ARK: Shutdown complete")

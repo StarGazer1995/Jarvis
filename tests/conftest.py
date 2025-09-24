@@ -78,6 +78,19 @@ def temp_config_file(temp_dir):
 
 
 @pytest.fixture
+def temp_config_dir():
+    """
+    Create a temporary directory for config files.
+    
+    Returns:
+        Path: Path to the temporary config directory
+    """
+    temp_path = tempfile.mkdtemp()
+    yield Path(temp_path)
+    shutil.rmtree(temp_path, ignore_errors=True)
+
+
+@pytest.fixture
 def sample_jarvis_config():
     """
     Create a sample JarvisConfig for testing.

@@ -196,7 +196,7 @@ class SimpleMCPServerConfig:
         """Convert to official SDK StdioServerParameters."""
         return StdioServerParameters(
             command=self.command,
-            args=self.args,
+            args=self.args if self.args is not None else [],
             env=self.env if self.env else None
         )
     
@@ -249,7 +249,7 @@ class MCPServerConfig:
     limits: ServerLimits = field(default_factory=ServerLimits)
     
     # Security and authentication
-    security_level: Optional[SecurityLevel] = SecurityLevel.MEDIUM
+    security_level: Optional[SecurityLevel] = SecurityLevel.MEDIUM if SecurityLevel else None
     api_key: Optional[str] = None
     headers: Dict[str, str] = field(default_factory=dict)
     
@@ -266,7 +266,7 @@ class MCPServerConfig:
     # Runtime data
     metrics: ServerMetrics = field(default_factory=ServerMetrics)
     created_at: datetime = field(default_factory=datetime.now)
-    updated_at: datetime = field(default_factory=datetime.now)
+    updated_at: float = field(default_factory=time.time)
     last_updated: Optional[datetime] = None
     
     # Private fields
@@ -285,6 +285,8 @@ class MCPServerConfig:
         config_dict = {
             'name': self.name,
             'server_type': self.server_type.value,
+            'command': self.command,
+            'args': self.args,
             'host': self.host,
             'port': self.port,
             'protocol': self.protocol,
@@ -295,9 +297,15 @@ class MCPServerConfig:
             'config_type': self.config_type.value,
             'api_key': self.api_key if include_sensitive else ('***' if self.api_key else None),
             'headers': self.headers,
+            'description': self.description,
+            'version': self.version,
+            'tags': self.tags,
+            'priority': self.priority,
+            'auto_start': self.auto_start,
+            'auto_restart': self.auto_restart,
             'metadata': self.metadata,
             'created_at': self.created_at.isoformat() if isinstance(self.created_at, datetime) else self.created_at,
-            'last_updated': self.last_updated.isoformat() if self.last_updated else self.updated_at.isoformat() if isinstance(self.updated_at, datetime) else self.updated_at
+            'last_updated': self.last_updated.isoformat() if self.last_updated else (datetime.fromtimestamp(self.updated_at).isoformat() if isinstance(self.updated_at, (int, float)) else self.updated_at)
         }
         
         return config_dict
@@ -333,7 +341,7 @@ class MCPServerConfig:
         # Parse security level
         security_level = data.get('security_level')
         if isinstance(security_level, str):
-            security_level = SecurityLevel(security_level)
+            security_level = SecurityLevel(security_level) if SecurityLevel else security_level
         
         # Create main config
         config = cls(
@@ -349,10 +357,25 @@ class MCPServerConfig:
             config_type=ConfigType(data.get('config_type', 'development')),
             api_key=data.get('api_key'),
             headers=data.get('headers', {}),
+            description=data.get('description', ''),
+            version=data.get('version', '1.0.0'),
+            tags=data.get('tags', []),
+            priority=data.get('priority', 100),
+            auto_start=data.get('auto_start', True),
+            auto_restart=data.get('auto_restart', True),
             metadata=data.get('metadata', {}),
             created_at=created_at,
             last_updated=last_updated
         )
+        
+        # Handle credentials
+        if 'auth_token' in data:
+            config.credentials.bearer_token = data['auth_token']
+            config.credentials.auth_type = AuthType.BEARER_TOKEN
+        
+        if 'api_key' in data:
+            config.credentials.api_key = data['api_key']
+            config.credentials.auth_type = AuthType.API_KEY
         
         return config
     
@@ -389,6 +412,9 @@ class MCPServerConfig:
         elif self.server_type == ServerType.TCP:
             if not self.host or not self.port:
                 errors.append("Host and port are required for TCP servers")
+            # Port range validation for TCP servers
+            if self.port is not None and (self.port <= 0 or self.port > 65535):
+                errors.append("Port must be between 1 and 65535")
         
         # Timeout validation
         if self.timeout <= 0:
@@ -599,8 +625,21 @@ class FileConfigProvider(ServerConfigProvider):
                         with open(config_file, 'r') as f:
                             data = json.load(f)
                         
-                        config = MCPServerConfig.from_dict(data)
-                        configs.append(config)
+                        # Handle both single config and list of configs, including 'servers' wrapper
+                        if isinstance(data, dict) and "servers" in data:
+                            # Data has 'servers' wrapper
+                            for item in data["servers"]:
+                                config = MCPServerConfig.from_dict(item)
+                                configs.append(config)
+                        elif isinstance(data, list):
+                            # Data is directly a list of configs
+                            for item in data:
+                                config = MCPServerConfig.from_dict(item)
+                                configs.append(config)
+                        else:
+                            # Data is a single config
+                            config = MCPServerConfig.from_dict(data)
+                            configs.append(config)
                         
                     except Exception as e:
                         self.logger.error(f"Failed to load config from {config_file}: {e}")
@@ -611,8 +650,21 @@ class FileConfigProvider(ServerConfigProvider):
                         with open(config_file, 'r') as f:
                             data = yaml.safe_load(f)
                         
-                        config = MCPServerConfig.from_dict(data)
-                        configs.append(config)
+                        # Handle both single config and list of configs, including 'servers' wrapper
+                        if isinstance(data, dict) and "servers" in data:
+                            # Data has 'servers' wrapper
+                            for item in data["servers"]:
+                                config = MCPServerConfig.from_dict(item)
+                                configs.append(config)
+                        elif isinstance(data, list):
+                            # Data is directly a list of configs
+                            for item in data:
+                                config = MCPServerConfig.from_dict(item)
+                                configs.append(config)
+                        else:
+                            # Data is a single config
+                            config = MCPServerConfig.from_dict(data)
+                            configs.append(config)
                         
                     except Exception as e:
                         self.logger.error(f"Failed to load config from {config_file}: {e}")
@@ -794,14 +846,14 @@ class EnvironmentConfigProvider(ServerConfigProvider):
                     # Map environment variables to config properties
                     config_data = {
                         'name': server_name,
-                        'server_type': 'http',  # Default type
-                        'config_type': 'development',  # Default config type
+                        'server_type': ServerType.HTTP.value,  # Default type
+                        'config_type': ConfigType.DEVELOPMENT.value,  # Default config type
                         'host': data.get('host', 'localhost'),
                         'port': int(data.get('port', 8080)),
                         'protocol': data.get('protocol', 'http'),
                         'enabled': data.get('enabled', 'true').lower() == 'true',
-                        'auth_type': 'none',  # Default auth
-                        'security_level': 'medium',  # Default security
+                        'auth_type': AuthType.NONE.value,  # Default auth
+                        'security_level': SecurityLevel.MEDIUM.value if SecurityLevel else 'medium',  # Default security
                         'timeout': int(data.get('timeout', 30)),
                         'max_retries': int(data.get('max_retries', 3)),
                         'description': data.get('description', f'Environment config for {server_name}')
@@ -810,11 +862,11 @@ class EnvironmentConfigProvider(ServerConfigProvider):
                     # Handle optional fields
                     if 'auth_token' in data:
                         config_data['auth_token'] = data['auth_token']
-                        config_data['auth_type'] = 'token'
+                        config_data['auth_type'] = AuthType.BEARER_TOKEN.value
                     
                     if 'api_key' in data:
                         config_data['api_key'] = data['api_key']
-                        config_data['auth_type'] = 'api_key'
+                        config_data['auth_type'] = AuthType.API_KEY.value
                     
                     config = MCPServerConfig.from_dict(config_data)
                     configs.append(config)
@@ -831,18 +883,15 @@ class EnvironmentConfigProvider(ServerConfigProvider):
     
     async def save_config(self, config: MCPServerConfig) -> bool:
         """Save configuration is not supported for environment provider."""
-        self.logger.warning("Save operation not supported for EnvironmentConfigProvider")
-        return False
+        raise NotImplementedError("Save operation not supported for EnvironmentConfigProvider")
     
     async def save_configs(self, configs: List[MCPServerConfig]) -> bool:
         """Save configurations is not supported for environment provider."""
-        self.logger.warning("Save operation not supported for EnvironmentConfigProvider")
-        return False
+        raise NotImplementedError("Save operation not supported for EnvironmentConfigProvider")
     
     async def delete_config(self, server_name: str) -> bool:
         """Delete configuration is not supported for environment provider."""
-        self.logger.warning("Delete operation not supported for EnvironmentConfigProvider")
-        return False
+        raise NotImplementedError("Delete operation not supported for EnvironmentConfigProvider")
 
 
 class ARKServerConfigManager:
@@ -992,8 +1041,9 @@ class ARKServerConfigManager:
                 self.logger.error(f"Configuration not found: {server_name}")
                 return False
             
-            # Get existing config and update with kwargs
-            config = self.configs[server_name]
+            # Create a copy of the existing config for modification
+            import copy
+            config = copy.deepcopy(self.configs[server_name])
             for key, value in kwargs.items():
                 if hasattr(config, key):
                     setattr(config, key, value)
@@ -1277,14 +1327,21 @@ class ARKServerConfigManager:
         # Status distribution
         status_counts = {}
         for config in self.configs.values():
-            status = config.status.value
+            status = config.status.value.upper()
             status_counts[status] = status_counts.get(status, 0) + 1
         
         # Type distribution
         type_counts = {}
         for config in self.configs.values():
-            server_type = config.server_type.value
+            server_type = config.server_type.value.upper()
             type_counts[server_type] = type_counts.get(server_type, 0) + 1
+        
+        # Security level distribution
+        security_level_counts = {}
+        for config in self.configs.values():
+            if hasattr(config, 'security_level') and config.security_level:
+                security_level = config.security_level.value.upper()
+                security_level_counts[security_level] = security_level_counts.get(security_level, 0) + 1
         
         return {
             'total_configs': total_configs,
@@ -1292,6 +1349,7 @@ class ARKServerConfigManager:
             'disabled_configs': total_configs - enabled_configs,
             'status_distribution': status_counts,
             'type_distribution': type_counts,
+            'security_level_distribution': security_level_counts,
             'provider_type': self.config_provider.__class__.__name__
         }
     
@@ -1342,6 +1400,18 @@ class ARKServerConfigManager:
             
         except Exception as e:
             self.logger.warning(f"Health check failed for {config.name}: {e}")
+    
+    async def _health_check(self, config: MCPServerConfig) -> None:
+        """
+        Perform health check on a specific server configuration.
+        
+        This method is used by tests and provides a simple interface
+        for checking server health status.
+        
+        Args:
+            config: Server configuration to check
+        """
+        await self._check_server_health(config)
     
     def __len__(self) -> int:
         """Return number of configurations."""

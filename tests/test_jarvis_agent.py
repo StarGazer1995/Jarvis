@@ -213,11 +213,378 @@ class TestJarvisAgent:
     @pytest.mark.asyncio
     async def test_health_check(self, agent):
         """Test health check functionality."""
-        health = await agent.health_check()
+        with patch.object(agent.ark_engine.mcp_client, 'discover_tools', return_value=["tool1", "tool2"]):
+            health = await agent.health_check()
+            assert "overall" in health
+            assert "components" in health
+            assert "timestamp" in health
+    
+    @pytest.mark.asyncio
+    async def test_start_conversation(self, agent):
+        """Test starting a conversation."""
+        with patch.object(agent.ark_engine.context_manager, 'reset_session', return_value=None):
+            result = await agent.start_conversation("user123")
+            assert "testjarvis" in result.lower() or "ai assistant" in result.lower()
+    
+    @pytest.mark.asyncio
+    async def test_end_conversation(self, agent):
+        """Test ending a conversation."""
+        with patch.object(agent.ark_engine.context_manager, 'get_session_stats', return_value={"turn_count": 5, "duration_minutes": 10.5}):
+            result = await agent.end_conversation("user123")
+            assert "5 messages" in result
+            assert "10.5 minutes" in result
+    
+    @pytest.mark.asyncio
+    async def test_get_conversation_export(self, agent):
+        """Test conversation export."""
+        mock_history = [{"role": "user", "content": "Hello"}]
+        with patch.object(agent.ark_engine.context_manager, 'export_conversation', return_value='{"conversation": [{"user": "Hello", "agent": "Hi there!"}]}'):
+            # Test JSON export
+            json_export = agent.get_conversation_export("json")
+            assert "Hello" in json_export
+            
+            # Test text export
+            text_export = agent.get_conversation_export("text")
+            assert "Hello" in text_export
+    
+    @pytest.mark.asyncio
+    async def test_get_available_tools(self, agent):
+        """Test getting available tools."""
+        mock_tools = {"echo": {"description": "Echo tool"}}
+        with patch.object(agent.ark_engine, 'available_tools', mock_tools):
+            tools = agent.get_available_tools()
+            assert "echo" in tools
+    
+    @pytest.mark.asyncio
+    async def test_get_tool_usage_stats(self, agent):
+        """Test getting tool usage statistics."""
+        stats = agent.get_tool_usage_stats()
+        assert isinstance(stats, dict)
+    
+    @pytest.mark.asyncio
+    async def test_execute_tool_directly(self, agent):
+        """Test executing tool directly."""
+        # Mock available tools and mcp_client
+        agent.ark_engine.available_tools = {"echo": {"description": "Echo tool"}}
+        mock_result = {"success": True, "result": "test"}
+        with patch.object(agent.ark_engine.mcp_client, 'execute_tool', return_value=mock_result):
+            result = await agent.execute_tool_directly("echo", {"message": "test"})
+            assert result["success"] is True
+    
+    def test_set_get_user_preference(self, agent):
+        """Test setting and getting user preferences."""
+        agent.set_user_preference("theme", "dark")
+        assert agent.get_user_preference("theme") == "dark"
+        assert agent.get_user_preference("nonexistent", "default") == "default"
+    
+    def test_configure_logging(self, agent):
+        """Test configuring logging level."""
+        agent.configure_logging("DEBUG")
+        # Verify logging level was set (implementation dependent)
+        assert True  # Basic test that method doesn't crash
+    
+    @pytest.mark.asyncio
+    async def test_context_manager(self, agent):
+        """Test agent as async context manager."""
+        with patch.object(agent, 'initialize', return_value=True), \
+             patch.object(agent, 'start'), \
+             patch.object(agent, 'stop'):
+            
+            async with agent as ctx_agent:
+                assert ctx_agent is agent
+    
+    def test_timestamp_generation(self, agent):
+        """Test timestamp generation."""
+        timestamp = agent._get_timestamp()
+        assert isinstance(timestamp, str)
+        assert len(timestamp) > 0
+    
+    def test_repr(self, agent):
+        """Test string representation."""
+        repr_str = repr(agent)
+        assert "JarvisAgent" in repr_str
+        assert agent.config.name in repr_str
+
+
+class TestJarvisAgentAdvanced:
+    """Advanced test cases for JarvisAgent."""
+    
+    @pytest.fixture
+    def agent_with_servers(self):
+        """Create agent with MCP servers."""
+        server_config = SimpleMCPServerConfig(name="test_server", command=["test"])
+        config = JarvisConfig(mcp_servers=[server_config])
+        return JarvisAgent(config)
+    
+    @pytest.mark.asyncio
+    async def test_initialization_with_servers(self, agent_with_servers):
+        """Test initialization with MCP servers."""
+        with patch.object(agent_with_servers.ark_engine.mcp_client, 'connect_to_server', return_value=True) as mock_connect, \
+             patch.object(agent_with_servers.ark_engine, '_discover_tools'):
+            await agent_with_servers.initialize()
+            mock_connect.assert_called_once()
+    
+    @pytest.mark.asyncio
+    async def test_process_message_with_tool_usage(self):
+        """Test message processing with tool usage tracking."""
+        agent = JarvisAgent()
+        agent.is_running = True  # Set agent to running state
         
-        assert "overall" in health
-        assert "timestamp" in health
-        assert "components" in health
+        with patch.object(agent.ark_engine, 'process_input', return_value="response"), \
+             patch.object(agent.ark_engine.context_manager, 'add_exchange'), \
+             patch.object(agent.ark_engine, 'tool_usage_stats', {"total_messages": 1}):
+            
+            result = await agent.process_message("test message", "user123")
+            assert result == "response"
+            stats = agent.get_tool_usage_stats()
+            assert stats.get("total_messages", 0) >= 1
+    
+    @pytest.mark.asyncio
+    async def test_health_check_with_errors(self):
+        """Test health check with component errors."""
+        agent = JarvisAgent()
+        agent.is_initialized = True
+        agent.is_running = True
+        
+        with patch.object(agent.ark_engine.mcp_client, 'discover_tools', side_effect=Exception("MCP error")):
+            health = await agent.health_check()
+            assert health["overall"] == "degraded"
+            assert health["components"]["mcp_client"]["status"] == "unhealthy"
+    
+    def test_callback_management(self):
+        """Test callback management."""
+        agent = JarvisAgent()
+        
+        startup_callback = Mock()
+        shutdown_callback = Mock()
+        message_callback = Mock()
+        
+        agent.add_startup_callback(startup_callback)
+        agent.add_shutdown_callback(shutdown_callback)
+        agent.add_message_callback(message_callback)
+        
+        assert startup_callback in agent.on_startup_callbacks
+        assert shutdown_callback in agent.on_shutdown_callbacks
+        assert message_callback in agent.on_message_callbacks
+    
+    @pytest.mark.asyncio
+    async def test_startup_callbacks_execution(self):
+        """Test startup callbacks are executed."""
+        agent = JarvisAgent()
+        callback = AsyncMock()
+        agent.add_startup_callback(callback)
+        
+        with patch.object(agent.ark_engine, 'initialize', return_value=True), \
+             patch.object(agent.ark_engine.mcp_client, 'start'):
+            await agent.start()
+            callback.assert_called_once()
+    
+    @pytest.mark.asyncio
+    async def test_shutdown_callbacks_execution(self):
+        """Test shutdown callbacks are executed."""
+        agent = JarvisAgent()
+        callback = AsyncMock()
+        agent.add_shutdown_callback(callback)
+        
+        with patch.object(agent.ark_engine.mcp_client, 'stop'), \
+             patch.object(agent.ark_engine, 'shutdown'):
+            await agent.stop()
+            callback.assert_called_once()
+    
+    @pytest.mark.asyncio
+    async def test_message_callbacks_execution(self):
+        """Test message callbacks are executed."""
+        agent = JarvisAgent()
+        agent.is_running = True  # Set agent as running
+        callback = Mock()
+        agent.add_message_callback(callback)
+        
+        with patch.object(agent.ark_engine, 'process_input', return_value="response"), \
+             patch.object(agent.ark_engine.context_manager, 'add_exchange'):
+            
+            await agent.process_message("test", "user123")
+            callback.assert_called()
+    
+    @pytest.mark.asyncio
+    async def test_initialization_failure(self):
+        """Test initialization failure when ARK engine fails to initialize."""
+        agent = JarvisAgent()
+        
+        # Mock ARK engine initialization to fail
+        with patch.object(agent.ark_engine, 'initialize', return_value=False):
+            # Test initialization
+            result = await agent.initialize()
+            
+            # Verify initialization failed
+            assert result is False
+            assert not agent.is_initialized
+    
+    @pytest.mark.asyncio
+    async def test_startup_callbacks_execution(self):
+        """Test startup callbacks execution during initialization."""
+        agent = JarvisAgent()
+        
+        # Add sync and async callbacks
+        sync_callback = Mock()
+        async_callback = AsyncMock()
+        
+        agent.add_startup_callback(sync_callback)
+        agent.add_startup_callback(async_callback)
+        
+        # Mock ARK engine initialization to succeed
+        with patch.object(agent.ark_engine, 'initialize', return_value=True):
+            # Test initialization
+            result = await agent.initialize()
+            
+            # Verify initialization succeeded
+            assert result is True
+            assert agent.is_initialized
+            
+            # Verify callbacks were called
+            sync_callback.assert_called_once_with(agent)
+            async_callback.assert_called_once_with(agent)
+    
+    @pytest.mark.asyncio
+    async def test_startup_callbacks_exception_handling(self):
+        """Test startup callbacks exception handling."""
+        agent = JarvisAgent()
+        
+        # Add a callback that raises an exception
+        def failing_callback(agent):
+            raise Exception("Callback failed")
+        
+        agent.add_startup_callback(failing_callback)
+        
+        # Mock ARK engine initialization to succeed
+        with patch.object(agent.ark_engine, 'initialize', return_value=True):
+            # Test initialization - should still succeed despite callback failure
+            result = await agent.initialize()
+            
+            # Verify initialization succeeded despite callback failure
+            assert result is True
+            assert agent.is_initialized
+    
+    @pytest.mark.asyncio
+    async def test_initialization_exception_handling(self):
+        """Test initialization exception handling."""
+        agent = JarvisAgent()
+        
+        # Mock ARK engine initialization to raise an exception
+        with patch.object(agent.ark_engine, 'initialize', side_effect=Exception("Initialization error")):
+            # Test initialization
+            result = await agent.initialize()
+            
+            # Verify initialization failed due to exception
+            assert result is False
+            assert not agent.is_initialized
+    
+    @pytest.mark.asyncio
+    async def test_shutdown_callbacks_execution(self):
+        """Test shutdown callbacks execution during stop."""
+        agent = JarvisAgent()
+        agent.is_running = True
+        
+        # Add sync and async callbacks
+        sync_callback = Mock()
+        async_callback = AsyncMock()
+        
+        agent.add_shutdown_callback(sync_callback)
+        agent.add_shutdown_callback(async_callback)
+        
+        # Mock ARK engine shutdown
+        with patch.object(agent.ark_engine, 'shutdown', new_callable=AsyncMock):
+            # Test stop
+            await agent.stop()
+            
+            # Verify callbacks were called
+            sync_callback.assert_called_once_with(agent)
+            async_callback.assert_called_once_with(agent)
+    
+    @pytest.mark.asyncio
+    async def test_shutdown_callbacks_exception_handling(self):
+        """Test shutdown callbacks exception handling."""
+        agent = JarvisAgent()
+        agent.is_running = True
+        
+        # Add a callback that raises an exception
+        def failing_callback(agent):
+            raise Exception("Shutdown callback failed")
+        
+        agent.add_shutdown_callback(failing_callback)
+        
+        # Mock ARK engine shutdown
+        with patch.object(agent.ark_engine, 'shutdown', new_callable=AsyncMock):
+            # Test stop - should complete despite callback failure
+            await agent.stop()
+            
+            # Verify agent stopped despite callback failure
+            assert not agent.is_running
+    
+    @pytest.mark.asyncio
+    async def test_execute_tool_directly_success(self):
+        """Test execute_tool_directly with successful tool execution."""
+        agent = JarvisAgent()
+        agent.is_initialized = True
+        
+        # Mock ARK engine with available tool
+        agent.ark_engine.available_tools = {"test_tool": "mock_tool"}
+        
+        # Mock tool execution
+        with patch.object(agent.ark_engine.mcp_client, 'execute_tool', new_callable=AsyncMock) as mock_execute:
+            mock_execute.return_value = {"result": "success"}
+            
+            # Test tool execution
+            result = await agent.execute_tool_directly("test_tool", {"param": "value"})
+            
+            # Verify execution
+            assert result == {"result": "success"}
+            mock_execute.assert_called_once_with("test_tool", {"param": "value"})
+    
+    @pytest.mark.asyncio
+    async def test_execute_tool_directly_tool_not_available(self):
+        """Test execute_tool_directly with unavailable tool."""
+        agent = JarvisAgent()
+        agent.is_initialized = True
+        agent.ark_engine.available_tools = {}
+        
+        # Test tool execution with unavailable tool - should raise ValueError
+        with pytest.raises(ValueError, match="Tool 'nonexistent_tool' is not available"):
+            await agent.execute_tool_directly("nonexistent_tool", {})
+    
+    @pytest.mark.asyncio
+    async def test_execute_tool_directly_execution_exception(self):
+        """Test execute_tool_directly with execution exception."""
+        agent = JarvisAgent()
+        agent.is_initialized = True
+        
+        # Mock ARK engine with available tool
+        agent.ark_engine.available_tools = {"test_tool": "mock_tool"}
+        
+        # Mock tool execution to raise exception
+        with patch.object(agent.ark_engine.mcp_client, 'execute_tool', new_callable=AsyncMock) as mock_execute:
+            mock_execute.side_effect = Exception("Tool execution failed")
+            
+            # Test tool execution - should raise the exception
+            with pytest.raises(Exception, match="Tool execution failed"):
+                await agent.execute_tool_directly("test_tool", {})
+    
+    @pytest.mark.asyncio
+    async def test_async_context_manager(self):
+        """Test async context manager functionality."""
+        agent = JarvisAgent()
+        
+        # Mock ARK engine methods
+        with patch.object(agent.ark_engine, 'initialize', return_value=True), \
+             patch.object(agent.ark_engine, 'shutdown', new_callable=AsyncMock):
+            
+            # Test async context manager
+            async with agent:
+                # Verify agent is started
+                assert agent.is_running
+                assert agent.is_initialized
+            
+            # Verify agent is stopped after context exit
+            assert not agent.is_running
 
 
 if __name__ == "__main__":

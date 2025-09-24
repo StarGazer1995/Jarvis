@@ -431,12 +431,9 @@ class ConversationContext:
         intents = list(set(turn.intent for turn in self.conversation_history if turn.intent))
         
         # Calculate session duration
-        if self.conversation_history:
-            first_turn = self.conversation_history[0]
-            last_turn = self.conversation_history[-1]
-            duration = last_turn.timestamp - first_turn.timestamp
-        else:
-            duration = 0
+        first_turn = self.conversation_history[0]
+        last_turn = self.conversation_history[-1]
+        duration = last_turn.timestamp - first_turn.timestamp
         
         return {
             "total_turns": len(self.conversation_history),

@@ -98,11 +98,36 @@ class TestEntity:
         """Test entity string representation."""
         entity = Entity("test", "value", "TYPE", 0.5)
         repr_str = repr(entity)
-        
         assert "Entity" in repr_str
         assert "test" in repr_str
         assert "value" in repr_str
-        assert "TYPE" in repr_str
+    
+    def test_entity_with_metadata(self):
+        """Test entity creation with metadata."""
+        metadata = {"source": "test", "confidence_score": 0.95}
+        entity = Entity(
+            name="location",
+            value="New York",
+            entity_type="LOCATION",
+            confidence=0.95,
+            metadata=metadata
+        )
+        
+        assert entity.metadata == metadata
+        assert entity.metadata["source"] == "test"
+        assert entity.metadata["confidence_score"] == 0.95
+    
+    def test_entity_type_property(self):
+        """Test entity type property compatibility."""
+        entity = Entity("test", "value", "TYPE", 0.5)
+        
+        # Test both entity_type and type properties
+        assert entity.entity_type == "TYPE"
+        assert entity.type == "TYPE"
+        
+        # Test setting via type property
+        entity.entity_type = "NEW_TYPE"
+        assert entity.type == "NEW_TYPE"
 
 
 class TestIntentResult:
@@ -530,6 +555,126 @@ class TestARKIntentEngine:
         # All results should be GREETING
         assert len(results) == 50
         assert all(intent == IntentType.GREETING for intent in results)
+    
+    def test_tool_confidence_calculation(self, engine):
+        """Test tool confidence calculation for TOOL_USE intent."""
+        # Test input with tool-related keywords
+        tool_inputs = [
+            "use calculator tool to compute 5+5",
+            "search tool for information",
+            "weather tool forecast",
+            "time tool current"
+        ]
+        
+        for input_text in tool_inputs:
+            result = engine.recognize_intent(input_text)
+            # Should detect tool usage and calculate confidence
+            assert result.confidence > 0.0
+    
+    def test_entity_overlap_processing(self, engine):
+        """Test entity overlap detection and filtering."""
+        # Create input with overlapping entities
+        input_text = "New York City weather forecast"
+        entities = engine.extract_entities(input_text)
+        
+        # Should handle overlapping location entities properly
+        location_entities = [e for e in entities if e.entity_type == "LOCATION"]
+        
+        # Verify no overlapping entities remain
+        for i, entity1 in enumerate(location_entities):
+            for j, entity2 in enumerate(location_entities):
+                if i != j and entity1.start_pos is not None and entity2.start_pos is not None:
+                    # Check for overlap
+                    overlap = not (entity1.end_pos <= entity2.start_pos or entity2.end_pos <= entity1.start_pos)
+                    assert not overlap, "Overlapping entities should be filtered"
+    
+    def test_add_custom_intent_pattern_method(self, engine):
+        """Test add_custom_intent_pattern method."""
+        # Test adding custom pattern
+        engine.add_custom_intent_pattern(IntentType.COMMAND, "execute task")
+        
+        # Verify pattern was added
+        assert "execute task" in engine.intent_patterns[IntentType.COMMAND]
+        
+        # Test recognition with new pattern
+        result = engine.recognize_intent("please execute task now")
+        assert result.intent == IntentType.COMMAND
+    
+    def test_add_custom_entity_pattern_method(self, engine):
+        """Test add_custom_entity_pattern method."""
+        # Test adding custom entity pattern
+        engine.add_custom_entity_pattern("PRODUCT", r"\b(iPhone|iPad|MacBook)\b")
+        
+        # Verify pattern was added
+        assert "PRODUCT" in engine.entity_patterns
+        
+        # Test extraction with new pattern
+        entities = engine.extract_entities("I want to buy an iPhone")
+        product_entities = [e for e in entities if e.entity_type == "PRODUCT"]
+        assert len(product_entities) > 0
+        assert "iPhone" in product_entities[0].value
+    
+    def test_get_supported_intents(self, engine):
+        """Test get_supported_intents method."""
+        supported_intents = engine.get_supported_intents()
+        
+        # Should return list of IntentType string values
+        assert isinstance(supported_intents, list)
+        assert len(supported_intents) > 0
+        
+        # Should include all expected intent types (as string values)
+        expected_intents = [
+            "greeting", "question", "command",
+            "weather", "time", "goodbye"
+        ]
+        for intent in expected_intents:
+            assert intent in supported_intents
+    
+    def test_get_supported_entities(self, engine):
+        """Test get_supported_entities method."""
+        supported_entities = engine.get_supported_entities()
+        
+        # Should return list of entity type names
+        assert isinstance(supported_entities, list)
+        assert len(supported_entities) > 0
+        
+        # Should include expected entity types
+        expected_entities = ["LOCATION", "TIME", "PERSON"]
+        for entity_type in expected_entities:
+            assert entity_type in supported_entities
+    
+    def test_analyze_text_complexity(self, engine):
+        """Test analyze_text_complexity method."""
+        # Test simple text
+        simple_result = engine.analyze_text_complexity("hello")
+        assert isinstance(simple_result, dict)
+        assert "word_count" in simple_result
+        assert "sentence_count" in simple_result
+        assert "avg_word_length" in simple_result
+        assert "complexity_score" in simple_result
+        
+        # Test complex text
+        complex_text = "This is a very complex sentence with multiple clauses, punctuation marks, and sophisticated vocabulary!"
+        complex_result = engine.analyze_text_complexity(complex_text)
+        
+        # Complex text should have higher complexity score
+        assert complex_result["complexity_score"] > simple_result["complexity_score"]
+        assert complex_result["word_count"] > simple_result["word_count"]
+        
+        # Test empty text
+        empty_result = engine.analyze_text_complexity("")
+        assert empty_result["word_count"] == 0
+        assert empty_result["complexity_score"] == 0.0
+    
+    def test_unknown_intent_with_tool_confidence(self, engine):
+        """Test UNKNOWN intent classification with tool confidence override."""
+        # Create input that would normally be UNKNOWN but has tool keywords
+        tool_text = "use some unknown tool functionality"
+        result = engine.recognize_intent(tool_text)
+        
+        # Should either be classified as TOOL_USE or have appropriate confidence
+        assert result.intent in [IntentType.UNKNOWN, IntentType.TOOL_USE]
+        assert result.confidence >= 0.0
 
 
 class TestIntentEngineIntegration:

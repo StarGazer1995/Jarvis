@@ -205,8 +205,10 @@ class ARKMCPClient:
             
             # 调用工具
             request = CallToolRequest(
-                name=tool.name,
-                arguments=arguments
+                params={
+                    "name": tool.name,
+                    "arguments": arguments
+                }
             )
             
             result = await session.call_tool(request)
@@ -319,7 +321,7 @@ class ARKMCPClient:
         elif server_name in self.servers:
             return ServerStatus.DISCONNECTED
         else:
-            return ServerStatus.NOT_CONFIGURED
+            return ServerStatus.UNKNOWN
     
     def get_all_server_status(self) -> Dict[str, ServerStatus]:
         """
@@ -377,6 +379,21 @@ class ARKMCPClient:
         
         self.servers[server_config.name] = server_config
         return True
+    
+    async def connect_to_server(self, server_config: SimpleMCPServerConfig) -> bool:
+        """
+        连接到MCP服务器（公共方法）
+        
+        Args:
+            server_config: 服务器配置
+            
+        Returns:
+            是否连接成功
+        """
+        # 先添加服务器配置
+        await self.add_server(server_config)
+        # 然后连接到服务器
+        return await self._connect_to_server(server_config)
     
     async def remove_server(self, server_name: str) -> bool:
         """
@@ -474,18 +491,22 @@ class ARKMCPClient:
         Returns:
             执行结果，如果工具不存在或执行失败则返回None
         """
-        # 检查工具是否存在
-        if tool_name not in self.available_tools:
-            return None
-        
-        # 获取工具信息
-        tool_info = self.available_tools[tool_name]
-        server_name = tool_info.get("server")
-        
-        if not server_name:
-            return None
-        
         try:
+            # 检查是否为内置工具
+            if tool_name in self._builtin_tools:
+                return await self._call_builtin_tool(tool_name, arguments)
+            
+            # 检查MCP工具是否存在
+            if tool_name not in self.available_tools:
+                return None
+            
+            # 获取工具信息
+            tool_info = self.available_tools[tool_name]
+            server_name = tool_info.get("server")
+            
+            if not server_name:
+                return None
+            
             # 执行服务器工具
             return await self._execute_server_tool(server_name, tool_name, arguments)
         except Exception as e:
@@ -508,7 +529,7 @@ class ARKMCPClient:
             raise ValueError(f"服务器 {server_name} 未连接")
         
         session = self.sessions[server_name]
-        request = CallToolRequest(name=tool_name, arguments=arguments)
+        request = CallToolRequest(method="tools/call", params={"name": tool_name, "arguments": arguments})
         result = await session.call_tool(request)
         
         return {
