@@ -16,6 +16,9 @@ from .mcp_client import ARKMCPClient
 from .server_config import SimpleMCPServerConfig
 from .context_manager import ConversationContext
 from .intent_engine import ARKIntentEngine, IntentType, IntentResult
+from .llm_client import LLMManager, LLMMessage
+from .llm_config import LLMConfig, LLMProvider, load_llm_config
+from .prompt_manager import PromptManager
 
 
 class ARKState(Enum):
@@ -66,6 +69,13 @@ class ARKEngine:
         )
         self.intent_engine = ARKIntentEngine()
         
+        # Initialize LLM components
+        llm_config_dict = self.config.get('llm', {})
+        self.llm_config = load_llm_config(llm_config_dict) if llm_config_dict else load_llm_config()
+        self.llm_manager = LLMManager(self.llm_config)
+        self.prompt_manager = PromptManager()
+        self.llm_enabled = self.config.get('enable_llm', True)
+        
         # ARK-specific attributes
         self.available_tools: Dict[str, Any] = {}
         self.tool_usage_stats: Dict[str, int] = {}
@@ -106,6 +116,10 @@ class ARKEngine:
             
             # Discover available tools
             await self._discover_tools()
+            
+            # Initialize LLM if enabled
+            if self.llm_enabled:
+                await self._initialize_llm()
             
             # Initialize performance tracking
             self._initialize_performance_metrics()
@@ -209,6 +223,25 @@ class ARKEngine:
         except Exception as e:
             self.ark_logger.error(f"ARK: Tool discovery failed: {e}")
             self.available_tools = {}
+    
+    async def _initialize_llm(self) -> None:
+        """Initialize LLM client and prompt manager."""
+        try:
+            # Initialize default LLM client
+            success = await self.llm_manager.initialize_default_client()
+            if success:
+                self.ark_logger.info("ARK: LLM client initialized successfully")
+            else:
+                self.ark_logger.warning("ARK: LLM client initialization failed, using template fallback")
+                self.llm_enabled = False
+            
+            # Load default prompts
+            self.prompt_manager.load_default_templates()
+            self.ark_logger.info("ARK: Prompt templates loaded successfully")
+            
+        except Exception as e:
+            self.ark_logger.error(f"ARK: Error initializing LLM: {e}")
+            self.llm_enabled = False
     
     async def _make_decision(
         self, 
@@ -500,6 +533,46 @@ class ARKEngine:
         Returns:
             Generated response string
         """
+        # Use LLM for response generation if enabled
+        if self.llm_enabled:
+            return await self._generate_llm_response(intent_result, decision, tool_results)
+        
+        # Fallback to template-based responses
+        return self._generate_template_response(intent_result, decision, tool_results)
+    
+    async def _generate_llm_response(
+        self, 
+        intent_result: IntentResult, 
+        decision: ARKDecision, 
+        tool_results: Dict[str, Any]
+    ) -> str:
+        """Generate response using LLM."""
+        try:
+            # Build conversation context
+            messages = self.prompt_manager.build_conversation_messages(
+                user_input=intent_result.raw_text,
+                conversation_history=[],
+                system_context={"intent": intent_result.intent.value},
+                intent_info={"intent": intent_result.intent.value, "confidence": intent_result.confidence},
+                tool_results=tool_results
+            )
+            
+            # Generate response using LLM
+            response = await self.llm_manager.generate_response(messages)
+            return response
+            
+        except Exception as e:
+            self.ark_logger.error(f"ARK: Error generating LLM response: {e}")
+            # Fallback to template response
+            return self._generate_template_response(intent_result, decision, tool_results)
+    
+    def _generate_template_response(
+        self, 
+        intent_result: IntentResult, 
+        decision: ARKDecision, 
+        tool_results: Dict[str, Any]
+    ) -> str:
+        """Generate response using templates (fallback method)."""
         # Handle different action types
         if decision.action_type == "respond_greeting":
             return self._generate_greeting_response()

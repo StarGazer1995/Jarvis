@@ -3,6 +3,13 @@ pytest>=7.0.0
 typing-extensions>=4.0.0
 modelcontextprotocol==0.1.0
 
+# LLM Core Dependencies
+openai>=1.0.0              # OpenAI官方SDK
+httpx>=0.24.0              # 高性能HTTP客户端
+tenacity>=8.0.0            # 重试机制
+pydantic>=2.0.0            # 数据验证
+python-dotenv>=1.0.0       # 环境变量支持
+
 # For server health checks
 aiohttp>=3.8.0
 
