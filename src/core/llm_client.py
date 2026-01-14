@@ -19,6 +19,7 @@ class LLMProvider(Enum):
     ANTHROPIC = "anthropic"
     AZURE_OPENAI = "azure_openai"
     OLLAMA = "ollama"
+    LITELLM = "litellm"  # LiteLLM统一接口
     MOCK = "mock"  # 用于测试
 
 
@@ -49,10 +50,18 @@ class LLMConfig:
     base_url: Optional[str] = None
     temperature: float = 0.7
     max_tokens: int = 1000
-    timeout: int = 30
-    retry_attempts: int = 3
+    timeout: Union[float, Dict[str, float]] = 30.0
+    retry: Dict[str, Any] = field(default_factory=dict)
     stream: bool = False
     extra_params: Dict[str, Any] = field(default_factory=dict)
+    
+    # 兼容性字段
+    retry_attempts: int = 3
+
+    def __post_init__(self):
+        # 如果retry为空但提供了retry_attempts，构造retry字典
+        if not self.retry and self.retry_attempts:
+            self.retry = {"max_attempts": self.retry_attempts}
 
 
 class BaseLLMClient(ABC):
@@ -121,132 +130,11 @@ class BaseLLMClient(ABC):
         self.logger.info("LLM客户端已关闭")
 
 
-class MockLLMClient(BaseLLMClient):
-    """模拟LLM客户端，用于测试"""
-    
-    async def initialize(self) -> bool:
-        """初始化模拟客户端"""
-        self._initialized = True
-        self.logger.info("模拟LLM客户端初始化完成")
-        return True
-    
-    async def generate_response(
-        self, 
-        messages: List[LLMMessage],
-        **kwargs
-    ) -> LLMResponse:
-        """生成模拟响应"""
-        if not self._initialized:
-            raise RuntimeError("LLM客户端未初始化")
-        
-        # 模拟处理延迟
-        await asyncio.sleep(0.1)
-        
-        # 根据最后一条用户消息生成响应
-        last_user_message = ""
-        for msg in reversed(messages):
-            if msg.role == "user":
-                last_user_message = msg.content
-                break
-        
-        # 生成智能的模拟响应
-        response_content = self._generate_mock_response(last_user_message, messages)
-        
-        return LLMResponse(
-            content=response_content,
-            usage={"prompt_tokens": 50, "completion_tokens": 30, "total_tokens": 80},
-            model="mock-gpt-4",
-            finish_reason="stop",
-            metadata={"mock": True}
-        )
-    
-    async def stream_response(
-        self, 
-        messages: List[LLMMessage],
-        **kwargs
-    ) -> AsyncGenerator[str, None]:
-        """流式生成模拟响应"""
-        if not self._initialized:
-            raise RuntimeError("LLM客户端未初始化")
-        
-        # 获取完整响应
-        response = await self.generate_response(messages, **kwargs)
-        
-        # 模拟流式输出
-        words = response.content.split()
-        for word in words:
-            await asyncio.sleep(0.05)  # 模拟网络延迟
-            yield word + " "
-    
-    def _generate_mock_response(self, user_input: str, messages: List[LLMMessage]) -> str:
-        """
-        生成智能的模拟响应
-        
-        Args:
-            user_input: 用户输入
-            messages: 消息历史
-            
-        Returns:
-            模拟响应内容
-        """
-        user_input_lower = user_input.lower()
-        
-        # 问候语
-        if any(greeting in user_input_lower for greeting in ["hello", "hi", "你好", "嗨"]):
-            return "Hello! I'm Jarvis, your AI assistant. How can I help you today?"
-        
-        # 告别语
-        elif any(goodbye in user_input_lower for goodbye in ["bye", "goodbye", "再见", "拜拜"]):
-            return "Goodbye! It was nice talking with you. Have a great day!"
-        
-        # 询问能力
-        elif any(capability in user_input_lower for capability in ["what can you do", "capabilities", "你能做什么", "功能"]):
-            return ("I'm an AI assistant powered by ARK engine. I can help you with various tasks including "
-                   "answering questions, providing information, using tools, and having conversations. "
-                   "What would you like me to help you with?")
-        
-        # 询问名字
-        elif any(name_q in user_input_lower for name_q in ["what's your name", "who are you", "你是谁", "你叫什么"]):
-            return "I'm Jarvis, an AI assistant built with the ARK (Adaptive Reasoning Kernel) engine. Nice to meet you!"
-        
-        # 感谢
-        elif any(thanks in user_input_lower for thanks in ["thank", "thanks", "谢谢", "感谢"]):
-            return "You're welcome! I'm happy to help. Is there anything else you'd like to know?"
-        
-        # 询问时间
-        elif any(time_q in user_input_lower for time_q in ["time", "what time", "几点", "时间"]):
-            from datetime import datetime
-            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            return f"The current time is {current_time}."
-        
-        # 询问天气
-        elif any(weather in user_input_lower for weather in ["weather", "天气"]):
-            return ("I don't have access to real-time weather data right now, but I can help you find weather "
-                   "information if you provide me with the right tools or APIs.")
-        
-        # 数学问题
-        elif any(math_word in user_input_lower for math_word in ["calculate", "math", "计算", "数学"]):
-            return ("I can help with mathematical calculations! Please provide me with the specific calculation "
-                   "you'd like me to perform.")
-        
-        # 编程相关
-        elif any(code_word in user_input_lower for code_word in ["code", "programming", "编程", "代码"]):
-            return ("I can assist with programming tasks! I can help explain code, debug issues, suggest "
-                   "improvements, or help you write new code. What programming task are you working on?")
-        
-        # 默认智能响应
-        else:
-            # 分析消息历史长度
-            conversation_length = len([msg for msg in messages if msg.role in ["user", "assistant"]])
-            
-            if conversation_length <= 2:
-                return (f"I understand you're asking about '{user_input}'. That's an interesting topic! "
-                       f"Could you provide more details about what specifically you'd like to know?")
-            else:
-                return (f"Based on our conversation, I can see you're interested in '{user_input}'. "
-                       f"Let me provide some helpful information about that topic. "
-                       f"What specific aspect would you like me to focus on?")
-
+# MockLLMClient 现已移动到 src/core/llm_providers/mock_client.py
+try:
+    from .llm_providers.mock_client import MockLLMClient
+except ImportError:
+    MockLLMClient = None
 
 # 导入真实的OpenAI客户端实现
 try:
@@ -263,6 +151,7 @@ except ImportError:
         async def initialize(self) -> bool:
             """初始化OpenAI客户端"""
             self.logger.warning("OpenAI客户端实现未找到，使用Mock客户端")
+            from .llm_providers.mock_client import MockLLMClient
             mock_client = MockLLMClient(self.config)
             await mock_client.initialize()
             self._mock_client = mock_client
@@ -278,6 +167,7 @@ except ImportError:
             if not self._initialized:
                 raise RuntimeError("OpenAI客户端未初始化")
             
+            from .llm_providers.mock_client import MockLLMClient
             mock_client = getattr(self, '_mock_client', MockLLMClient(self.config))
             return await mock_client.generate_response(messages, **kwargs)
         
@@ -290,6 +180,7 @@ except ImportError:
             if not self._initialized:
                 raise RuntimeError("OpenAI客户端未初始化")
             
+            from .llm_providers.mock_client import MockLLMClient
             mock_client = getattr(self, '_mock_client', MockLLMClient(self.config))
             async for chunk in mock_client.stream_response(messages, **kwargs):
                 yield chunk
@@ -313,6 +204,18 @@ class LLMClientFactory:
             return MockLLMClient(config)
         elif config.provider == LLMProvider.OPENAI:
             return OpenAILLMClient(config)
+        elif config.provider == LLMProvider.LITELLM:
+            try:
+                from .llm_providers.litellm_client import LiteLLMClient
+                return LiteLLMClient(config)
+            except ImportError:
+                raise ImportError("LiteLLMClient不可用，请确保已安装依赖")
+        elif config.provider == LLMProvider.ANTHROPIC:
+            try:
+                from .llm_providers.litellm_client import LiteLLMClient
+                return LiteLLMClient(config)
+            except ImportError:
+                raise ImportError("LiteLLMClient不可用，请确保已安装依赖")
         elif config.provider == LLMProvider.ANTHROPIC:
             # 可以在这里添加Anthropic客户端
             raise NotImplementedError("Anthropic客户端暂未实现")
@@ -338,8 +241,19 @@ class LLMManager:
         """
         self.clients: Dict[str, BaseLLMClient] = {}
         self.default_client: Optional[str] = None
+        self.fallback_providers: List[str] = []
         self.logger = logging.getLogger("llm.manager")
         self._default_config = default_config
+    
+    def set_fallback_providers(self, providers: List[str]) -> None:
+        """
+        设置降级提供商列表
+        
+        Args:
+            providers: 提供商名称列表
+        """
+        self.fallback_providers = providers
+        self.logger.info(f"已设置降级提供商: {providers}")
     
     async def add_client(self, name: str, config: LLMConfig) -> bool:
         """
@@ -390,7 +304,7 @@ class LLMManager:
         **kwargs
     ) -> LLMResponse:
         """
-        生成响应
+        生成响应（支持自动降级）
         
         Args:
             messages: 消息列表
@@ -405,8 +319,28 @@ class LLMManager:
         if not client_name or client_name not in self.clients:
             raise ValueError(f"LLM客户端 '{client_name}' 不存在")
         
-        client = self.clients[client_name]
-        return await client.generate_response(messages, **kwargs)
+        try:
+            client = self.clients[client_name]
+            return await client.generate_response(messages, **kwargs)
+        except Exception as e:
+            # 如果是默认客户端且配置了降级提供商，尝试降级
+            if client_name == self.default_client and self.fallback_providers:
+                self.logger.warning(f"主提供商 '{client_name}' 失败: {e}，尝试降级...")
+                
+                for fallback_name in self.fallback_providers:
+                    if fallback_name in self.clients:
+                        try:
+                            self.logger.info(f"尝试降级提供商: '{fallback_name}'")
+                            fallback_client = self.clients[fallback_name]
+                            return await fallback_client.generate_response(messages, **kwargs)
+                        except Exception as fallback_e:
+                            self.logger.warning(f"降级提供商 '{fallback_name}' 失败: {fallback_e}")
+                            continue
+                    else:
+                        self.logger.warning(f"降级提供商 '{fallback_name}' 未初始化")
+            
+            # 如果所有尝试都失败，抛出原始异常
+            raise e
     
     async def stream_response(
         self, 

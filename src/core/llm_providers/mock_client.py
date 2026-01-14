@@ -117,7 +117,7 @@ class MockLLMClient(BaseLLMClient):
         
         # 生成Mock响应
         last_message = messages[-1] if messages else None
-        response_content = self._generate_mock_content(last_message)
+        response_content = self._generate_mock_content(last_message, messages)
         
         # 计算Token使用量
         input_tokens = sum(len(msg.content.split()) for msg in messages)
@@ -180,33 +180,89 @@ class MockLLMClient(BaseLLMClient):
         
         self.logger.debug("Mock流式响应完成")
     
-    def _generate_mock_content(self, last_message: Optional[LLMMessage]) -> str:
+    def _generate_mock_content(self, last_message: Optional[LLMMessage], messages: List[LLMMessage] = None) -> str:
         """
         生成Mock响应内容
         
         Args:
             last_message: 最后一条消息
+            messages: 完整消息历史（可选）
             
         Returns:
             Mock响应内容
         """
         if last_message and last_message.content:
             # 基于用户输入生成相关响应
-            user_content = last_message.content.lower()
+            user_input = last_message.content
+            user_input_lower = user_input.lower()
             
-            if "hello" in user_content or "hi" in user_content:
-                return "Hello! Nice to meet you. I'm a mock AI assistant ready to help."
-            elif "help" in user_content:
+            # 问候语
+            if any(greeting in user_input_lower for greeting in ["hello", "hi", "你好", "嗨"]):
+                return "Hello! I'm Jarvis, your AI assistant. How can I help you today?"
+            
+            # 告别语
+            elif any(goodbye in user_input_lower for goodbye in ["bye", "goodbye", "再见", "拜拜"]):
+                return "Goodbye! It was nice talking with you. Have a great day!"
+            
+            # 询问能力
+            elif any(capability in user_input_lower for capability in ["what can you do", "capabilities", "你能做什么", "功能"]):
+                return ("I'm an AI assistant powered by ARK engine. I can help you with various tasks including "
+                       "answering questions, providing information, using tools, and having conversations. "
+                       "What would you like me to help you with?")
+            
+            # 询问名字
+            elif any(name_q in user_input_lower for name_q in ["what's your name", "who are you", "你是谁", "你叫什么"]):
+                return "I'm Jarvis, an AI assistant built with the ARK (Adaptive Reasoning Kernel) engine. Nice to meet you!"
+            
+            # 感谢
+            elif any(thanks in user_input_lower for thanks in ["thank", "thanks", "谢谢", "感谢"]):
+                return "You're welcome! I'm happy to help. Is there anything else you'd like to know?"
+            
+            # 询问时间
+            elif any(time_q in user_input_lower for time_q in ["time", "what time", "几点", "时间"]):
+                from datetime import datetime
+                current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                return f"The current time is {current_time}."
+            
+            # 询问天气
+            elif any(weather in user_input_lower for weather in ["weather", "天气"]):
+                return ("I don't have access to real-time weather data right now, but I can help you find weather "
+                       "information if you provide me with the right tools or APIs.")
+            
+            # 数学问题
+            elif any(math_word in user_input_lower for math_word in ["calculate", "math", "计算", "数学"]):
+                return ("I can help with mathematical calculations! Please provide me with the specific calculation "
+                       "you'd like me to perform.")
+            
+            # 编程相关
+            elif any(code_word in user_input_lower for code_word in ["code", "programming", "编程", "代码"]):
+                return ("I can assist with programming tasks! I can help explain code, debug issues, suggest "
+                       "improvements, or help you write new code. What programming task are you working on?")
+            
+            # 帮助
+            elif "help" in user_input_lower:
                 return "I'm here to help! This is a mock response for testing purposes."
-            elif "python" in user_content:
+            
+            # Python相关
+            elif "python" in user_input_lower:
                 return "Python is a great programming language! Here's some mock information about Python development."
-            elif "thank" in user_content:
-                return "You're welcome! I'm glad I could help with this mock response."
-            elif "?" in user_content:
-                return "That's a good question! Here's a mock answer to demonstrate the response generation."
+            
+            # 默认智能响应
             else:
-                # 随机选择一个模板响应
-                return random.choice(self._response_templates)
+                if messages:
+                    # 分析消息历史长度
+                    conversation_length = len([msg for msg in messages if msg.role in ["user", "assistant"]])
+                    
+                    if conversation_length <= 2:
+                        return (f"I understand you're asking about '{user_input}'. That's an interesting topic! "
+                               f"Could you provide more details about what specifically you'd like to know?")
+                    else:
+                        return (f"Based on our conversation, I can see you're interested in '{user_input}'. "
+                               f"Let me provide some helpful information about that topic. "
+                               f"What specific aspect would you like me to focus on?")
+                else:
+                    # 随机选择一个模板响应
+                    return random.choice(self._response_templates)
         else:
             return random.choice(self._response_templates)
     

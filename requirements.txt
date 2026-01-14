@@ -10,6 +10,11 @@ tenacity>=8.0.0            # 重试机制
 pydantic>=2.0.0            # 数据验证
 python-dotenv>=1.0.0       # 环境变量支持
 
+# Multi-provider Support
+litellm>=1.0.0             # 统一多提供商接口
+anthropic>=0.8.0           # Claude支持
+google-generativeai>=0.3.0 # Gemini支持
+
 # For server health checks
 aiohttp>=3.8.0
 

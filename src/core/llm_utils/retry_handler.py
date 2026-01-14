@@ -7,6 +7,7 @@
 import asyncio
 import logging
 import time
+import inspect
 from typing import Callable, Any, Optional, Type, Union, List
 from functools import wraps
 
@@ -151,7 +152,16 @@ def with_retry(
     )
     
     def decorator(func):
-        if asyncio.iscoroutinefunction(func):
+        if inspect.isasyncgenfunction(func):
+            @wraps(func)
+            async def async_gen_wrapper(*args, **kwargs):
+                # 对于异步生成器，暂时不提供自动重试机制
+                # 或者可以尝试仅对生成器的创建进行重试（如果创建时就抛出异常）
+                # 但这里简单起见，直接透传
+                async for item in func(*args, **kwargs):
+                    yield item
+            return async_gen_wrapper
+        elif asyncio.iscoroutinefunction(func):
             @wraps(func)
             async def async_wrapper(*args, **kwargs):
                 return await handler.execute_with_retry(func, *args, **kwargs)

@@ -1,0 +1,55 @@
+# 最小化配置示例
+# 适用于快速开始和简单使用场景
+
+# 全局配置
+global:
+  default_provider: "mock"
+  logging:
+    level: "INFO"
+
+# 提供商配置
+providers:
+  # Mock提供商 - 最简配置
+  mock:
+    enabled: true
+    api_key: "mock-key"
+    default_model: "mock-gpt-3.5-turbo"
+    models:
+      mock-gpt-3.5-turbo:
+        max_tokens: 1000
+        temperature: 0.7
+
+  # OpenAI提供商 - 最简配置
+  openai:
+    enabled: false  # 默认关闭
+    api_key: "${OPENAI_API_KEY}"
+    default_model: "gpt-3.5-turbo"
+    models:
+      gpt-3.5-turbo:
+        max_tokens: 1000
+        temperature: 0.7
+
+# 环境配置
+environments:
+  minimal:
+    debug: false
+    cache_enabled: false
+
+# 功能配置
+features:
+  streaming:
+    enabled: false
+  
+  context:
+    max_history: 10
+    max_tokens: 2000
+  
+  cache:
+    enabled: false
+  
+  monitoring:
+    enabled: false
+  
+  security:
+    validate_input: true
+    sanitize_output: true

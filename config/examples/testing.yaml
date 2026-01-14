@@ -1,0 +1,122 @@
+# 测试环境配置示例
+# 适用于自动化测试和CI/CD流水线
+
+# 全局配置
+global:
+  default_provider: "mock"  # 测试环境主要使用Mock提供商
+  retry:
+    max_attempts: 1  # 测试环境不重试，快速失败
+    initial_delay: 0.1
+    max_delay: 0.5
+    exponential_base: 1.0
+  timeout:
+    connect: 5.0
+    read: 10.0
+    total: 20.0
+  logging:
+    level: "WARNING"  # 测试环境减少日志输出
+    format: "simple"
+
+# 提供商配置
+providers:
+  # Mock提供商 - 测试环境主要使用
+  mock:
+    enabled: true
+    api_key: "mock-key-test"
+    base_url: "http://localhost:8000"
+    default_model: "mock-test-model"
+    models:
+      mock-test-model:
+        max_tokens: 500  # 测试环境限制token数量
+        temperature: 0.0  # 测试环境使用确定性输出
+        top_p: 1.0
+        frequency_penalty: 0.0
+        presence_penalty: 0.0
+        response_delay: 0.01  # 极快响应用于测试
+      mock-gpt-3.5-turbo:
+        max_tokens: 1000
+        temperature: 0.0
+        top_p: 1.0
+        frequency_penalty: 0.0
+        presence_penalty: 0.0
+        response_delay: 0.01
+      mock-gpt-4:
+        max_tokens: 2000
+        temperature: 0.0
+        top_p: 1.0
+        frequency_penalty: 0.0
+        presence_penalty: 0.0
+        response_delay: 0.02
+    timeout:
+      connect: 2.0
+      read: 5.0
+      total: 10.0
+    retry:
+      max_attempts: 1
+      initial_delay: 0.1
+      max_delay: 0.1
+      exponential_base: 1.0
+
+  # OpenAI提供商 - 用于集成测试（可选）
+  openai:
+    enabled: false  # 默认关闭，避免测试时产生费用
+    api_key: "${OPENAI_TEST_API_KEY}"
+    base_url: "https://api.openai.com/v1"
+    default_model: "gpt-3.5-turbo"
+    models:
+      gpt-3.5-turbo:
+        max_tokens: 100  # 测试环境限制token使用
+        temperature: 0.0  # 确定性输出
+        top_p: 1.0
+        frequency_penalty: 0.0
+        presence_penalty: 0.0
+    timeout:
+      connect: 5.0
+      read: 15.0
+      total: 30.0
+    retry:
+      max_attempts: 1  # 测试环境不重试
+      initial_delay: 0.5
+      max_delay: 1.0
+      exponential_base: 1.0
+    rate_limit:
+      requests_per_minute: 10  # 测试环境限制请求频率
+      tokens_per_minute: 1000
+
+# 环境特定配置
+environments:
+  testing:
+    debug: false
+    log_requests: false  # 测试环境不记录详细日志
+    log_responses: false
+    validate_config: true
+    cache_enabled: false  # 测试环境禁用缓存，确保测试独立性
+
+# 功能配置
+features:
+  streaming:
+    enabled: false  # 测试环境禁用流式传输，简化测试
+    chunk_size: 512
+    timeout: 10.0
+  
+  context:
+    max_history: 5  # 测试环境限制历史记录
+    max_tokens: 1000
+    auto_truncate: true
+  
+  cache:
+    enabled: false  # 测试环境禁用缓存
+    ttl: 60
+    max_size: 10
+  
+  monitoring:
+    enabled: false  # 测试环境禁用监控
+    metrics_interval: 5
+    log_performance: false
+    track_usage: false
+  
+  security:
+    validate_input: true
+    sanitize_output: true
+    rate_limiting: false  # 测试环境禁用限流
+    api_key_rotation: false

@@ -1,0 +1,159 @@
+# 生产环境配置示例
+# 适用于生产部署，注重稳定性和性能
+
+# 全局配置
+global:
+  default_provider: "openai"  # 生产环境使用OpenAI
+  retry:
+    max_attempts: 3  # 生产环境增加重试次数
+    initial_delay: 1.0
+    max_delay: 10.0
+    exponential_base: 2.0
+  timeout:
+    connect: 15.0
+    read: 120.0
+    total: 180.0
+  logging:
+    level: "INFO"  # 生产环境使用INFO级别日志
+    format: "json"
+
+# 提供商配置
+providers:
+  # OpenAI提供商 - 生产环境主要使用
+  openai:
+    enabled: true
+    api_key: "${OPENAI_API_KEY}"
+    base_url: "https://api.openai.com/v1"
+    organization: "${OPENAI_ORG_ID}"
+    default_model: "gpt-3.5-turbo"
+    models:
+      gpt-3.5-turbo:
+        max_tokens: 2000
+        temperature: 0.7
+        top_p: 0.9
+        frequency_penalty: 0.0
+        presence_penalty: 0.0
+      gpt-4:
+        max_tokens: 4000
+        temperature: 0.5
+        top_p: 0.8
+        frequency_penalty: 0.1
+        presence_penalty: 0.1
+      gpt-4-turbo:
+        max_tokens: 8000
+        temperature: 0.3
+        top_p: 0.7
+        frequency_penalty: 0.2
+        presence_penalty: 0.2
+    timeout:
+      connect: 15.0
+      read: 120.0
+      total: 180.0
+    retry:
+      max_attempts: 3
+      initial_delay: 1.0
+      max_delay: 10.0
+      exponential_base: 2.0
+    rate_limit:
+      requests_per_minute: 3000
+      tokens_per_minute: 250000
+
+  # Anthropic提供商 - 备用提供商
+  anthropic:
+    enabled: true
+    api_key: "${ANTHROPIC_API_KEY}"
+    base_url: "https://api.anthropic.com"
+    default_model: "claude-3-sonnet-20240229"
+    models:
+      claude-3-haiku-20240307:
+        max_tokens: 2000
+        temperature: 0.7
+        top_p: 0.9
+        frequency_penalty: 0.0
+        presence_penalty: 0.0
+      claude-3-sonnet-20240229:
+        max_tokens: 4000
+        temperature: 0.5
+        top_p: 0.8
+        frequency_penalty: 0.1
+        presence_penalty: 0.1
+      claude-3-opus-20240229:
+        max_tokens: 8000
+        temperature: 0.3
+        top_p: 0.7
+        frequency_penalty: 0.2
+        presence_penalty: 0.2
+    timeout:
+      connect: 15.0
+      read: 120.0
+      total: 180.0
+    retry:
+      max_attempts: 3
+      initial_delay: 1.0
+      max_delay: 10.0
+      exponential_base: 2.0
+    rate_limit:
+      requests_per_minute: 1000
+      tokens_per_minute: 100000
+
+  # Mock提供商 - 仅用于健康检查
+  mock:
+    enabled: true
+    api_key: "mock-key-prod"
+    base_url: "http://localhost:8000"
+    default_model: "mock-health-check"
+    models:
+      mock-health-check:
+        max_tokens: 100
+        temperature: 0.0
+        top_p: 1.0
+        frequency_penalty: 0.0
+        presence_penalty: 0.0
+        response_delay: 0.01
+    timeout:
+      connect: 5.0
+      read: 10.0
+      total: 15.0
+    retry:
+      max_attempts: 1
+      initial_delay: 0.1
+      max_delay: 0.5
+      exponential_base: 1.0
+
+# 环境特定配置
+environments:
+  production:
+    debug: false
+    log_requests: false  # 生产环境不记录请求详情
+    log_responses: false  # 生产环境不记录响应详情
+    validate_config: true
+    cache_enabled: true  # 生产环境启用缓存
+
+# 功能配置
+features:
+  streaming:
+    enabled: true
+    chunk_size: 2048
+    timeout: 120.0
+  
+  context:
+    max_history: 50  # 生产环境支持更多历史记录
+    max_tokens: 16000
+    auto_truncate: true
+  
+  cache:
+    enabled: true  # 生产环境启用缓存
+    ttl: 3600  # 1小时缓存
+    max_size: 10000
+  
+  monitoring:
+    enabled: true
+    metrics_interval: 60  # 1分钟间隔
+    log_performance: true
+    track_usage: true
+  
+  security:
+    validate_input: true
+    sanitize_output: true
+    rate_limiting: true  # 生产环境启用限流
+    api_key_rotation: true
