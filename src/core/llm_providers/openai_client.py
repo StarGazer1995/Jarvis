@@ -58,20 +58,28 @@ class OpenAILLMClient(BaseLLMClient):
             # 验证配置
             self._validate_config()
             
-            # 导入OpenAI库
+            # 导入OpenAI库和httpx
             try:
                 import openai
+                import httpx
             except ImportError:
                 raise LLMConfigurationError(
-                    "OpenAI库未安装，请运行: pip install openai"
+                    "OpenAI或httpx库未安装，请运行: pip install openai httpx"
                 )
             
+            # 创建自定义 httpx 客户端，配置连接池
+            http_client = httpx.AsyncClient(
+                limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
+                timeout=httpx.Timeout(60.0)
+            )
+
             # 创建OpenAI客户端
             self._client = openai.AsyncOpenAI(
                 api_key=self.config.api_key,
                 base_url=self.config.base_url,
                 timeout=self.config.timeout,
-                max_retries=0  # 我们使用自己的重试机制
+                max_retries=0,  # 我们使用自己的重试机制
+                http_client=http_client
             )
             
             # 验证连接

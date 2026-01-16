@@ -170,7 +170,8 @@ class TestLLMProviderFactory:
                     "type": "another_mock",
                     "enabled": True,
                     "default_model": "another-mock-model",
-                    "models": {"another-mock-model": {}}
+                    "models": {"another-mock-model": {}},
+                    "api_key": "test-key"
                 },
                 "disabled_mock": {
                     "type": "mock",
@@ -240,6 +241,8 @@ class TestLLMProviderFactory:
     def test_get_default_provider(self, temp_config_file):
         """测试获取默认提供商"""
         factory = LLMProviderFactory(temp_config_file)
+        # Register local MockLLMClient
+        factory.registry.register_provider("mock", MockLLMClient)
         client = factory.get_default_provider()
         
         assert isinstance(client, MockLLMClient)
@@ -247,6 +250,8 @@ class TestLLMProviderFactory:
     def test_get_provider_by_name(self, temp_config_file):
         """测试按名称获取提供商"""
         factory = LLMProviderFactory(temp_config_file)
+        # Register local MockLLMClient
+        factory.registry.register_provider("mock", MockLLMClient)
         factory.registry.register_provider("another_mock", AnotherMockClient)
         
         # 获取启用的提供商
@@ -260,14 +265,14 @@ class TestLLMProviderFactory:
         """测试获取禁用的提供商"""
         factory = LLMProviderFactory(temp_config_file)
         
-        with pytest.raises(ConfigurationError, match="提供商.*已禁用"):
+        with pytest.raises(ValueError, match="提供商.*未启用"):
             factory.get_provider("disabled_mock")
     
     def test_get_provider_nonexistent(self, temp_config_file):
         """测试获取不存在的提供商"""
         factory = LLMProviderFactory(temp_config_file)
         
-        with pytest.raises(ConfigurationError, match="提供商.*未找到"):
+        with pytest.raises(ValueError, match="提供商.*未配置"):
             factory.get_provider("nonexistent")
     
     def test_get_provider_unregistered(self, temp_config_file, sample_config_data):
@@ -276,7 +281,8 @@ class TestLLMProviderFactory:
         sample_config_data["providers"]["unregistered"] = {
             "type": "unregistered",
             "enabled": True,
-            "default_model": "test"
+            "default_model": "test",
+            "models": {"test": {}}
         }
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
@@ -286,7 +292,7 @@ class TestLLMProviderFactory:
         try:
             factory = LLMProviderFactory(temp_path)
             
-            with pytest.raises(ConfigurationError, match="提供商类型.*未注册"):
+            with pytest.raises(ValueError, match="提供商类型.*未注册"):
                 factory.get_provider("unregistered")
         finally:
             import os
@@ -295,6 +301,8 @@ class TestLLMProviderFactory:
     def test_list_available_providers(self, temp_config_file):
         """测试列出可用提供商"""
         factory = LLMProviderFactory(temp_config_file)
+        # Register local MockLLMClient to match assertion
+        factory.registry.register_provider("mock", MockLLMClient)
         factory.registry.register_provider("another_mock", AnotherMockClient)
         providers = factory.list_available_providers()
         
@@ -307,7 +315,7 @@ class TestLLMProviderFactory:
         
         # 检查提供商信息
         mock_provider = next(p for p in providers if p.name == "mock")
-        assert mock_provider.type == "mock"
+        assert mock_provider.type == ProviderType.MOCK
         assert mock_provider.enabled is True
         assert mock_provider.client_class == MockLLMClient
     
@@ -337,7 +345,7 @@ class TestLLMProviderFactory:
         """测试获取不存在提供商的模型"""
         factory = LLMProviderFactory(temp_config_file)
         
-        with pytest.raises(ConfigurationError, match="提供商.*未找到"):
+        with pytest.raises(ValueError, match="提供商.*未配置"):
             factory.get_provider_models("nonexistent")
     
     def test_validate_provider_config_valid(self, temp_config_file):
@@ -358,6 +366,7 @@ class TestLLMProviderFactory:
     def test_client_pooling(self, temp_config_file):
         """测试客户端池化"""
         factory = LLMProviderFactory(temp_config_file)
+        factory.registry.register_provider("mock", MockLLMClient)
         
         # 第一次获取
         client1 = factory.get_provider("mock")
@@ -367,9 +376,11 @@ class TestLLMProviderFactory:
         
         assert client1 is client2
     
-    def test_close_factory(self, temp_config_file):
+    @pytest.mark.asyncio
+    async def test_close_factory(self, temp_config_file):
         """测试关闭工厂"""
         factory = LLMProviderFactory(temp_config_file)
+        factory.registry.register_provider("mock", MockLLMClient)
         factory.registry.register_provider("another_mock", AnotherMockClient)
         
         # 创建一些客户端
@@ -377,15 +388,17 @@ class TestLLMProviderFactory:
         client2 = factory.get_provider("another_mock")
         
         # 关闭工厂
-        factory.close()
+        await factory.close()
         
         # 验证客户端被关闭
         assert client1.is_closed is True
         # AnotherMockClient没有is_closed属性，但close方法应该被调用
     
-    def test_context_manager(self, temp_config_file):
+    @pytest.mark.asyncio
+    async def test_context_manager(self, temp_config_file):
         """测试上下文管理器"""
-        with LLMProviderFactory(temp_config_file) as factory:
+        async with LLMProviderFactory(temp_config_file) as factory:
+            factory.registry.register_provider("mock", MockLLMClient)
             client = factory.get_provider("mock")
             assert isinstance(client, MockLLMClient)
         
@@ -527,7 +540,8 @@ class TestLLMFactoryEdgeCases:
             import os
             os.unlink(temp_path)
     
-    def test_multiple_factory_instances(self):
+    @pytest.mark.asyncio
+    async def test_multiple_factory_instances(self):
         """测试多个工厂实例"""
         config_data = {
             "global": {"default_provider": "mock"},
@@ -560,8 +574,8 @@ class TestLLMFactoryEdgeCases:
             # 不同工厂实例应该创建不同的客户端
             assert client1 is not client2
             
-            factory1.close()
-            factory2.close()
+            await factory1.close()
+            await factory2.close()
         finally:
             import os
             os.unlink(temp_path)

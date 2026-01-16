@@ -21,6 +21,12 @@ from .llm_client import BaseLLMClient, LLMProvider
 from .llm_providers.openai_client import OpenAILLMClient
 from .llm_providers.mock_client import MockLLMClient
 
+try:
+    from .llm_providers.litellm_client import LiteLLMClient
+except ImportError:
+    LiteLLMClient = None
+    logger.warning("LiteLLMClient未导入，LiteLLM功能不可用")
+
 logger = logging.getLogger(__name__)
 
 
@@ -295,8 +301,7 @@ class LLMProviderFactory:
             "provider": provider_name,
             "api_key": provider_config.api_key,
             "base_url": provider_config.base_url,
-            "default_model": provider_config.default_model,
-            "models": {},
+            "model": provider_config.default_model,  # Set model from default_model
             "timeout": {
                 "connect": provider_config.timeout.connect,
                 "read": provider_config.timeout.read,
@@ -310,22 +315,38 @@ class LLMProviderFactory:
             }
         }
         
-        # 添加模型配置
-        for model_name, model_config in provider_config.models.items():
-            config_dict["models"][model_name] = {
-                "max_tokens": model_config.max_tokens,
-                "temperature": model_config.temperature,
-                "top_p": model_config.top_p,
-                "frequency_penalty": model_config.frequency_penalty,
-                "presence_penalty": model_config.presence_penalty
-            }
-            
-            # 添加特定提供商的配置
-            if model_config.deployment_name:  # Azure OpenAI
-                config_dict["models"][model_name]["deployment_name"] = model_config.deployment_name
-            
-            if model_config.response_delay > 0:  # Mock
-                config_dict["models"][model_name]["response_delay"] = model_config.response_delay
+        # 添加模型配置 - 已移除，因为LLMConfig不支持models字段
+        # for model_name, model_config in provider_config.models.items():
+        #     config_dict["models"][model_name] = {
+        #         "max_tokens": model_config.max_tokens,
+        #         "temperature": model_config.temperature,
+        #         "top_p": model_config.top_p,
+        #         "frequency_penalty": model_config.frequency_penalty,
+        #         "presence_penalty": model_config.presence_penalty
+        #     }
+        #     
+        #     # 添加特定提供商的配置
+        #     if model_config.deployment_name:  # Azure OpenAI
+        #         config_dict["models"][model_name]["deployment_name"] = model_config.deployment_name
+        #     
+        #     if model_config.response_delay > 0:  # Mock
+        #         config_dict["models"][model_name]["response_delay"] = model_config.response_delay
+        
+        # 将当前所选模型的特定配置应用到主配置中
+        if provider_config.default_model in provider_config.models:
+             model_config = provider_config.models[provider_config.default_model]
+             if model_config.max_tokens:
+                 config_dict["max_tokens"] = model_config.max_tokens
+             if model_config.temperature:
+                 config_dict["temperature"] = model_config.temperature
+             
+             # 将其他参数放入extra_params
+             extra_params = config_dict.get("extra_params", {})
+             if model_config.deployment_name:
+                 extra_params["deployment_name"] = model_config.deployment_name
+             if model_config.response_delay > 0:
+                 extra_params["response_delay"] = model_config.response_delay
+             config_dict["extra_params"] = extra_params
         
         # 添加特定提供商的配置
         if provider_config.azure_endpoint:
@@ -476,12 +497,15 @@ class LLMProviderFactory:
         self.load_config(environment, reload=True)
         logger.info("配置重新加载完成")
     
-    def _cleanup_client_pool(self) -> None:
+    async def _cleanup_client_pool(self) -> None:
         """清理客户端池"""
         for client in self._client_pool.values():
             try:
                 if hasattr(client, 'close'):
-                    client.close()
+                    if asyncio.iscoroutinefunction(client.close):
+                        await client.close()
+                    else:
+                        client.close()
             except Exception as e:
                 logger.warning(f"关闭客户端时出错: {e}")
         
@@ -489,19 +513,29 @@ class LLMProviderFactory:
         self._initialized_providers.clear()
         logger.debug("客户端池已清理")
     
-    def close(self) -> None:
+    async def close(self) -> None:
         """关闭工厂并清理资源"""
         logger.info("关闭LLM提供商工厂...")
-        self._cleanup_client_pool()
+        await self._cleanup_client_pool()
         logger.info("LLM提供商工厂已关闭")
     
+    async def __aenter__(self):
+        """异步上下文管理器入口"""
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """异步上下文管理器出口"""
+        await self.close()
+        
     def __enter__(self):
-        """上下文管理器入口"""
+        """同步上下文管理器入口 (不推荐)"""
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """上下文管理器出口"""
-        self.close()
+        """同步上下文管理器出口 (无法正确关闭异步资源)"""
+        # 无法在同步上下文中await close()
+        # 只能尝试同步清理（如果可能）或发出警告
+        logger.warning("在同步上下文中使用LLMProviderFactory，可能无法正确关闭异步资源")
 
 
 # 全局工厂实例

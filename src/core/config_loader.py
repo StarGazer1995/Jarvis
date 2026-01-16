@@ -89,6 +89,7 @@ class ProviderConfig:
 class GlobalConfig:
     """全局配置"""
     default_provider: str = "openai"
+    fallback_providers: List[str] = field(default_factory=list)
     retry: RetryConfig = field(default_factory=RetryConfig)
     timeout: TimeoutConfig = field(default_factory=TimeoutConfig)
     log_level: str = "INFO"

@@ -112,7 +112,7 @@ class TestProviderConfig:
         assert config.api_key is None
         assert config.base_url is None
         assert config.default_model == "gpt-4"
-        assert config.models == []
+        assert config.models == {}
 
 
 class TestConfigLoader:

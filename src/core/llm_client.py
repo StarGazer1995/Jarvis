@@ -7,61 +7,13 @@ LLM客户端模块
 import logging
 import asyncio
 import json
+import time
 from typing import Dict, List, Any, Optional, Union, AsyncGenerator
-from dataclasses import dataclass, field
-from enum import Enum
 from abc import ABC, abstractmethod
 
-
-class LLMProvider(Enum):
-    """支持的LLM提供商"""
-    OPENAI = "openai"
-    ANTHROPIC = "anthropic"
-    AZURE_OPENAI = "azure_openai"
-    OLLAMA = "ollama"
-    LITELLM = "litellm"  # LiteLLM统一接口
-    MOCK = "mock"  # 用于测试
-
-
-@dataclass
-class LLMMessage:
-    """LLM消息格式"""
-    role: str  # "system", "user", "assistant"
-    content: str
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class LLMResponse:
-    """LLM响应格式"""
-    content: str
-    usage: Dict[str, int] = field(default_factory=dict)
-    model: str = ""
-    finish_reason: str = ""
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class LLMConfig:
-    """LLM配置"""
-    provider: LLMProvider
-    model: str
-    api_key: Optional[str] = None
-    base_url: Optional[str] = None
-    temperature: float = 0.7
-    max_tokens: int = 1000
-    timeout: Union[float, Dict[str, float]] = 30.0
-    retry: Dict[str, Any] = field(default_factory=dict)
-    stream: bool = False
-    extra_params: Dict[str, Any] = field(default_factory=dict)
-    
-    # 兼容性字段
-    retry_attempts: int = 3
-
-    def __post_init__(self):
-        # 如果retry为空但提供了retry_attempts，构造retry字典
-        if not self.retry and self.retry_attempts:
-            self.retry = {"max_attempts": self.retry_attempts}
+from .llm_types import LLMProvider, LLMMessage, LLMResponse, LLMConfig
+from .llm_utils.cache_manager import CacheManager
+from .llm_utils.metrics_collector import global_metrics
 
 
 class BaseLLMClient(ABC):
@@ -75,7 +27,8 @@ class BaseLLMClient(ABC):
             config: LLM配置
         """
         self.config = config
-        self.logger = logging.getLogger(f"llm.{config.provider.value}")
+        provider_name = config.provider.value if isinstance(config.provider, LLMProvider) else str(config.provider)
+        self.logger = logging.getLogger(f"llm.{provider_name}")
         self._initialized = False
     
     @abstractmethod
@@ -186,6 +139,67 @@ except ImportError:
                 yield chunk
 
 
+class LLMClientWrapper(BaseLLMClient):
+    """LLM客户端包装器"""
+    def __init__(self, client: BaseLLMClient):
+        self.client = client
+        self.config = client.config
+        self.logger = client.logger
+        self._initialized = getattr(client, '_initialized', False)
+        
+    async def initialize(self) -> bool:
+        result = await self.client.initialize()
+        self._initialized = self.client._initialized
+        return result
+        
+    async def generate_response(self, messages: List[LLMMessage], **kwargs) -> LLMResponse:
+        return await self.client.generate_response(messages, **kwargs)
+        
+    async def stream_response(self, messages: List[LLMMessage], **kwargs) -> AsyncGenerator[str, None]:
+        async for chunk in self.client.stream_response(messages, **kwargs):
+            yield chunk
+            
+    async def close(self) -> None:
+        await self.client.close()
+
+class CachedLLMClient(LLMClientWrapper):
+    """带缓存的LLM客户端包装器"""
+    def __init__(self, client: BaseLLMClient, cache_manager: Optional[CacheManager] = None):
+        super().__init__(client)
+        self._cache_manager = cache_manager or CacheManager()
+        
+    async def generate_response(self, messages: List[LLMMessage], **kwargs) -> LLMResponse:
+        # 检查缓存
+        cached = self._cache_manager.get(messages, **kwargs)
+        if cached:
+            return cached
+            
+        # 生成响应
+        response = await self.client.generate_response(messages, **kwargs)
+        
+        # 设置缓存
+        self._cache_manager.set(messages, response, **kwargs)
+        return response
+
+class MonitoredLLMClient(LLMClientWrapper):
+    """带监控的LLM客户端包装器"""
+    def __init__(self, client: BaseLLMClient):
+        super().__init__(client)
+        
+    async def generate_response(self, messages: List[LLMMessage], **kwargs) -> LLMResponse:
+        start_time = time.time()
+        success = False
+        tokens = {}
+        try:
+            response = await self.client.generate_response(messages, **kwargs)
+            success = True
+            tokens = response.usage
+            return response
+        finally:
+            latency = time.time() - start_time
+            global_metrics.record_request(success, latency, tokens)
+
+
 class LLMClientFactory:
     """LLM客户端工厂"""
     
@@ -200,25 +214,24 @@ class LLMClientFactory:
         Returns:
             LLM客户端实例
         """
+        # Create client
+        client = None
         if config.provider == LLMProvider.MOCK:
-            return MockLLMClient(config)
+            client = MockLLMClient(config)
         elif config.provider == LLMProvider.OPENAI:
-            return OpenAILLMClient(config)
+            client = OpenAILLMClient(config)
         elif config.provider == LLMProvider.LITELLM:
             try:
                 from .llm_providers.litellm_client import LiteLLMClient
-                return LiteLLMClient(config)
+                client = LiteLLMClient(config)
             except ImportError:
                 raise ImportError("LiteLLMClient不可用，请确保已安装依赖")
         elif config.provider == LLMProvider.ANTHROPIC:
             try:
                 from .llm_providers.litellm_client import LiteLLMClient
-                return LiteLLMClient(config)
+                client = LiteLLMClient(config)
             except ImportError:
                 raise ImportError("LiteLLMClient不可用，请确保已安装依赖")
-        elif config.provider == LLMProvider.ANTHROPIC:
-            # 可以在这里添加Anthropic客户端
-            raise NotImplementedError("Anthropic客户端暂未实现")
         elif config.provider == LLMProvider.AZURE_OPENAI:
             # 可以在这里添加Azure OpenAI客户端
             raise NotImplementedError("Azure OpenAI客户端暂未实现")
@@ -227,6 +240,21 @@ class LLMClientFactory:
             raise NotImplementedError("Ollama客户端暂未实现")
         else:
             raise ValueError(f"不支持的LLM提供商: {config.provider}")
+            
+        # Apply wrappers based on configuration
+        # Assuming config has flags for cache and monitoring
+        # Since LLMConfig might not have these flags directly, we can check extra_params or assume defaults
+        # For now, let's enable monitoring by default and cache if configured
+        
+        # Enable monitoring
+        client = MonitoredLLMClient(client)
+        
+        # Enable caching if configured (e.g. via extra_params or if we add fields to LLMConfig)
+        # Using a simple heuristic for now
+        if config.extra_params.get("cache_enabled", True):
+            client = CachedLLMClient(client)
+            
+        return client
 
 
 class LLMManager:

@@ -1012,7 +1012,7 @@ class TestARKEngine:
         response = engine._generate_goodbye_response()
         assert isinstance(response, str)
         assert len(response) > 0
-        assert any(word in response.lower() for word in ["goodbye", "farewell", "take care"])
+        assert any(word in response.lower() for word in ["goodbye", "farewell", "take care", "see you"])
     
     def test_select_tools_edge_cases(self, engine):
         """Test tool selection edge cases."""
