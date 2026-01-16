@@ -187,6 +187,10 @@ class ARKEngine:
                 }
             )
             
+            # Auto-compress conversation history if needed
+            # We compress when history gets long to maintain context quality and reduce token usage
+            await self.context_manager.compress_history(threshold=20, keep_recent=5)
+            
             # Update performance metrics
             self._update_performance_metrics(intent_result, decision, tool_results)
             

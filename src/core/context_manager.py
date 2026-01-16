@@ -6,10 +6,19 @@ interactions in the ARK-powered Jarvis system.
 """
 
 import logging
+import asyncio
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
 import json
+
+from langchain_core.prompts import PromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
+from langchain_community.chat_models import ChatOllama
+
+from .config_loader import load_llm_config
 
 
 @dataclass
@@ -640,6 +649,113 @@ class ConversationContext:
         else:
             raise ValueError(f"Unsupported export format: {format}")
     
+    async def compress_history(self, threshold: int = 20, keep_recent: int = 5) -> None:
+        """
+        Compress conversation history if it exceeds the threshold.
+        
+        Args:
+            threshold: Maximum number of turns before compression triggers
+            keep_recent: Number of recent turns to keep uncompressed
+        """
+        if len(self.conversation_history) <= threshold:
+            return
+            
+        self.ark_logger.info("ARK context: Triggering conversation compression")
+        
+        # Identify turns to compress
+        turns_to_compress = self.conversation_history[:-keep_recent]
+        if not turns_to_compress:
+            return
+            
+        # Format turns for summarization
+        conversation_text = ""
+        for turn in turns_to_compress:
+            conversation_text += f"User: {turn.user_input}\n"
+            conversation_text += f"Agent: {turn.agent_response}\n\n"
+            
+        try:
+            # Load LLM config
+            llm_config = load_llm_config()
+            provider_name = llm_config.global_config.default_provider
+            provider_config = llm_config.providers.get(provider_name)
+            
+            if not provider_config:
+                self.ark_logger.warning(f"ARK context: Provider {provider_name} not found, skipping compression")
+                return
+
+            # Initialize LangChain model based on provider
+            llm = None
+            provider_type = provider_config.type or provider_name
+            
+            # Prepare common parameters
+            # Note: LangChain models expect 'model' or 'model_name' depending on the class,
+            # but most support 'model' as alias or kwargs.
+            
+            if provider_type == "openai":
+                params = {
+                    "model": provider_config.default_model,
+                    "temperature": 0.3,
+                }
+                if provider_config.api_key:
+                    params["api_key"] = provider_config.api_key
+                if provider_config.base_url:
+                    params["openai_api_base"] = provider_config.base_url
+                
+                llm = ChatOpenAI(**params)
+                
+            elif provider_type == "anthropic":
+                params = {
+                    "model": provider_config.default_model,
+                    "temperature": 0.3,
+                }
+                if provider_config.api_key:
+                    params["api_key"] = provider_config.api_key
+                if provider_config.base_url:
+                    params["anthropic_api_url"] = provider_config.base_url
+                    
+                llm = ChatAnthropic(**params)
+                
+            elif provider_type == "ollama":
+                params = {
+                    "model": provider_config.default_model,
+                    "temperature": 0.3
+                }
+                if provider_config.base_url:
+                    params["base_url"] = provider_config.base_url
+                    
+                llm = ChatOllama(**params)
+                
+            else:
+                self.ark_logger.warning(f"ARK context: Unsupported provider type {provider_type} for compression")
+                return
+                
+            # Create summarization chain
+            prompt = PromptTemplate.from_template(
+                "Summarize the following conversation concisely, capturing key information, user preferences, and decisions made.\n\n"
+                "Conversation:\n{conversation}\n\n"
+                "Summary:"
+            )
+            
+            chain = prompt | llm | StrOutputParser()
+            
+            # Generate summary
+            summary = await chain.ainvoke({"conversation": conversation_text})
+            
+            # Create summary turn
+            summary_turn = ConversationTurn(
+                user_input="System: Previous conversation summary",
+                agent_response=summary,
+                timestamp=datetime.now().timestamp(),
+                metadata={"is_summary": True, "compressed_turns": len(turns_to_compress)}
+            )
+            
+            # Update history
+            self.conversation_history = [summary_turn] + self.conversation_history[-keep_recent:]
+            self.ark_logger.info(f"ARK context: Compressed {len(turns_to_compress)} turns into summary")
+            
+        except Exception as e:
+            self.ark_logger.error(f"ARK context: Compression failed: {e}")
+
     def reset_session(self) -> None:
         """Reset the conversation context for a new session."""
         old_session_id = self.session_metadata.get("session_id", "unknown")
