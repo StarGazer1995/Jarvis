@@ -261,27 +261,11 @@ class TestJarvisAgent:
         stats = agent.get_tool_usage_stats()
         assert isinstance(stats, dict)
     
-    @pytest.mark.asyncio
-    async def test_execute_tool_directly(self, agent):
-        """Test executing tool directly."""
-        # Mock available tools and mcp_client
-        agent.ark_engine.available_tools = {"echo": {"description": "Echo tool"}}
-        mock_result = {"success": True, "result": "test"}
-        with patch.object(agent.ark_engine.mcp_client, 'execute_tool', return_value=mock_result):
-            result = await agent.execute_tool_directly("echo", {"message": "test"})
-            assert result["success"] is True
-    
     def test_set_get_user_preference(self, agent):
         """Test setting and getting user preferences."""
         agent.set_user_preference("theme", "dark")
         assert agent.get_user_preference("theme") == "dark"
         assert agent.get_user_preference("nonexistent", "default") == "default"
-    
-    def test_configure_logging(self, agent):
-        """Test configuring logging level."""
-        agent.configure_logging("DEBUG")
-        # Verify logging level was set (implementation dependent)
-        assert True  # Basic test that method doesn't crash
     
     @pytest.mark.asyncio
     async def test_context_manager(self, agent):
@@ -346,7 +330,7 @@ class TestJarvisAgentAdvanced:
         agent.is_initialized = True
         agent.is_running = True
         
-        with patch.object(agent.ark_engine.mcp_client, 'discover_tools', side_effect=Exception("MCP error")):
+        with patch.object(agent.ark_engine.mcp_client, 'list_tools', side_effect=Exception("MCP error")):
             health = await agent.health_check()
             assert health["overall"] == "degraded"
             assert health["components"]["mcp_client"]["status"] == "unhealthy"
@@ -519,54 +503,6 @@ class TestJarvisAgentAdvanced:
             
             # Verify agent stopped despite callback failure
             assert not agent.is_running
-    
-    @pytest.mark.asyncio
-    async def test_execute_tool_directly_success(self):
-        """Test execute_tool_directly with successful tool execution."""
-        agent = JarvisAgent()
-        agent.is_initialized = True
-        
-        # Mock ARK engine with available tool
-        agent.ark_engine.available_tools = {"test_tool": "mock_tool"}
-        
-        # Mock tool execution
-        with patch.object(agent.ark_engine.mcp_client, 'execute_tool', new_callable=AsyncMock) as mock_execute:
-            mock_execute.return_value = {"result": "success"}
-            
-            # Test tool execution
-            result = await agent.execute_tool_directly("test_tool", {"param": "value"})
-            
-            # Verify execution
-            assert result == {"result": "success"}
-            mock_execute.assert_called_once_with("test_tool", {"param": "value"})
-    
-    @pytest.mark.asyncio
-    async def test_execute_tool_directly_tool_not_available(self):
-        """Test execute_tool_directly with unavailable tool."""
-        agent = JarvisAgent()
-        agent.is_initialized = True
-        agent.ark_engine.available_tools = {}
-        
-        # Test tool execution with unavailable tool - should raise ValueError
-        with pytest.raises(ValueError, match="Tool 'nonexistent_tool' is not available"):
-            await agent.execute_tool_directly("nonexistent_tool", {})
-    
-    @pytest.mark.asyncio
-    async def test_execute_tool_directly_execution_exception(self):
-        """Test execute_tool_directly with execution exception."""
-        agent = JarvisAgent()
-        agent.is_initialized = True
-        
-        # Mock ARK engine with available tool
-        agent.ark_engine.available_tools = {"test_tool": "mock_tool"}
-        
-        # Mock tool execution to raise exception
-        with patch.object(agent.ark_engine.mcp_client, 'execute_tool', new_callable=AsyncMock) as mock_execute:
-            mock_execute.side_effect = Exception("Tool execution failed")
-            
-            # Test tool execution - should raise the exception
-            with pytest.raises(Exception, match="Tool execution failed"):
-                await agent.execute_tool_directly("test_tool", {})
     
     @pytest.mark.asyncio
     async def test_async_context_manager(self):

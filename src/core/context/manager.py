@@ -238,133 +238,6 @@ class ConversationContext:
         """Iterate over conversation turns."""
         return iter(self.conversation_history)
     
-    @classmethod
-    def load_from_file(cls, file_path: str) -> 'ConversationContext':
-        """
-        Load conversation context from a JSON file.
-        
-        Args:
-            file_path: Path to the JSON file
-            
-        Returns:
-            ConversationContext instance
-            
-        Raises:
-            FileNotFoundError: If file doesn't exist
-            ValueError: If file contains invalid JSON
-        """
-        import os
-        if not os.path.exists(file_path):
-            raise FileNotFoundError(f"Context file not found: {file_path}")
-        
-        try:
-            with open(file_path, 'r') as f:
-                data = json.load(f)
-            
-            # Use import_context to handle the data
-            return cls.import_context(data)
-            
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON in context file: {e}")
-    
-    def save_to_file(self, file_path: str) -> None:
-        """
-        Save conversation context to a JSON file.
-        
-        Args:
-            file_path: Path to save the JSON file
-        """
-        export_data = {
-            "max_history": self.max_history,
-            "session_metadata": self.session_metadata,
-            "user_memory": self.user_preferences,
-            "conversation_history": [
-                {
-                    "timestamp": turn.timestamp,
-                    "user_input": turn.user_input,
-                    "agent_response": turn.agent_response,
-                    "intent": turn.intent,
-                    "entities": turn.entities,
-                    "tools_used": turn.tools_used,
-                    "metadata": turn.metadata
-                }
-                for turn in self.conversation_history
-            ]
-        }
-        
-        with open(file_path, 'w') as f:
-            json.dump(export_data, f, indent=2)
-        
-        self.ark_logger.debug(f"ARK context: Saved context to {file_path}")
-    
-    def export_context(self) -> Dict[str, Any]:
-        """
-        Export conversation context as a dictionary.
-        
-        Returns:
-            Dictionary containing all context data
-        """
-        return {
-            "session_id": self.session_id,
-            "conversation_history": [
-                {
-                    "user_input": turn.user_input,
-                    "agent_response": turn.agent_response,
-                    "intent": turn.intent,
-                    "entities": turn.entities,
-                    "tools_used": turn.tools_used,
-                    "metadata": turn.metadata,
-                    "timestamp": turn.timestamp,
-                    "processing_time": turn.metadata.get("processing_time", 0.0)
-                }
-                for turn in self.conversation_history
-            ],
-            "user_memory": self.user_preferences,
-            "session_metadata": self.session_metadata,
-            "created_at": self.created_at,
-            "last_activity": self.last_activity
-        }
-    
-    @classmethod
-    def import_context(cls, context_data: Dict[str, Any]) -> 'ConversationContext':
-        """
-        Import conversation context from a dictionary.
-        
-        Args:
-            context_data: Dictionary containing context data
-            
-        Returns:
-            ConversationContext instance
-        """
-        # Extract session_id from session_metadata if available
-        session_metadata = context_data.get("session_metadata", {})
-        session_id = session_metadata.get("session_id") or context_data.get("session_id")
-        max_history = context_data.get("max_history", 100)
-        
-        # Create new context instance
-        context = cls(max_history=max_history, session_id=session_id)
-        
-        # Restore data
-        context.user_preferences = context_data.get("user_memory", {})
-        context.session_metadata.update(context_data.get("session_metadata", {}))
-        context.created_at = context_data.get("created_at", datetime.now().timestamp())
-        context.last_activity = context_data.get("last_activity", datetime.now().timestamp())
-        
-        # Restore conversation history
-        for turn_data in context_data.get("conversation_history", []):
-            turn = ConversationTurn(
-                user_input=turn_data["user_input"],
-                agent_response=turn_data["agent_response"],
-                timestamp=turn_data.get("timestamp", datetime.now().timestamp()),
-                intent=turn_data.get("intent"),
-                entities=turn_data.get("entities", {}),
-                tools_used=turn_data.get("tools_used", []),
-                metadata=turn_data.get("metadata", {})
-            )
-            context.conversation_history.append(turn)
-        
-        return context
-    
     def reset(self) -> None:
         """
         Reset the conversation context while preserving session ID.
@@ -392,18 +265,6 @@ class ConversationContext:
                 f"turns={len(self.conversation_history)}, "
                 f"max_history={self.max_history})")
     
-    def get_recent_context(self, num_turns: int = 5) -> List[ConversationTurn]:
-        """
-        Get recent conversation turns for context.
-        
-        Args:
-            num_turns: Number of recent turns to retrieve
-            
-        Returns:
-            List of recent conversation turns
-        """
-        return self.conversation_history[-num_turns:] if self.conversation_history else []
-
     def get_recent_turns(self, num_turns: int = 5) -> List[ConversationTurn]:
         """
         Get the most recent conversation turns in reverse chronological order.
@@ -451,61 +312,6 @@ class ConversationContext:
             "duration": duration
         }
 
-    def get_context_summary(self) -> str:
-        """
-        Generate a string summary of the current conversation context.
-        
-        Returns:
-            String summary of the conversation context
-        """
-        if not self.conversation_history:
-            return "No conversation history available."
-        
-        recent_turns = self.get_recent_context(3)
-        summary_parts = []
-        
-        summary_parts.append(f"Session: {self.session_metadata['session_id']}")
-        summary_parts.append(f"Turn count: {self.session_metadata['turn_count']}")
-        
-        if recent_turns:
-            summary_parts.append("Recent conversation:")
-            for i, turn in enumerate(recent_turns, 1):
-                summary_parts.append(f"  {i}. User: {turn.user_input[:50]}...")
-                if turn.intent:
-                    summary_parts.append(f"     Intent: {turn.intent}")
-                if turn.tools_used:
-                    summary_parts.append(f"     Tools: {', '.join(turn.tools_used)}")
-        
-        return "\n".join(summary_parts)
-    
-    def find_similar_exchanges(self, current_input: str, limit: int = 3) -> List[ConversationTurn]:
-        """
-        Find similar past exchanges based on input similarity.
-        
-        Args:
-            current_input: Current user input to find similarities for
-            limit: Maximum number of similar exchanges to return
-            
-        Returns:
-            List of similar conversation turns
-        """
-        if not self.conversation_history:
-            return []
-        
-        # Simple keyword-based similarity for now
-        # In a production system, this could use embeddings or more sophisticated NLP
-        current_words = set(current_input.lower().split())
-        
-        similarities = []
-        for turn in self.conversation_history:
-            turn_words = set(turn.user_input.lower().split())
-            similarity = len(current_words.intersection(turn_words)) / len(current_words.union(turn_words))
-            similarities.append((similarity, turn))
-        
-        # Sort by similarity and return top matches
-        similarities.sort(key=lambda x: x[0], reverse=True)
-        return [turn for _, turn in similarities[:limit] if _ > 0.1]  # Only return if similarity > 10%
-    
     def update_user_preference(self, key: str, value: Any) -> None:
         """
         Update a user preference.
@@ -600,17 +406,17 @@ class ConversationContext:
             "average_response_time": average_response_time
         }
     
-    def export_conversation(self, format: str = "json") -> str:
+    def export_conversation(self, export_format: str = "json") -> str:
         """
         Export conversation history in specified format.
         
         Args:
-            format: Export format ("json" or "text")
+            export_format: Export format ("json" or "text")
             
         Returns:
             Exported conversation data
         """
-        if format == "json":
+        if export_format == "json":
             export_data = {
                 "session_metadata": self.session_metadata,
                 "user_preferences": self.user_preferences,
@@ -628,7 +434,7 @@ class ConversationContext:
             }
             return json.dumps(export_data, indent=2)
         
-        elif format == "text":
+        elif export_format == "text":
             lines = []
             lines.append(f"Conversation Export - Session: {self.session_metadata['session_id']}")
             lines.append(f"Started: {self.session_start.isoformat()}")
@@ -647,7 +453,7 @@ class ConversationContext:
             return "\n".join(lines)
         
         else:
-            raise ValueError(f"Unsupported export format: {format}")
+            raise ValueError(f"Unsupported export format: {export_format}")
     
     async def compress_history(self, threshold: int = 20, keep_recent: int = 5) -> None:
         """

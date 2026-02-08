@@ -65,11 +65,6 @@ class LLMProviderRegistry:
         if LiteLLMClient:
             self.register_provider("litellm", LiteLLMClient)
             
-        # TODO: 添加其他提供商
-        # self.register_provider("anthropic", AnthropicLLMClient)
-        # self.register_provider("azure_openai", AzureOpenAILLMClient)
-        # self.register_provider("ollama", OllamaLLMClient)
-        
         logger.info(f"已注册 {len(self._providers)} 个内置提供商")
     
     def register_provider(self, name: str, client_class: Type[BaseLLMClient]) -> None:
@@ -314,23 +309,6 @@ class LLMProviderFactory:
                 "exponential_base": provider_config.retry.exponential_base
             }
         }
-        
-        # 添加模型配置 - 已移除，因为LLMConfig不支持models字段
-        # for model_name, model_config in provider_config.models.items():
-        #     config_dict["models"][model_name] = {
-        #         "max_tokens": model_config.max_tokens,
-        #         "temperature": model_config.temperature,
-        #         "top_p": model_config.top_p,
-        #         "frequency_penalty": model_config.frequency_penalty,
-        #         "presence_penalty": model_config.presence_penalty
-        #     }
-        #     
-        #     # 添加特定提供商的配置
-        #     if model_config.deployment_name:  # Azure OpenAI
-        #         config_dict["models"][model_name]["deployment_name"] = model_config.deployment_name
-        #     
-        #     if model_config.response_delay > 0:  # Mock
-        #         config_dict["models"][model_name]["response_delay"] = model_config.response_delay
         
         # 将当前所选模型的特定配置应用到主配置中
         if provider_config.default_model in provider_config.models:

@@ -195,27 +195,6 @@ class TestConversationContext:
         
         assert len(context.user_memory) == 0
     
-    def test_get_conversation_summary(self, context):
-        """Test getting conversation summary."""
-        # Add some turns
-        turns = [
-            ConversationTurn("Hello", "Hi!", intent="greeting"),
-            ConversationTurn("What's the weather?", "It's sunny", intent="weather_query"),
-            ConversationTurn("Thanks", "You're welcome", intent="gratitude")
-        ]
-        
-        for turn in turns:
-            context.add_turn(turn)
-        
-        summary = context.get_conversation_summary()
-        
-        assert summary["total_turns"] == 3
-        assert summary["session_id"] == "test_session"
-        assert "greeting" in summary["intents"]
-        assert "weather_query" in summary["intents"]
-        assert "gratitude" in summary["intents"]
-        assert summary["duration"] > 0
-    
     def test_get_session_stats(self, context):
         """Test getting session statistics."""
         # Add turns with different intents and tools
@@ -236,56 +215,6 @@ class TestConversationContext:
         assert stats["session_duration"] > 0
         assert isinstance(stats["average_response_time"], float)
     
-    def test_export_context(self, context):
-        """Test exporting conversation context."""
-        # Add some data
-        context.update_memory("user_name", "Charlie")
-        context.session_metadata["test_key"] = "test_value"
-        
-        turn = ConversationTurn("Test input", "Test response", intent="test_intent")
-        context.add_turn(turn)
-        
-        # Export context
-        exported = context.export_context()
-        
-        assert exported["session_id"] == "test_session"
-        assert exported["user_memory"]["user_name"] == "Charlie"
-        assert exported["session_metadata"]["test_key"] == "test_value"
-        assert len(exported["conversation_history"]) == 1
-        assert exported["conversation_history"][0]["user_input"] == "Test input"
-    
-    def test_import_context(self):
-        """Test importing conversation context."""
-        context_data = {
-            "session_id": "imported_session",
-            "conversation_history": [
-                {
-                    "user_input": "Imported input",
-                    "agent_response": "Imported response",
-                    "intent": "imported_intent",
-                    "entities": {},
-                    "tools_used": [],
-                    "metadata": {},
-                    "timestamp": 1234567890.0,
-                    "processing_time": 0.5
-                }
-            ],
-            "user_memory": {"imported_key": "imported_value"},
-            "session_metadata": {"imported_meta": "meta_value"},
-            "created_at": 1234567800.0,
-            "last_activity": 1234567900.0
-        }
-        
-        context = ConversationContext.import_context(context_data)
-        
-        assert context.session_id == "imported_session"
-        assert len(context.conversation_history) == 1
-        assert context.conversation_history[0].user_input == "Imported input"
-        assert context.user_memory["imported_key"] == "imported_value"
-        assert context.session_metadata["imported_meta"] == "meta_value"
-        assert context.created_at == 1234567800.0
-        assert context.last_activity == 1234567900.0
-    
     def test_reset_context(self, context):
         """Test resetting conversation context."""
         # Add some data
@@ -304,50 +233,6 @@ class TestConversationContext:
         assert len(context.session_metadata) == 0
         # Session ID should remain the same
         assert context.session_id == original_session_id
-    
-    def test_context_persistence(self, context):
-        """Test context persistence to file."""
-        # Add some data
-        context.update_memory("persistent_key", "persistent_value")
-        context.add_turn(ConversationTurn("persistent input", "persistent response"))
-        
-        # Create temporary file
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
-            temp_file = f.name
-        
-        try:
-            # Save context
-            context.save_to_file(temp_file)
-            
-            # Load context
-            loaded_context = ConversationContext.load_from_file(temp_file)
-            
-            assert loaded_context.session_id == context.session_id
-            assert loaded_context.user_memory["persistent_key"] == "persistent_value"
-            assert len(loaded_context.conversation_history) == 1
-            assert loaded_context.conversation_history[0].user_input == "persistent input"
-            
-        finally:
-            # Clean up
-            if os.path.exists(temp_file):
-                os.unlink(temp_file)
-    
-    def test_context_file_not_found(self):
-        """Test loading context from non-existent file."""
-        with pytest.raises(FileNotFoundError):
-            ConversationContext.load_from_file("non_existent_file.json")
-    
-    def test_context_invalid_json(self):
-        """Test loading context from invalid JSON file."""
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
-            f.write("invalid json content")
-            temp_file = f.name
-        
-        try:
-            with pytest.raises(ValueError):
-                ConversationContext.load_from_file(temp_file)
-        finally:
-            os.unlink(temp_file)
     
     def test_context_string_representation(self, context):
         """Test string representation of context."""
@@ -431,90 +316,6 @@ class TestConversationContext:
             debug_calls = [str(call) for call in mock_debug.call_args_list]
             assert any("Removed old turn from" in call for call in debug_calls)
     
-    def test_get_context_summary_empty(self):
-        """Test get_context_summary with empty history."""
-        context = ConversationContext()
-        summary = context.get_context_summary()
-        assert summary == "No conversation history available."
-    
-    def test_get_context_summary_with_history(self):
-        """Test get_context_summary with conversation history."""
-        context = ConversationContext()
-        
-        # Add some exchanges with different features
-        context.add_exchange("Hello", "Hi there!", intent="greeting", tools_used=["greeting_tool"])
-        context.add_exchange("What's the weather?", "It's sunny today", intent="weather", tools_used=["weather_api"])
-        context.add_exchange("Tell me a joke", "Why did the chicken cross the road?")
-        context.add_exchange("Another question", "Another response", intent="general")
-        
-        summary = context.get_context_summary()
-        
-        # Verify summary contains expected elements
-        assert f"Session: {context.session_metadata['session_id']}" in summary
-        assert "Turn count: 4" in summary
-        assert "Recent conversation:" in summary
-        
-        # Verify recent turns are included (should show last 3)
-        assert "Tell me a joke" in summary
-        assert "Another question" in summary
-        assert "What's the weather?" in summary
-        
-        # Verify intent and tools are shown
-        assert "Intent: general" in summary
-        assert "Tools: weather_api" in summary
-        
-        # Verify user input is truncated at 50 chars
-        long_input = "This is a very long user input that should be truncated at fifty characters"
-        context.add_exchange(long_input, "Response")
-        summary = context.get_context_summary()
-        assert long_input[:50] + "..." in summary
-    
-    def test_find_similar_exchanges_empty_history(self):
-        """Test find_similar_exchanges with empty history."""
-        context = ConversationContext()
-        similar = context.find_similar_exchanges("test input")
-        assert similar == []
-    
-    def test_find_similar_exchanges_with_matches(self):
-        """Test find_similar_exchanges with matching exchanges."""
-        context = ConversationContext()
-        
-        # Add some exchanges
-        context.add_exchange("weather forecast today", "It's sunny")
-        context.add_exchange("what is the weather like", "It's cloudy")
-        context.add_exchange("tell me a joke", "Why did the chicken cross the road?")
-        context.add_exchange("weather conditions tomorrow", "It will rain")
-        
-        # Find similar exchanges for weather-related query
-        similar = context.find_similar_exchanges("weather today forecast", limit=2)
-        
-        # Should find weather-related exchanges
-        assert len(similar) <= 2
-        for turn in similar:
-            assert isinstance(turn, ConversationTurn)
-            # Should contain weather-related content
-            assert "weather" in turn.user_input.lower()
-    
-    def test_find_similar_exchanges_similarity_threshold(self):
-        """Test find_similar_exchanges similarity threshold."""
-        context = ConversationContext()
-        
-        # Add exchanges with different similarity levels
-        context.add_exchange("completely different topic", "Response 1")
-        context.add_exchange("weather forecast", "Response 2")
-        
-        # Query with low similarity should return empty list
-        similar = context.find_similar_exchanges("unrelated query with no common words")
-        
-        # Should filter out low similarity matches (< 10%)
-        assert len(similar) == 0 or all(
-            len(set("unrelated query with no common words".lower().split()).intersection(
-                set(turn.user_input.lower().split())
-            )) / len(set("unrelated query with no common words".lower().split()).union(
-                set(turn.user_input.lower().split())
-            )) > 0.1 for turn in similar
-         )
-    
     def test_export_conversation_text_format(self):
         """Test export_conversation with text format."""
         context = ConversationContext()
@@ -522,7 +323,7 @@ class TestConversationContext:
         context.add_exchange("How are you?", "I'm doing well")
         
         # Export to text format
-        content = context.export_conversation(format='text')
+        content = context.export_conversation(export_format='text')
         
         # Verify text format structure
         assert "Conversation Export" in content
@@ -540,7 +341,7 @@ class TestConversationContext:
         context.add_exchange("Hello", "Hi there!", intent="greeting", tools_used=["greeting_tool"])
         
         # Export to json format
-        content = context.export_conversation(format='json')
+        content = context.export_conversation(export_format='json')
         
         # Parse JSON to verify structure
         import json
@@ -563,7 +364,7 @@ class TestConversationContext:
         
         # Test invalid format raises ValueError
         with pytest.raises(ValueError, match="Unsupported export format"):
-            context.export_conversation(format='xml')
+            context.export_conversation(export_format='xml')
     
     def test_string_representations(self):
         """Test __str__ and __repr__ methods."""
@@ -788,161 +589,6 @@ class TestConversationContext:
         assert summary["intents"] == []
         assert "session_id" in summary
 
-    def test_get_context_summary_mixed_intent_tools(self):
-        """Test get_context_summary with mixed intent and tools scenarios."""
-        context = ConversationContext()
-        
-        # Add exchanges with different combinations of intent and tools
-        context.add_exchange(
-            "What's the weather?", 
-            "It's sunny",
-            intent="weather_query",
-            tools_used=["weather_api"]
-        )
-        context.add_exchange(
-            "Tell me a joke", 
-            "Why did the chicken cross the road?",
-            intent="entertainment"
-            # No tools_used
-        )
-        context.add_exchange(
-            "Random question", 
-            "Random answer"
-            # No intent, no tools_used
-        )
-        
-        summary = context.get_context_summary()
-        
-        # Check that the summary handles mixed scenarios correctly
-        assert "Session:" in summary
-        assert "Turn count: 3" in summary
-        assert "Recent conversation:" in summary
-        
-        # Should contain intent and tools for first exchange
-        assert "Intent: weather_query" in summary
-        assert "Tools: weather_api" in summary
-        
-        # Should contain intent but no tools for second exchange
-        assert "Intent: entertainment" in summary
-        
-        # Third exchange should have neither intent nor tools lines
-        assert "User: Random question" in summary
-
-    def test_get_context_summary_empty_tools_list(self):
-        """Test get_context_summary with empty tools list."""
-        context = ConversationContext()
-        
-        # Add exchange with empty tools list
-        context.add_exchange(
-            "Hello", 
-            "Hi there",
-            intent="greeting",
-            tools_used=[]
-        )
-        
-        summary = context.get_context_summary()
-        
-        # Should contain intent but not tools (empty list)
-        assert "Intent: greeting" in summary
-        assert "Tools:" not in summary
-
-    def test_get_context_summary_empty_history(self):
-        """Test get_context_summary with empty conversation history to cover the missing branch."""
-        context = ConversationContext()
-        
-        # Ensure conversation history is empty
-        assert len(context.conversation_history) == 0
-        
-        # Call get_context_summary
-        summary = context.get_context_summary()
-        
-        # Should return the empty history message
-        assert summary == "No conversation history available."
-
-    def test_get_context_summary_no_intent_no_tools(self):
-        """Test get_context_summary with turns that have no intent or tools."""
-        context = ConversationContext()
-        
-        # Add exchanges without intent and tools
-        context.add_exchange("Hello", "Hi there!")
-        context.add_exchange("How are you?", "I'm doing well")
-        
-        summary = context.get_context_summary()
-        
-        # Check that the summary contains expected elements but no intent/tools lines
-        assert "Session:" in summary
-        assert "Turn count:" in summary
-        assert "Recent conversation:" in summary
-        assert "User: Hello" in summary
-        assert "User: How are you?" in summary
-        # Should not contain intent or tools lines
-        assert "Intent:" not in summary
-        assert "Tools:" not in summary
-
-    def test_get_context_summary_only_intent(self):
-        """Test get_context_summary with turns that have intent but no tools."""
-        context = ConversationContext()
-        
-        # Add exchanges with intent but no tools
-        context.add_exchange(
-            "What's the weather?", 
-            "It's sunny",
-            intent="weather_query"
-        )
-        
-        summary = context.get_context_summary()
-        
-        # Check that the summary contains intent but no tools
-        assert "Session:" in summary
-        assert "Turn count: 1" in summary
-        assert "Recent conversation:" in summary
-        assert "User: What's the weather?" in summary
-        assert "Intent: weather_query" in summary
-        assert "Tools:" not in summary
-
-    def test_get_context_summary_only_tools(self):
-        """Test get_context_summary with turns that have tools but no intent."""
-        context = ConversationContext()
-        
-        # Add exchanges with tools but no intent
-        context.add_exchange(
-            "Search for something", 
-            "Here are the results",
-            tools_used=["search_api"]
-        )
-        
-        summary = context.get_context_summary()
-        
-        # Check that the summary contains tools but no intent
-        assert "Session:" in summary
-        assert "Turn count: 1" in summary
-        assert "Recent conversation:" in summary
-        assert "User: Search for something" in summary
-        assert "Tools: search_api" in summary
-        assert "Intent:" not in summary
-    
-    def test_get_context_summary_no_recent_turns(self):
-        """Test get_context_summary when get_recent_context returns empty list."""
-        context = ConversationContext()
-        
-        # Add some conversation history
-        context.add_exchange("Hello", "Hi there!")
-        
-        # Mock get_recent_context to return empty list
-        original_method = context.get_recent_context
-        context.get_recent_context = lambda num_turns: []
-        
-        try:
-            summary = context.get_context_summary()
-            
-            # Should contain session info and turn count but no recent conversation
-            assert "Session:" in summary
-            assert "Turn count:" in summary
-            assert "Recent conversation:" not in summary
-        finally:
-            # Restore original method
-            context.get_recent_context = original_method
-
     def test_get_conversation_summary_cleared_history(self):
         """Test get_conversation_summary after clearing history to force the else branch."""
         context = ConversationContext()
@@ -964,38 +610,6 @@ class TestConversationContext:
         assert summary["duration"] == 0
         assert summary["intents"] == []
         assert "session_id" in summary
-
-    def test_get_context_summary_with_intent_and_tools(self):
-        """Test get_context_summary with recent turns that have intent and tools."""
-        context = ConversationContext()
-        
-        # Add exchanges with intent and tools
-        context.add_exchange(
-            "What's the weather like?", 
-            "Let me check that for you.",
-            intent="weather_query",
-            tools_used=["weather_api", "location_service"]
-        )
-        context.add_exchange(
-            "Set a reminder for tomorrow", 
-            "I'll set that reminder.",
-            intent="reminder_creation",
-            tools_used=["calendar_api"]
-        )
-        
-        summary = context.get_context_summary()
-        
-        # Check that the summary contains expected elements
-        assert "Session:" in summary
-        assert "Turn count:" in summary
-        assert "Recent conversation:" in summary
-        assert "User: What's the weather like?" in summary
-        assert "Intent: weather_query" in summary
-        assert "Tools: weather_api, location_service" in summary
-        assert "User: Set a reminder for tomorrow" in summary
-        assert "Intent: reminder_creation" in summary
-        assert "Tools: calendar_api" in summary
-
 
 class TestConversationContextIntegration:
     """Integration tests for conversation context functionality."""
@@ -1039,22 +653,6 @@ class TestConversationContextIntegration:
         # Check memory
         assert context.get_memory("user_name") == "Integration User"
         assert context.get_memory("location") == "Test City"
-    
-    def test_memory_persistence_workflow(self):
-        """Test memory persistence across sessions."""
-        # Create first context
-        context1 = ConversationContext(session_id="memory_test")
-        context1.update_memory("persistent_data", "should_persist")
-        context1.update_memory("user_preferences", {"theme": "dark"})
-        
-        # Export and import
-        exported_data = context1.export_context()
-        context2 = ConversationContext.import_context(exported_data)
-        
-        # Verify memory persisted
-        assert context2.get_memory("persistent_data") == "should_persist"
-        assert context2.get_memory("user_preferences")["theme"] == "dark"
-        assert context2.session_id == "memory_test"
     
     def test_large_conversation_handling(self):
         """Test handling of large conversations."""

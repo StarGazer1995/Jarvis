@@ -10,7 +10,6 @@ import logging
 import asyncio
 from typing import Dict, List, Any, Optional, Callable
 from dataclasses import dataclass
-import json
 
 from .core.ark.engine import ARKEngine, ARKState
 from .core.config.server import SimpleMCPServerConfig
@@ -365,28 +364,6 @@ class JarvisAgent:
         """
         return self.ark_engine.tool_usage_stats.copy()
     
-    async def execute_tool_directly(self, tool_name: str, parameters: Dict[str, Any]) -> Any:
-        """
-        Execute a tool directly (bypass ARK reasoning).
-        
-        Args:
-            tool_name: Name of the tool to execute
-            parameters: Parameters for the tool
-            
-        Returns:
-            Tool execution result
-        """
-        if tool_name not in self.ark_engine.available_tools:
-            raise ValueError(f"Tool '{tool_name}' is not available")
-        
-        try:
-            result = await self.ark_engine.mcp_client.execute_tool(tool_name, parameters)
-            self.logger.info(f"Direct tool execution: {tool_name}")
-            return result
-        except Exception as e:
-            self.logger.error(f"Direct tool execution failed for {tool_name}: {e}")
-            raise
-    
     def set_user_preference(self, key: str, value: Any) -> None:
         """
         Set a user preference.
@@ -410,17 +387,6 @@ class JarvisAgent:
             Preference value or default
         """
         return self.ark_engine.context_manager.get_user_preference(key, default)
-    
-    def configure_logging(self, level: str) -> None:
-        """
-        Configure logging level.
-        
-        Args:
-            level: Logging level (DEBUG, INFO, WARNING, ERROR)
-        """
-        self.config.log_level = level.upper()
-        self._setup_logging()
-        self.logger.info(f"Logging level set to {level.upper()}")
     
     async def health_check(self) -> Dict[str, Any]:
         """
