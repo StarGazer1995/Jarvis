@@ -18,7 +18,7 @@ sys.path.insert(0, str(project_root))
 
 # 现在可以正确导入模块
 from src.jarvis_agent import JarvisAgent, JarvisConfig
-from src.core.server_config import SimpleMCPServerConfig
+from src.core.config.server import SimpleMCPServerConfig
 
 
 def setup_logging():

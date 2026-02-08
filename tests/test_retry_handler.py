@@ -9,14 +9,14 @@ import asyncio
 import time
 from unittest.mock import patch, MagicMock
 
-from src.core.llm_utils.retry_handler import (
+from src.core.llm.utils.retry_handler import (
     RetryHandler,
     RateLimitHandler,
     with_retry,
     llm_retry,
     rate_limit_retry
 )
-from src.core.llm_utils.error_handler import (
+from src.core.llm.utils.error_handler import (
     LLMError,
     LLMAPIError,
     LLMRateLimitError,

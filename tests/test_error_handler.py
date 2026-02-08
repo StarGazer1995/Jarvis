@@ -8,7 +8,7 @@ import pytest
 import logging
 from unittest.mock import patch, MagicMock
 
-from src.core.llm_utils.error_handler import (
+from src.core.llm.utils.error_handler import (
     LLMError,
     LLMAPIError,
     LLMRateLimitError,
@@ -83,7 +83,7 @@ class TestLLMErrorClasses:
 class TestOpenAIErrorHandling:
     """OpenAI错误处理测试"""
     
-    @patch('src.core.llm_utils.error_handler.openai', create=True)
+    @patch('src.core.llm.utils.error_handler.openai', create=True)
     def test_handle_openai_authentication_error(self, mock_openai_module):
         """测试处理OpenAI认证错误"""
         # 创建模拟的认证错误类
@@ -98,16 +98,24 @@ class TestOpenAIErrorHandling:
         assert isinstance(result, LLMAuthenticationError)
         assert "API密钥" in str(result)
     
-    @patch('src.core.llm_utils.error_handler.openai', create=True)
+    @patch('src.core.llm.utils.error_handler.openai', create=True)
     def test_handle_openai_rate_limit_error(self, mock_openai_module):
         """测试处理OpenAI速率限制错误"""
-        # 创建模拟的速率限制错误类
+        # 定义所有相关的异常类
+        class MockAuthenticationError(Exception): pass
         class MockRateLimitError(Exception):
             def __init__(self, message, retry_after=None):
                 super().__init__(message)
                 self.retry_after = retry_after
+        class MockAPITimeoutError(Exception): pass
+        class MockAPIError(Exception): pass
         
+        # 赋值给mock模块
+        mock_openai_module.AuthenticationError = MockAuthenticationError
         mock_openai_module.RateLimitError = MockRateLimitError
+        mock_openai_module.APITimeoutError = MockAPITimeoutError
+        mock_openai_module.APIError = MockAPIError
+        
         mock_error = MockRateLimitError("Rate limit exceeded", retry_after=60)
         
         result = handle_openai_error(mock_error)
@@ -116,16 +124,24 @@ class TestOpenAIErrorHandling:
         assert "速率限制" in str(result)
         assert result.retry_after == 60
     
-    @patch('src.core.llm_utils.error_handler.openai', create=True)
+    @patch('src.core.llm.utils.error_handler.openai', create=True)
     def test_handle_openai_api_error(self, mock_openai_module):
         """测试处理OpenAI API错误"""
-        # 创建模拟的API错误类
+        # 定义所有相关的异常类
+        class MockAuthenticationError(Exception): pass
+        class MockRateLimitError(Exception): pass
+        class MockAPITimeoutError(Exception): pass
         class MockAPIError(Exception):
             def __init__(self, message, status_code=None):
                 super().__init__(message)
                 self.status_code = status_code
         
+        # 赋值给mock模块
+        mock_openai_module.AuthenticationError = MockAuthenticationError
+        mock_openai_module.RateLimitError = MockRateLimitError
+        mock_openai_module.APITimeoutError = MockAPITimeoutError
         mock_openai_module.APIError = MockAPIError
+        
         mock_error = MockAPIError("API error", status_code=400)
         
         result = handle_openai_error(mock_error)
@@ -134,14 +150,21 @@ class TestOpenAIErrorHandling:
         assert "API错误" in str(result)
         assert result.status_code == 400
     
-    @patch('src.core.llm_utils.error_handler.openai', create=True)
+    @patch('src.core.llm.utils.error_handler.openai', create=True)
     def test_handle_openai_timeout_error(self, mock_openai_module):
         """测试处理OpenAI超时错误"""
-        # 创建模拟的超时错误类
-        class MockAPITimeoutError(Exception):
-            pass
+        # 定义所有相关的异常类
+        class MockAuthenticationError(Exception): pass
+        class MockRateLimitError(Exception): pass
+        class MockAPITimeoutError(Exception): pass
+        class MockAPIError(Exception): pass
         
+        # 赋值给mock模块
+        mock_openai_module.AuthenticationError = MockAuthenticationError
+        mock_openai_module.RateLimitError = MockRateLimitError
         mock_openai_module.APITimeoutError = MockAPITimeoutError
+        mock_openai_module.APIError = MockAPIError
+        
         mock_error = MockAPITimeoutError("Request timeout")
         
         result = handle_openai_error(mock_error)
@@ -185,7 +208,7 @@ class TestOpenAIErrorHandling:
 class TestErrorLogging:
     """错误日志记录测试"""
     
-    @patch('src.core.llm_utils.error_handler.logging.getLogger')
+    @patch('src.core.llm.utils.error_handler.logging.getLogger')
     def test_log_llm_error_basic(self, mock_get_logger):
         """测试基本错误日志记录"""
         mock_logger = MagicMock()
@@ -198,7 +221,7 @@ class TestErrorLogging:
         call_args = mock_logger.error.call_args[0][0]
         assert "API错误" in call_args
     
-    @patch('src.core.llm_utils.error_handler.logging.getLogger')
+    @patch('src.core.llm.utils.error_handler.logging.getLogger')
     def test_log_llm_error_with_custom_logger(self, mock_get_logger):
         """测试使用自定义logger记录错误"""
         custom_logger = MagicMock()
@@ -210,7 +233,7 @@ class TestErrorLogging:
         # 不应该调用getLogger
         mock_get_logger.assert_not_called()
     
-    @patch('src.core.llm_utils.error_handler.logging.getLogger')
+    @patch('src.core.llm.utils.error_handler.logging.getLogger')
     def test_log_llm_error_with_details(self, mock_get_logger):
         """测试记录带详细信息的错误"""
         mock_logger = MagicMock()

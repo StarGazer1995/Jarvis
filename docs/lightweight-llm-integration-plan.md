@@ -60,7 +60,7 @@ class LLMProvider(Enum):
 - 缺少错误处理和重试机制
 
 #### 2. **依赖包不完整**
-- requirements.txt缺少LLM相关依赖
+- 项目依赖中缺少LLM相关依赖
 - 没有HTTP客户端和重试库
 - 缺少配置验证工具
 
@@ -76,14 +76,9 @@ class LLMProvider(Enum):
 #### 1.1 依赖包更新
 
 **添加核心依赖**
-```toml
-# requirements.txt 新增内容
-# LLM Core Dependencies
-openai>=1.0.0              # OpenAI官方SDK
-httpx>=0.24.0              # 高性能HTTP客户端
-tenacity>=8.0.0            # 重试机制
-pydantic>=2.0.0            # 数据验证
-python-dotenv>=1.0.0       # 环境变量支持
+```bash
+# 使用 uv 添加依赖
+uv add openai httpx tenacity pydantic python-dotenv
 ```
 
 **依赖说明**
@@ -205,11 +200,9 @@ class LLMMetrics:
 #### 2.1 LiteLLM集成
 
 **添加依赖**
-```toml
+```bash
 # 可选的多提供商支持
-litellm>=1.0.0             # 统一多提供商接口
-anthropic>=0.8.0           # Claude支持
-google-generativeai>=0.3.0 # Gemini支持
+uv add litellm "anthropic>=0.8.0" "google-generativeai>=0.3.0"
 ```
 
 **LiteLLM客户端实现**

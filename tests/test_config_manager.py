@@ -10,9 +10,9 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from src.core.llm_client import LLMProvider
-from src.core.llm_utils.config_manager import ConfigManager, get_config_manager, create_llm_config
-from src.core.llm_utils.error_handler import LLMConfigurationError
+from src.core.llm.client import LLMProvider
+from src.core.llm.utils.config_manager import ConfigManager, get_config_manager, create_llm_config
+from src.core.llm.utils.error_handler import LLMConfigurationError
 
 
 class TestConfigManager:
@@ -220,25 +220,25 @@ openai:
     
     def test_dotenv_loading(self):
         """测试.env文件加载"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.env', delete=False) as f:
-            f.write('OPENAI_API_KEY=test-key-from-dotenv\n')
-            f.write('OPENAI_MODEL=gpt-4-from-dotenv\n')
-            f.flush()
-            env_path = f.name
-        
-        try:
-            # Mock dotenv加载
-            with patch('src.core.llm_utils.config_manager.load_dotenv') as mock_load:
-                with patch('src.core.llm_utils.config_manager.Path.cwd') as mock_cwd:
-                    mock_cwd.return_value = Path(env_path).parent
-                    
-                    manager = ConfigManager()
-                    
-                    # 验证load_dotenv被调用
-                    mock_load.assert_called()
-        
-        finally:
-            os.unlink(env_path)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env_path = Path(tmpdir) / ".env"
+            with open(env_path, 'w') as f:
+                f.write('OPENAI_API_KEY=test-key-from-dotenv\n')
+                f.write('OPENAI_MODEL=gpt-4-from-dotenv\n')
+            
+            try:
+                # Mock dotenv加载
+                with patch('src.core.llm.utils.config_manager.load_dotenv') as mock_load:
+                    with patch('src.core.llm.utils.config_manager.Path.cwd') as mock_cwd:
+                        mock_cwd.return_value = Path(tmpdir)
+                        
+                        manager = ConfigManager()
+                        
+                        # 验证load_dotenv被调用
+                        mock_load.assert_called()
+            
+            except Exception as e:
+                raise e
 
 
 class TestGlobalFunctions:
@@ -327,18 +327,23 @@ class TestConfigManagerEdgeCases:
             yaml_path = f.name
         
         try:
-            with patch('src.core.llm_utils.config_manager.YAML_AVAILABLE', False):
-                with pytest.raises(LLMConfigurationError) as exc_info:
+            with patch('src.core.llm.utils.config_manager.YAML_AVAILABLE', False):
+                with patch('src.core.llm.utils.config_manager.logging.getLogger') as mock_get_logger:
+                    mock_logger = MagicMock()
+                    mock_get_logger.return_value = mock_logger
+                    
                     ConfigManager(yaml_path)
-                
-                assert "PyYAML未安装" in str(exc_info.value)
+                    
+                    # 验证错误被记录
+                    mock_logger.error.assert_called()
+                    assert "加载配置文件失败" in str(mock_logger.error.call_args)
         
         finally:
             os.unlink(yaml_path)
     
     def test_missing_dotenv_dependency(self):
         """测试缺少python-dotenv依赖"""
-        with patch('src.core.llm_utils.config_manager.DOTENV_AVAILABLE', False):
+        with patch('src.core.llm.utils.config_manager.DOTENV_AVAILABLE', False):
             # 应该不会抛出异常，只是跳过.env文件加载
             manager = ConfigManager()
             

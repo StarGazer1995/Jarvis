@@ -9,7 +9,7 @@
 运行完整的功能演示脚本，展示所有系统能力：
 
 ```bash
-python examples/complete_demo.py
+uv run python examples/complete_demo.py
 ```
 
 这个脚本会展示：
@@ -25,7 +25,7 @@ python examples/complete_demo.py
 运行简单的功能测试：
 
 ```bash
-python examples/simple_test.py
+uv run python examples/simple_test.py
 ```
 
 ### 3. 交互式对话测试
@@ -33,7 +33,7 @@ python examples/simple_test.py
 运行交互式对话演示（需要手动输入）：
 
 ```bash
-python examples/conversation_demo.py
+uv run python examples/conversation_demo.py
 ```
 
 ### 4. 运行测试套件
@@ -41,7 +41,7 @@ python examples/conversation_demo.py
 验证所有代码功能正常：
 
 ```bash
-pytest --cov=src tests/ -v
+uv run pytest --cov=src tests/ -v
 ```
 
 ## 📊 系统验证结果

@@ -39,11 +39,9 @@
 - ✅ **现有功能**：对话、工具调用、上下文管理等
 
 #### 核心依赖（必需）
-```toml
-# requirements.txt
-openai>=1.0.0
-litellm>=1.0.0
-anthropic>=0.8.0  # 可选
+```bash
+# 使用 uv 添加核心依赖
+uv add openai litellm "anthropic>=0.8.0"
 ```
 
 ### 2. 新增文档处理能力模块
@@ -62,15 +60,9 @@ src/capabilities/
 ```
 
 #### 可选依赖（文档处理）
-```toml
-# requirements-docs.txt 或 pyproject.toml [extras]
-langchain-core>=0.1.0        # 只要核心组件
-langchain-community>=0.0.20  # 社区组件
-chromadb>=0.4.0              # 向量数据库
-faiss-cpu>=1.7.0             # 另一个向量数据库选项
-tiktoken>=0.5.0              # 文本分词
-pypdf>=3.0.0                 # PDF处理
-python-docx>=0.8.11          # Word文档处理
+```bash
+# 使用 uv 添加文档处理依赖
+uv add langchain-core langchain-community chromadb faiss-cpu tiktoken pypdf python-docx
 ```
 
 ## 🚀 实施路线图

@@ -12,9 +12,9 @@ from typing import Dict, List, Any, Optional, Callable
 from dataclasses import dataclass
 import json
 
-from .core.ark_engine import ARKEngine, ARKState
-from .core.server_config import SimpleMCPServerConfig
-from .core.context_manager import ConversationContext
+from .core.ark.engine import ARKEngine, ARKState
+from .core.config.server import SimpleMCPServerConfig
+from .core.context.manager import ConversationContext
 
 
 @dataclass
@@ -452,10 +452,10 @@ class JarvisAgent:
         
         # Check MCP client status
         try:
-            mcp_tools = await self.ark_engine.mcp_client.discover_tools()
+            mcp_tools = await self.ark_engine.mcp_client.list_tools()
             health_status["components"]["mcp_client"] = {
                 "status": "healthy",
-                "connected_servers": len(self.ark_engine.mcp_client.connected_servers),
+                "connected_servers": len(self.ark_engine.mcp_client.sessions),
                 "available_tools": len(mcp_tools)
             }
         except Exception as e:

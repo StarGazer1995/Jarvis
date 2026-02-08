@@ -9,6 +9,6 @@ __version__ = "0.1.0"
 __author__ = "Project Jarvis Team"
 
 from .jarvis_agent import JarvisAgent
-from .core.ark_engine import ARKEngine
+from .core.ark.engine import ARKEngine
 
 __all__ = ["JarvisAgent", "ARKEngine"]

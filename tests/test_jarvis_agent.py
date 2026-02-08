@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch, AsyncMock
 import dataclasses
 
 from src.jarvis_agent import JarvisConfig, JarvisAgent
-from src.core.server_config import SimpleMCPServerConfig
+from src.core.config.server import SimpleMCPServerConfig
 
 
 class TestJarvisConfig:

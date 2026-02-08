@@ -103,7 +103,7 @@ python examples/complete_system_demo.py --quick
 
 ### Prerequisites
 1. Ensure you're in the project root directory
-2. Install all dependencies: `pip install -r requirements.txt`
+2. Install all dependencies: `uv sync`
 3. Set up any required environment variables
 
 ### General Usage Pattern
@@ -179,7 +179,7 @@ python examples/complete_system_demo.py --verbose --demo all
 
 ### Common Issues
 1. **Import Errors**: Ensure you're running from the project root directory
-2. **Missing Dependencies**: Run `pip install -r requirements.txt`
+2. **Missing Dependencies**: Run `uv sync`
 3. **Permission Errors**: Check file permissions and security settings
 4. **Network Issues**: Some examples may require internet connectivity
 

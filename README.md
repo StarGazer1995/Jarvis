@@ -16,7 +16,8 @@ project_jarvis/
 ├── tests/                 # Test files
 │   └── test_main.py       # Tests for main functionality
 ├── docs/                  # Documentation
-├── requirements.txt       # Python dependencies
+├── pyproject.toml         # Python project configuration
+├── uv.lock                # Dependency lock file
 ├── .github/              # GitHub workflows and configurations
 ├── .gitignore            # Git ignore rules
 └── README.md             # This file
@@ -24,15 +25,20 @@ project_jarvis/
 
 ## Installation
 
-1. Clone the repository:
+1. Install uv (if not already installed):
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+2. Clone the repository:
 ```bash
 git clone <repository-url>
 cd project_jarvis
 ```
 
-2. Install dependencies:
+3. Install dependencies:
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
 ## Usage
@@ -42,13 +48,13 @@ pip install -r requirements.txt
 To start the Jarvis agent:
 
 ```bash
-python src/main.py
+uv run python src/main.py
 ```
 
 You can also specify the logging level:
 
 ```bash
-python src/main.py --log-level DEBUG
+uv run python src/main.py --log-level DEBUG
 ```
 
 ### Running Tests
@@ -56,13 +62,13 @@ python src/main.py --log-level DEBUG
 To run the test suite:
 
 ```bash
-pytest
+uv run pytest
 ```
 
 To run tests with coverage:
 
 ```bash
-pytest --cov=src tests/
+uv run pytest --cov=src tests/
 ```
 
 ## Development
@@ -72,7 +78,10 @@ pytest --cov=src tests/
 1. Add new modules in the `src/` directory
 2. Write corresponding tests in the `tests/` directory
 3. Update documentation in the `docs/` directory
-4. Add any new dependencies to `requirements.txt`
+4. Add any new dependencies:
+```bash
+uv add <package_name>
+```
 
 ### Testing
 

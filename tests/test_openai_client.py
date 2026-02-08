@@ -10,9 +10,9 @@ import os
 from unittest.mock import AsyncMock, MagicMock, patch
 from typing import List
 
-from src.core.llm_client import LLMConfig, LLMProvider, LLMMessage
-from src.core.llm_providers.openai_client import OpenAILLMClient
-from src.core.llm_utils.error_handler import (
+from src.core.llm.client import LLMConfig, LLMProvider, LLMMessage
+from src.core.llm.providers.openai_client import OpenAILLMClient
+from src.core.llm.utils.error_handler import (
     LLMConfigurationError, LLMAuthenticationError, LLMAPIError
 )
 
@@ -130,11 +130,22 @@ class TestOpenAILLMClient:
         mock_async_client = AsyncMock()
         mock_openai.AsyncOpenAI.return_value = mock_async_client
         
-        # Mock认证错误
-        from openai import AuthenticationError
-        mock_async_client.chat.completions.create.side_effect = AuthenticationError("Invalid API key")
+        # Mock认证错误类
+        class MockAuthenticationError(Exception):
+            pass
+            
+        mock_openai.AuthenticationError = MockAuthenticationError
+        mock_async_client.chat.completions.create.side_effect = MockAuthenticationError("Invalid API key")
         
-        with patch('src.core.llm_providers.openai_client.openai', mock_openai):
+        # Patch builtins.__import__ 同时也需要处理 httpx
+        def side_effect(name, *args, **kwargs):
+            if name == 'openai':
+                return mock_openai
+            if name == 'httpx':
+                return MagicMock()
+            return __import__(name, *args, **kwargs)
+            
+        with patch('builtins.__import__', side_effect=side_effect):
             result = await client.initialize()
         
         assert result is False

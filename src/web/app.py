@@ -7,7 +7,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from src.jarvis_agent import JarvisAgent, JarvisConfig
-from src.core.server_config import SimpleMCPServerConfig
+from src.core.config.server import SimpleMCPServerConfig
 
 @cl.on_chat_start
 async def start():

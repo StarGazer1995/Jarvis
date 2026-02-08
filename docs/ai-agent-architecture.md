@@ -799,7 +799,7 @@ The MCP integration in Project Jarvis provides a robust, standardized foundation
 
 ### Immediate Enhancements (Phase 1)
 1. **Install and Configure MCP Dependencies**
-   - Add MCP client libraries to requirements.txt
+   - Add MCP client libraries using `uv add`
    - Set up basic MCP client infrastructure
    - Create configuration system for MCP servers
 

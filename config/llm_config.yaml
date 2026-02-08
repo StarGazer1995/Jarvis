@@ -4,7 +4,7 @@
 # 全局配置
 global:
   # 默认使用的LLM提供商
-  default_provider: "openai"
+  default_provider: "nvidia_nim"
   
   # 全局重试配置
   retry:
@@ -24,6 +24,22 @@ global:
 
 # LLM提供商配置
 providers:
+  # OpenAI配置
+  nvidia_nim:
+    # 显式指定使用 OpenAI 客户端兼容模式
+    type: "openai"
+    enabled: true
+    api_key: "${NVIDIA_API_KEY}"
+    base_url: "https://integrate.api.nvidia.com/v1"
+    default_model: "meta/llama-3.1-70b-instruct"
+    models:
+      meta/llama-3.1-70b-instruct:
+        max_tokens: 4096
+        temperature: 0.7
+      meta/llama-3.1-405b-instruct:
+        max_tokens: 4096
+        temperature: 0.7
+
   # OpenAI配置
   openai:
     # 是否启用

@@ -15,7 +15,7 @@ import signal
 from typing import Optional
 
 from .jarvis_agent import JarvisAgent, JarvisConfig
-from .core.server_config import SimpleMCPServerConfig
+from .core.config.server import SimpleMCPServerConfig
 
 
 class JarvisApp:

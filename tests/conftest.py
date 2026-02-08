@@ -15,13 +15,12 @@ from unittest.mock import Mock, AsyncMock
 from typing import Dict, Any, Optional
 
 from src.jarvis_agent import JarvisConfig, JarvisAgent
-from src.core.server_config import SimpleMCPServerConfig
-from src.core.mcp_client import ARKMCPClient
-from src.core.context_manager import ConversationContext
-from src.core.intent_engine import ARKIntentEngine
-from src.core.ark_engine import ARKEngine
-from src.core.tool_registry import ARKToolRegistry
-from src.core.server_config import ARKServerConfigManager
+from src.core.config.server import SimpleMCPServerConfig
+from src.core.mcp.client import ARKMCPClient
+from src.core.context.manager import ConversationContext
+from src.core.ark.engine import ARKEngine
+from src.core.mcp.registry import ARKToolRegistry
+from src.core.config.server import ARKServerConfigManager
 
 
 @pytest.fixture(scope="session")
@@ -169,26 +168,6 @@ def mock_context_manager():
         "assistant_messages": 0
     })
     return context
-
-
-@pytest.fixture
-def mock_intent_engine():
-    """
-    Create a mock intent engine for testing.
-    
-    Returns:
-        Mock: A mock ARKIntentEngine instance
-    """
-    engine = Mock(spec=ARKIntentEngine)
-    engine.analyze_intent = AsyncMock(return_value={
-        "intent": "general_query",
-        "confidence": 0.8,
-        "entities": [],
-        "requires_tools": False
-    })
-    engine.extract_entities = Mock(return_value=[])
-    engine.get_intent_confidence = Mock(return_value=0.8)
-    return engine
 
 
 @pytest.fixture
