@@ -9,27 +9,25 @@ and decision-making capabilities.
 import logging
 import asyncio
 import json
-import re
-from typing import Dict, List, Any, Optional, Tuple, Union
-from dataclasses import dataclass, field
+from typing import Dict, List, Any, Optional
+from dataclasses import dataclass
 from enum import Enum
+
+# Import generic agent framework
+from ..agent.react import ReActAgent
+from ..agent.types import AgentState, AgentStep
 
 from ..mcp.client import ARKMCPClient
 from ..config.server import SimpleMCPServerConfig
 from ..context.manager import ConversationContext
-from ..llm.client import LLMManager, LLMMessage
-from ..llm.config import LLMConfig, LLMProvider, load_llm_config
+from ..llm.client import LLMManager
+from ..llm.config import load_llm_config
 from ..prompt.manager import PromptManager
 
 
-class ARKState(Enum):
-    """ARK engine operational states."""
-    INITIALIZING = "initializing"
-    READY = "ready"
-    PROCESSING = "processing"
-    TOOL_EXECUTION = "tool_execution"
-    ERROR = "error"
-    SHUTDOWN = "shutdown"
+# Aliases for backward compatibility
+ARKState = AgentState
+ReActStep = AgentStep
 
 
 class TaskStatus(Enum):
@@ -57,16 +55,7 @@ class Task:
         }
 
 
-@dataclass
-class ReActStep:
-    """Represents a single step in the ReAct loop."""
-    thought: str
-    action: Optional[str] = None
-    action_input: Optional[Union[Dict[str, Any], str]] = None
-    observation: Optional[str] = None
-
-
-class ARKEngine:
+class ARKEngine(ReActAgent):
     """
     Autonomous Reasoning Kernel (ARK) Engine
     
@@ -82,8 +71,7 @@ class ARKEngine:
         Args:
             config: Configuration dictionary for ARK engine
         """
-        self.config = config or {}
-        self.state = ARKState.INITIALIZING
+        super().__init__(config)
         self.ark_logger = logging.getLogger('ark.engine')
         
         # Initialize core components
@@ -92,15 +80,9 @@ class ARKEngine:
             max_history=self.config.get('max_conversation_history', 100)
         )
         
-        # Initialize LLM components
-        llm_config_dict = self.config.get('llm', {})
-        self.llm_config = load_llm_config(llm_config_dict) if llm_config_dict else load_llm_config()
-        self.llm_manager = LLMManager(self.llm_config)
         self.prompt_manager = PromptManager()
-        self.llm_enabled = self.config.get('enable_llm', True)
         
         # ARK-specific attributes
-        self.available_tools: Dict[str, Any] = {}
         self.tool_usage_stats: Dict[str, int] = {}
         self.todo_list: List[Task] = []
         
@@ -117,15 +99,12 @@ class ARKEngine:
     async def initialize(self, mcp_servers: Optional[List[SimpleMCPServerConfig]] = None) -> bool:
         """
         Initialize ARK engine with MCP servers and capabilities.
-        
-        Args:
-            mcp_servers: List of MCP server configurations
-            
-        Returns:
-            True if initialization successful, False otherwise
         """
+        # Call base initialize first (handles LLM)
+        if not await super().initialize():
+            return False
+            
         try:
-            self.state = ARKState.INITIALIZING
             self.ark_logger.info("ARK: Starting initialization sequence")
             
             # Initialize MCP client with servers
@@ -140,9 +119,8 @@ class ARKEngine:
             # Discover available tools
             await self._discover_tools()
             
-            # Initialize LLM if enabled
-            if self.llm_enabled:
-                await self._initialize_llm()
+            # Load default prompts
+            self.prompt_manager.load_default_templates()
             
             # Initialize performance tracking
             self._initialize_performance_metrics()
@@ -155,169 +133,28 @@ class ARKEngine:
             self.state = ARKState.ERROR
             self.ark_logger.error(f"ARK: Initialization failed: {e}")
             return False
-    
+            
     async def process_input(self, user_input: str) -> str:
-        """
-        Process user input using the ReAct framework.
+        """Process user input."""
+        # Override to add ARK-specific context updates
+        response = await super().process_input(user_input)
         
-        Args:
-            user_input: User's natural language input
-            
-        Returns:
-            Generated response
-        """
-        if self.state != ARKState.READY:
-            return "ARK engine is not ready. Please wait for initialization to complete."
-        
-        try:
-            self.state = ARKState.PROCESSING
-            self.ark_logger.info(f"ARK: Processing input: '{user_input[:50]}...'")
-            
-            # Use ReAct loop for processing
-            response = await self._run_react_loop(user_input)
-            
-            # Update Context (simplified)
-            self.context_manager.add_exchange(
-                user_input=user_input,
-                agent_response=response,
-                intent="react_execution",
-                tools_used=[t.description for t in self.todo_list], # simplified tracking
-                metadata={"todo_count": len(self.todo_list)}
-            )
-            
-            self.state = ARKState.READY
-            self.ark_logger.info("ARK: Input processing complete")
-            return response
-            
-        except Exception as e:
-            self.state = ARKState.ERROR
-            self.ark_logger.error(f"ARK: Error processing input: {e}")
-            import traceback
-            self.ark_logger.error(traceback.format_exc())
-            return f"I encountered an error while processing your request: {str(e)}"
-
-    async def _run_react_loop(self, user_input: str) -> str:
-        """
-        Execute the ReAct (Reason+Act) loop.
-        """
-        max_steps = 15
-        steps: List[ReActStep] = []
-        
-        # If todo list is empty, we might want to clear it or keep it?
-        # For now, we keep it across turns as requested by the user ("todo list to record tasks").
-        
-        for i in range(max_steps):
-            self.ark_logger.info(f"ARK: ReAct Step {i+1}/{max_steps}")
-            
-            # 1. Build Prompt
-            prompt_messages = self._build_react_prompt(user_input, steps)
-            
-            # 2. Get LLM Response
+        # Update Context
+        if self.state != ARKState.ERROR:
             try:
-                llm_response = await self.llm_manager.generate_response(prompt_messages)
-                response_text = llm_response.content
+                self.context_manager.add_exchange(
+                    user_input=user_input,
+                    agent_response=response,
+                    intent="react_execution",
+                    tools_used=[t.description for t in self.todo_list], # simplified
+                    metadata={"todo_count": len(self.todo_list)}
+                )
             except Exception as e:
-                return f"Error communicating with LLM: {e}"
-            
-            self.ark_logger.debug(f"ARK: LLM Response: {response_text}")
-            
-            # 3. Parse Response
-            # Expected format:
-            # Thought: ...
-            # Action: ...
-            # Action Input: ...
-            # OR
-            # Final Answer: ...
-            
-            thought_match = re.search(r"Thought:\s*(.*?)(?=\nAction|\nFinal Answer|$)", response_text, re.DOTALL)
-            thought = thought_match.group(1).strip() if thought_match else "No thought provided."
-            
-            final_answer_match = re.search(r"Final Answer:\s*(.*)", response_text, re.DOTALL)
-            if final_answer_match:
-                final_answer = final_answer_match.group(1).strip()
-                steps.append(ReActStep(thought=thought, action="Final Answer", observation=final_answer))
-                return final_answer
-            
-            action_match = re.search(r"Action:\s*(.*?)\n", response_text)
-            action_input_match = re.search(r"Action Input:\s*(.*)", response_text, re.DOTALL)
-            
-            if action_match and action_input_match:
-                action_name = action_match.group(1).strip()
-                action_input_str = action_input_match.group(1).strip()
+                self.ark_logger.warning(f"Failed to update context: {e}")
                 
-                # Clean up action input (remove code blocks if present)
-                if action_input_str.startswith("```"):
-                    action_input_str = re.sub(r"^```\w*\n|```$", "", action_input_str).strip()
-                elif action_input_str.startswith("`"):
-                    action_input_str = action_input_str.strip("`")
-                
-                try:
-                    # Try to parse JSON
-                    action_input = json.loads(action_input_str)
-                except json.JSONDecodeError:
-                    # Fallback to string
-                    action_input = action_input_str
-                
-                # 4. Execute Action
-                observation = await self._execute_react_action(action_name, action_input)
-                
-                # Record Step
-                steps.append(ReActStep(
-                    thought=thought,
-                    action=action_name,
-                    action_input=action_input,
-                    observation=str(observation)
-                ))
-                
-            else:
-                # If no action found but also no final answer, treat whole text as answer or ask for clarification?
-                # Usually ReAct agents should output Action or Final Answer.
-                # If it fails to follow format, we can append an observation telling it to format correctly.
-                steps.append(ReActStep(
-                    thought=response_text,
-                    observation="Error: You must provide either an 'Action:' and 'Action Input:' or a 'Final Answer:'."
-                ))
-        
-        return "I'm sorry, I reached the maximum number of steps without finding a final answer."
+        return response
 
-    def _build_react_prompt(self, user_input: str, steps: List[ReActStep]) -> List[LLMMessage]:
-        """Build the prompt for the ReAct loop."""
-        
-        # System Prompt
-        system_prompt = self._get_react_system_prompt()
-        
-        messages = [
-            LLMMessage(role="system", content=system_prompt)
-        ]
-        
-        # Add conversation history (simplified)
-        # We could pull from context_manager, but for ReAct, the current loop history is more critical.
-        # We can add recent user-assistant turns if needed.
-        recent_history = self.context_manager.get_recent_turns(num_turns=5)
-        for turn in reversed(recent_history):
-            messages.append(LLMMessage(role="user", content=turn.user_input))
-            messages.append(LLMMessage(role="assistant", content=turn.agent_response))
-        
-        # User Input
-        messages.append(LLMMessage(role="user", content=f"User Request: {user_input}"))
-        
-        # ReAct History (Steps)
-        history_text = ""
-        for step in steps:
-            history_text += f"Thought: {step.thought}\n"
-            if step.action:
-                history_text += f"Action: {step.action}\n"
-                history_text += f"Action Input: {json.dumps(step.action_input, ensure_ascii=False) if isinstance(step.action_input, (dict, list)) else step.action_input}\n"
-                history_text += f"Observation: {step.observation}\n\n"
-            else:
-                history_text += f"Observation: {step.observation}\n\n"
-        
-        if history_text:
-            messages.append(LLMMessage(role="assistant", content=history_text))
-            
-        return messages
-
-    def _get_react_system_prompt(self) -> str:
+    def _get_system_prompt(self) -> str:
         """Generate the system prompt for ReAct agent."""
         
         # 1. Todo List Status
@@ -367,50 +204,43 @@ Thought: <your reasoning>
 Final Answer: <your final response to the user>
 """
 
-    async def _execute_react_action(self, action_name: str, action_input: Any) -> Any:
+    async def execute_tool(self, name: str, params: Any) -> Any:
         """Execute an action (tool or internal)."""
         
-        if action_name == "manage_tasks":
-            if isinstance(action_input, str):
-                try:
-                    action_input = json.loads(action_input)
-                except:
-                    return "Error: Action Input for manage_tasks must be valid JSON."
-            return self._manage_tasks(**action_input)
-            
-        # Check external tools
-        if action_name in self.available_tools:
-            # Need to ensure parameters is a dict
-            params = action_input
+        if name == "manage_tasks":
             if isinstance(params, str):
                 try:
                     params = json.loads(params)
                 except:
-                    # If string, maybe assume it's the primary arg? depends on tool.
-                    # For now, return error if not dict
-                    return f"Error: Tool arguments for {action_name} must be a JSON object."
+                    return "Error: Action Input for manage_tasks must be valid JSON."
+            return self._manage_tasks(**params)
+            
+        # Check external tools
+        if name in self.available_tools:
+            # Need to ensure parameters is a dict
+            if isinstance(params, str):
+                try:
+                    params = json.loads(params)
+                except:
+                    return f"Error: Tool arguments for {name} must be a JSON object."
             
             try:
-                result = await self.mcp_client.execute_tool(action_name, params)
+                result = await self.mcp_client.execute_tool(name, params)
+                # Update stats
+                self.tool_usage_stats[name] = self.tool_usage_stats.get(name, 0) + 1
                 return result
             except Exception as e:
-                return f"Error executing tool {action_name}: {e}"
+                return f"Error executing tool {name}: {e}"
                 
-        return f"Error: Unknown tool '{action_name}'."
+        return f"Error: Unknown tool '{name}'."
 
     def _manage_tasks(self, action: str, **kwargs) -> str:
-        """
-        Manage the todo list.
-        
-        Args:
-            action: add, update, complete
-            kwargs: task details
-        """
+        """Manage the todo list."""
         if action == "add":
             description = kwargs.get("description")
             if not description:
                 return "Error: Description required for adding task."
-            task_id = str(len(self.todo_list) + 1) # Simple ID
+            task_id = str(len(self.todo_list) + 1)
             task = Task(id=task_id, description=description)
             self.todo_list.append(task)
             return f"Task added: [{task_id}] {description}"
@@ -470,31 +300,12 @@ Final Answer: <your final response to the user>
             
             # Initialize usage stats for all tools
             for tool_name in self.available_tools.keys():
-                self.tool_usage_stats[tool_name] = 0
+                if tool_name not in self.tool_usage_stats:
+                    self.tool_usage_stats[tool_name] = 0
                 
         except Exception as e:
             self.ark_logger.error(f"ARK: Tool discovery failed: {e}")
             self.available_tools = {}
-    
-    
-    async def _initialize_llm(self) -> None:
-        """Initialize LLM client and prompt manager."""
-        try:
-            # Initialize default LLM client
-            success = await self.llm_manager.initialize_default_client()
-            if success:
-                self.ark_logger.info("ARK: LLM client initialized successfully")
-            else:
-                self.ark_logger.warning("ARK: LLM client initialization failed, using template fallback")
-                self.llm_enabled = False
-            
-            # Load default prompts
-            self.prompt_manager.load_default_templates()
-            self.ark_logger.info("ARK: Prompt templates loaded successfully")
-            
-        except Exception as e:
-            self.ark_logger.error(f"ARK: Error initializing LLM: {e}")
-            self.llm_enabled = False
     
     def _initialize_performance_metrics(self) -> None:
         """Initialize performance tracking metrics."""
@@ -514,12 +325,7 @@ Final Answer: <your final response to the user>
         return datetime.now().isoformat()
     
     def get_status(self) -> Dict[str, Any]:
-        """
-        Get basic engine status for testing and monitoring.
-        
-        Returns:
-            Dictionary containing basic engine status
-        """
+        """Get basic engine status."""
         return {
             "state": self.state.value,
             "available_tools": len(self.available_tools),
@@ -527,12 +333,7 @@ Final Answer: <your final response to the user>
         }
     
     def get_engine_status(self) -> Dict[str, Any]:
-        """
-        Get current ARK engine status and metrics.
-        
-        Returns:
-            Dictionary with engine status information
-        """
+        """Get current ARK engine status and metrics."""
         return {
             "state": self.state.value,
             "available_tools": list(self.available_tools.keys()),
@@ -548,16 +349,14 @@ Final Answer: <your final response to the user>
         }
     
     async def close(self) -> None:
-        """
-        Close the ARK engine and clean up resources.
-        
-        Alias for shutdown() method for compatibility.
-        """
+        """Alias for shutdown."""
         await self.shutdown()
     
     async def shutdown(self) -> None:
         """Shutdown the ARK engine gracefully."""
-        self.state = ARKState.SHUTDOWN
+        # Call base shutdown
+        await super().shutdown()
+        
         self.ark_logger.info("ARK: Initiating shutdown sequence")
         
         # Close MCP client connections
