@@ -103,9 +103,10 @@ class OpenAILLMClient(BaseLLMClient):
         Raises:
             LLMConfigurationError: 配置错误
         """
+        provider_display = self.config.provider_name or "OpenAI"
         if not self.config.api_key:
             raise LLMConfigurationError(
-                "OpenAI API密钥未设置，请设置OPENAI_API_KEY环境变量或在配置中提供api_key",
+                f"{provider_display} API密钥未设置，请在配置中提供api_key或设置相应的环境变量",
                 config_field="api_key"
             )
         

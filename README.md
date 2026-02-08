@@ -6,72 +6,102 @@ An AI agent framework for building intelligent assistants.
 
 Project Jarvis is a Python-based AI agent framework designed to create intelligent, conversational assistants. This project provides a foundation for building AI agents with extensible capabilities.
 
-## Project Structure
+## 📂 Project Structure
 
 ```
-project_jarvis/
-├── src/                    # Source code
-│   ├── __init__.py        # Package initialization
-│   └── main.py            # Main entry point and core agent logic
-├── tests/                 # Test files
-│   └── test_main.py       # Tests for main functionality
-├── docs/                  # Documentation
-├── pyproject.toml         # Python project configuration
-├── uv.lock                # Dependency lock file
-├── .github/              # GitHub workflows and configurations
-├── .gitignore            # Git ignore rules
-└── README.md             # This file
+Jarvis/
+├── src/
+│   ├── core/               # Core framework components
+│   │   ├── agent/          # Agent implementations (ReAct)
+│   │   ├── ark/            # Autonomous Reasoning Kernel (LangGraph)
+│   │   ├── config/         # Configuration management
+│   │   ├── context/        # Context and memory management
+│   │   ├── llm/            # LLM providers and utilities
+│   │   ├── mcp/            # Model Context Protocol client/registry
+│   │   ├── prompt/         # Prompt engineering and management
+│   │   └── security/       # Security and validation
+│   ├── web/                # Web interface (Chainlit)
+│   ├── jarvis_agent.py     # Main agent entry point
+│   └── main.py             # CLI entry point
+├── config/                 # Configuration files
+├── examples/               # Usage examples and demos
+├── tests/                  # Comprehensive test suite
+├── docs/                   # Documentation
+├── .chainlit/              # Chainlit configuration
+└── pyproject.toml          # Project dependencies and metadata
 ```
 
-## Installation
+## 🚀 Getting Started
 
-1. Install uv (if not already installed):
+### Prerequisites
+
+- Python >= 3.10
+- [uv](https://github.com/astral-sh/uv) (recommended for package management)
+
+### Installation
+
+1. Clone the repository:
+   ```bash
+   git clone <repository-url>
+   cd 00_Jarvis
+   ```
+
+2. Install dependencies:
+   ```bash
+   uv sync
+   ```
+
+3. Configure environment:
+   Ensure you have the necessary API keys set up (e.g., `OPENAI_API_KEY`). You can refer to `config/` directory for configuration examples.
+
+## 📖 Usage
+
+### Running the Web Interface
+
+Start the Chainlit-based web UI:
+
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
+uv run chainlit run src/web/app.py -w
 ```
 
-2. Clone the repository:
-```bash
-git clone <repository-url>
-cd project_jarvis
-```
+### Running the CLI Agent
 
-3. Install dependencies:
-```bash
-uv sync
-```
-
-## Usage
-
-### Running the Agent
-
-To start the Jarvis agent:
+Start the agent in command-line mode:
 
 ```bash
 uv run python src/main.py
 ```
 
-You can also specify the logging level:
+### Running Examples
+
+Explore the capabilities with provided examples:
 
 ```bash
-uv run python src/main.py --log-level DEBUG
+# Complete demo (Recommended)
+uv run python examples/complete_demo.py
+
+# Conversation demo
+uv run python examples/conversation_demo.py
+
+# LangGraph example
+uv run python examples/langgraph_example.py
 ```
+
+## 🛠 Development
 
 ### Running Tests
 
-To run the test suite:
+Execute the test suite using pytest:
 
 ```bash
 uv run pytest
 ```
 
-To run tests with coverage:
+With coverage report:
 
 ```bash
 uv run pytest --cov=src tests/
 ```
-
-## Development
 
 ### Adding New Features
 
@@ -116,6 +146,6 @@ The project follows a modular architecture:
 
 [Add your license here]
 
-## Contact
+## 🤝 Contributing
 
-[Add contact information here]
+Contributions are welcome! Please feel free to submit a Pull Request.

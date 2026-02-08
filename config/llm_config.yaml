@@ -31,7 +31,7 @@ providers:
     enabled: true
     api_key: "${NVIDIA_API_KEY}"
     base_url: "https://integrate.api.nvidia.com/v1"
-    default_model: "meta/llama-3.1-70b-instruct"
+    default_model: "qwen/qwq-32b"
     models:
       meta/llama-3.1-70b-instruct:
         max_tokens: 4096
@@ -39,6 +39,20 @@ providers:
       meta/llama-3.1-405b-instruct:
         max_tokens: 4096
         temperature: 0.7
+      deepseek-ai/deepseek-v3.1:
+        max_tokens: 4096
+        temperature: 0.7
+      moonshotai/kimi-k2-thinking:
+        max_tokens: 4096
+        temperature: 0.7
+      qwen/qwen3-next-80b-a3b-thinking:
+        max_tokens: 4096
+        temperature: 0.7
+      qwen/qwq-32b:
+        max_tokens: 4096
+        temperature: 0.7
+
+
 
   # OpenAI配置
   openai:
@@ -205,7 +219,7 @@ environments:
       
   production:
     global:
-      default_provider: "openai"
+      default_provider: "nvidia_nim"
       log_level: "INFO"
     providers:
       openai:

@@ -49,6 +49,7 @@ class LLMConfig:
     retry: Dict[str, Any] = field(default_factory=dict)
     stream: bool = False
     extra_params: Dict[str, Any] = field(default_factory=dict)
+    provider_name: Optional[str] = None  # 用于显示的用户友好提供商名称
     
     # 兼容性字段
     retry_attempts: int = 3

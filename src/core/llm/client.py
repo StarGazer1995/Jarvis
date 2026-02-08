@@ -93,50 +93,8 @@ except ImportError:
 try:
     from .providers.openai_client import OpenAILLMClient
 except ImportError:
-    # 如果导入失败，使用占位符实现
-    class OpenAILLMClient(BaseLLMClient):
-        """OpenAI LLM客户端（占位符实现）"""
-        
-        def __init__(self, config: LLMConfig):
-            super().__init__(config)
-            self.logger.warning("OpenAI客户端实现未找到，使用Mock客户端")
-        
-        async def initialize(self) -> bool:
-            """初始化OpenAI客户端"""
-            self.logger.warning("OpenAI客户端实现未找到，使用Mock客户端")
-            from .providers.mock_client import MockLLMClient
-            mock_client = MockLLMClient(self.config)
-            await mock_client.initialize()
-            self._mock_client = mock_client
-            self._initialized = True
-            return True
-        
-        async def generate_response(
-            self, 
-            messages: List[LLMMessage],
-            **kwargs
-        ) -> LLMResponse:
-            """生成响应（使用Mock客户端）"""
-            if not self._initialized:
-                raise RuntimeError("OpenAI客户端未初始化")
-            
-            from .providers.mock_client import MockLLMClient
-            mock_client = getattr(self, '_mock_client', MockLLMClient(self.config))
-            return await mock_client.generate_response(messages, **kwargs)
-        
-        async def stream_response(
-            self, 
-            messages: List[LLMMessage],
-            **kwargs
-        ) -> AsyncGenerator[str, None]:
-            """流式生成响应（使用Mock客户端）"""
-            if not self._initialized:
-                raise RuntimeError("OpenAI客户端未初始化")
-            
-            from .providers.mock_client import MockLLMClient
-            mock_client = getattr(self, '_mock_client', MockLLMClient(self.config))
-            async for chunk in mock_client.stream_response(messages, **kwargs):
-                yield chunk
+    # 如果导入失败，抛出异常，不再使用占位符
+    OpenAILLMClient = None
 
 
 class LLMClientWrapper(BaseLLMClient):
@@ -219,6 +177,8 @@ class LLMClientFactory:
         if config.provider == LLMProvider.MOCK:
             client = MockLLMClient(config)
         elif config.provider == LLMProvider.OPENAI:
+            if OpenAILLMClient is None:
+                raise ImportError("OpenAI客户端实现未找到，请安装依赖")
             client = OpenAILLMClient(config)
         elif config.provider == LLMProvider.LITELLM:
             try:
