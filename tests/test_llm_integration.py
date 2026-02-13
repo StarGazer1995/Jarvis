@@ -12,18 +12,15 @@ class TestLLMConfig:
     """Test LLM configuration functionality."""
     
     def test_llm_config_creation(self):
-        """Test LLM configuration creation."""
+        """Test LLMConfig creation."""
         config = LLMConfig(
-            provider=LLMProvider.MOCK,
-            model="test-model",
-            max_tokens=1000,
-            temperature=0.7
+            provider=LLMProvider.OPENAI,
+            model="gpt-3.5-turbo",
+            api_key="test-key"
         )
-        
-        assert config.provider == LLMProvider.MOCK
-        assert config.model == "test-model"
-        assert config.max_tokens == 1000
-        assert config.temperature == 0.7
+        assert config.provider == LLMProvider.OPENAI
+        assert config.model == "gpt-3.5-turbo"
+        assert config.api_key == "test-key"
     
     def test_llm_config_from_dict(self):
         """Test LLM configuration creation from dictionary."""

@@ -3,25 +3,18 @@
 
 # 全局配置
 global:
-  default_provider: "mock"
+  default_provider: "openai"
   logging:
     level: "INFO"
 
 # 提供商配置
 providers:
-  # Mock提供商 - 最简配置
-  mock:
-    enabled: true
-    api_key: "mock-key"
-    default_model: "mock-gpt-3.5-turbo"
-    models:
-      mock-gpt-3.5-turbo:
-        max_tokens: 1000
-        temperature: 0.7
+  # Mock提供商 - 已移除
+  # mock: ...
 
   # OpenAI提供商 - 最简配置
   openai:
-    enabled: false  # 默认关闭
+    enabled: true  # 默认开启
     api_key: "${OPENAI_API_KEY}"
     default_model: "gpt-3.5-turbo"
     models:

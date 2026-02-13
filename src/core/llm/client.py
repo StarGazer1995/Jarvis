@@ -11,7 +11,7 @@ import time
 from typing import Dict, List, Any, Optional, Union, AsyncGenerator
 from abc import ABC, abstractmethod
 
-from .types import LLMProvider, LLMMessage, LLMResponse, LLMConfig
+from .types import LLMMessage, LLMResponse, LLMConfig, LLMProvider, TokenUsage
 from .utils.cache_manager import CacheManager
 from .utils.metrics_collector import global_metrics
 
@@ -82,12 +82,6 @@ class BaseLLMClient(ABC):
         self._initialized = False
         self.logger.info("LLM客户端已关闭")
 
-
-# MockLLMClient 现已移动到 src/core/llm/providers/mock_client.py
-try:
-    from .providers.mock_client import MockLLMClient
-except ImportError:
-    MockLLMClient = None
 
 # 导入真实的OpenAI客户端实现
 try:
@@ -174,9 +168,7 @@ class LLMClientFactory:
         """
         # Create client
         client = None
-        if config.provider == LLMProvider.MOCK:
-            client = MockLLMClient(config)
-        elif config.provider == LLMProvider.OPENAI:
+        if config.provider == LLMProvider.OPENAI:
             if OpenAILLMClient is None:
                 raise ImportError("OpenAI客户端实现未找到，请安装依赖")
             client = OpenAILLMClient(config)

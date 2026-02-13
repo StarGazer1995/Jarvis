@@ -3,9 +3,9 @@
 
 # 全局配置
 global:
-  default_provider: "mock"  # 开发环境使用Mock提供商
+  default_provider: "openai"  # 开发环境使用OpenAI
   retry:
-    max_attempts: 2  # 开发环境减少重试次数
+    max_attempts: 2
     initial_delay: 0.5
     max_delay: 2.0
     exponential_base: 1.5
@@ -14,46 +14,18 @@ global:
     read: 30.0
     total: 60.0
   logging:
-    level: "DEBUG"  # 开发环境启用详细日志
+    level: "DEBUG"
     format: "detailed"
 
 # 提供商配置
 providers:
-  # Mock提供商 - 开发环境主要使用
-  mock:
-    enabled: true
-    api_key: "mock-key-dev"
-    base_url: "http://localhost:8000"
-    default_model: "mock-gpt-3.5-turbo"
-    models:
-      mock-gpt-3.5-turbo:
-        max_tokens: 1000
-        temperature: 0.7
-        top_p: 0.9
-        frequency_penalty: 0.0
-        presence_penalty: 0.0
-        response_delay: 0.1  # 快速响应用于开发
-      mock-gpt-4:
-        max_tokens: 2000
-        temperature: 0.5
-        top_p: 0.8
-        frequency_penalty: 0.1
-        presence_penalty: 0.1
-        response_delay: 0.2
-    timeout:
-      connect: 5.0
-      read: 15.0
-      total: 30.0
-    retry:
-      max_attempts: 1  # Mock提供商不需要重试
-      initial_delay: 0.1
-      max_delay: 0.5
-      exponential_base: 1.0
+  # Mock提供商 - 已移除
+  # mock: ...
 
-  # OpenAI提供商 - 可选用于测试真实API
+  # OpenAI提供商
   openai:
-    enabled: false  # 默认关闭，需要时手动启用
-    api_key: "${OPENAI_API_KEY}"  # 从环境变量获取
+    enabled: true
+    api_key: "${OPENAI_API_KEY}"
     base_url: "https://api.openai.com/v1"
     organization: "${OPENAI_ORG_ID}"
     default_model: "gpt-3.5-turbo"

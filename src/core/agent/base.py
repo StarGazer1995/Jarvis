@@ -60,6 +60,7 @@ class BaseAgent(ABC):
         try:
             self.state = AgentState.INITIALIZING
             
+            # 如果启用了LLM且配置不是Mock，则初始化LLM
             if self.llm_enabled:
                 await self._initialize_llm()
                 

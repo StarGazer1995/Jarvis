@@ -19,7 +19,6 @@ from enum import Enum
 from ..config.loader import LLMConfig, ProviderConfig, load_llm_config
 from .client import BaseLLMClient, LLMProvider
 from .providers.openai_client import OpenAILLMClient
-from .providers.mock_client import MockLLMClient
 
 try:
     from .providers.litellm_client import LiteLLMClient
@@ -36,7 +35,6 @@ class ProviderType(Enum):
     ANTHROPIC = "anthropic"
     AZURE_OPENAI = "azure_openai"
     OLLAMA = "ollama"
-    MOCK = "mock"
 
 
 @dataclass
@@ -60,7 +58,7 @@ class LLMProviderRegistry:
     def _register_builtin_providers(self) -> None:
         """注册内置提供商"""
         self.register_provider("openai", OpenAILLMClient)
-        self.register_provider("mock", MockLLMClient)
+        # TODO: Implement Ollama client
         
         if LiteLLMClient:
             self.register_provider("litellm", LiteLLMClient)
@@ -445,7 +443,7 @@ class LLMProviderFactory:
                 return False
             
             # 验证必要的配置项
-            if provider_type != "mock" and not provider_config.api_key:
+            if not provider_config.api_key:
                 logger.error(f"提供商 '{provider_name}' 缺少API密钥")
                 return False
             

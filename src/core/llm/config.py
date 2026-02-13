@@ -5,13 +5,17 @@ This module provides configuration management for LLM integration in the ARK eng
 """
 
 import os
+import logging
 from typing import Dict, Any, Optional
 from dataclasses import dataclass
 from enum import Enum
 
 
 from .types import LLMProvider, LLMConfig
+# Import for type checking or lazy loading to avoid circular imports if any
+# from ..config.loader import LLMConfig as YamlLLMConfig, ModelConfig
 
+logger = logging.getLogger(__name__)
 
 class LLMConfigManager:
     """Manager for LLM configuration."""
@@ -60,7 +64,7 @@ class LLMConfigManager:
         if self._config.provider == LLMProvider.OPENAI:
             return self._config.api_key is not None
         
-        # Mock provider doesn't require API key
+        # Mock provider removed
         return True
     
     def get_provider_info(self) -> Dict[str, Any]:
@@ -94,3 +98,56 @@ def load_llm_config(config_source: Optional[Dict[str, Any]] = None) -> LLMConfig
 def is_llm_configured() -> bool:
     """Check if LLM is globally configured."""
     return llm_config_manager.is_configured()
+
+def convert_to_client_config(yaml_config: Any) -> LLMConfig:
+    """
+    Convert the loaded YAML configuration into the Client LLMConfig format.
+    
+    Args:
+        yaml_config: YamlLLMConfig object from src.core.config.loader
+        
+    Returns:
+        LLMConfig: Client configuration object
+    """
+    # 1. Determine active provider
+    # Default to global default, can be overridden by env
+    provider_name = yaml_config.global_config.default_provider
+    
+    if provider_name not in yaml_config.providers:
+        raise ValueError(f"Provider '{provider_name}' not found in configuration")
+        
+    provider_cfg = yaml_config.providers[provider_name]
+    
+    if not provider_cfg.enabled:
+        raise ValueError(f"Provider '{provider_name}' is disabled in configuration")
+
+    # 2. Determine model
+    model_name = provider_cfg.default_model
+    
+    model_cfg = provider_cfg.models.get(model_name)
+    if not model_cfg:
+        # Fallback if specific model config not found, use defaults
+        # Create a default ModelConfig-like object or use defaults
+        from ..config.loader import ModelConfig
+        model_cfg = ModelConfig()
+
+    # 3. Construct Client LLMConfig
+    # Map 'type' from provider config (e.g. 'openai') to LLMProvider enum
+    try:
+        provider_type = LLMProvider(provider_cfg.type)
+    except ValueError:
+        # Fallback or custom string
+        provider_type = provider_cfg.type
+        
+    client_config = LLMConfig(
+        provider=provider_type,
+        model=model_name,
+        api_key=provider_cfg.api_key,
+        base_url=provider_cfg.base_url,
+        temperature=model_cfg.temperature,
+        max_tokens=model_cfg.max_tokens,
+        timeout=provider_cfg.timeout.total if provider_cfg.timeout else 30.0,
+        provider_name=provider_name
+    )
+    
+    return client_config

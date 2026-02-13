@@ -21,7 +21,6 @@ from typing import List, Dict, Any
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from core.llm_client import LLMConfig, LLMProvider, LLMMessage, LLMResponse
-from core.llm_providers.mock_client import MockLLMClient
 from core.llm_providers.openai_client import OpenAILLMClient
 from core.llm_utils.error_handler import (
     LLMError, LLMAPIError, LLMAuthenticationError,
@@ -41,69 +40,6 @@ def setup_logging():
             logging.StreamHandler(sys.stdout)
         ]
     )
-
-
-async def test_mock_llm_client():
-    """
-    测试Mock LLM客户端功能
-    """
-    print("\n" + "="*70)
-    print("🤖 Mock LLM Client Testing")
-    print("="*70)
-    
-    # 创建Mock LLM配置
-    config = LLMConfig(
-        provider=LLMProvider.MOCK,
-        model="mock-gpt-3.5-turbo",
-        api_key="mock-key",
-        max_tokens=1000,
-        temperature=0.7
-    )
-    
-    client = MockLLMClient(config)
-    
-    try:
-        # 初始化客户端
-        print("📋 初始化Mock LLM客户端...")
-        success = await client.initialize()
-        print(f"✅ 初始化结果: {success}")
-        
-        # 测试单次响应
-        print("\n📝 测试单次响应生成...")
-        messages = [
-            LLMMessage(role="user", content="Hello, how are you?")
-        ]
-        
-        start_time = time.time()
-        response = await client.generate_response(messages)
-        duration = time.time() - start_time
-        
-        print(f"🤖 响应: {response.content}")
-        print(f"⏱️  耗时: {duration:.2f}秒")
-        print(f"🔢 Token使用: {response.usage}")
-        
-        # 测试流式响应
-        print("\n🌊 测试流式响应...")
-        chunks = []
-        start_time = time.time()
-        
-        async for chunk in client.stream_response(messages):
-            chunks.append(chunk)
-            print(f"📦 收到块: '{chunk}'")
-        
-        duration = time.time() - start_time
-        full_response = "".join(chunks)
-        print(f"🔗 完整响应: {full_response}")
-        print(f"⏱️  流式耗时: {duration:.2f}秒")
-        
-        # 获取统计信息
-        stats = client.get_stats()
-        print(f"\n📊 客户端统计: {stats}")
-        
-    except Exception as e:
-        print(f"❌ Mock LLM测试失败: {e}")
-    finally:
-        await client.close()
 
 
 async def test_openai_llm_client():
@@ -248,116 +184,6 @@ async def test_rate_limiting():
         await asyncio.sleep(0.1)
 
 
-async def test_conversation_flow():
-    """
-    测试对话流程
-    """
-    print("\n" + "="*70)
-    print("💬 Conversation Flow Testing")
-    print("="*70)
-    
-    # 使用Mock客户端进行对话测试
-    config = LLMConfig(
-        provider=LLMProvider.MOCK,
-        model="mock-gpt-3.5-turbo",
-        api_key="mock-key",
-        max_tokens=1000,
-        temperature=0.7
-    )
-    
-    client = MockLLMClient(config)
-    
-    try:
-        await client.initialize()
-        
-        # 模拟多轮对话
-        conversation = [
-            "Hello, I'm new here",
-            "Can you help me with Python programming?",
-            "What's the difference between list and tuple?",
-            "Thank you for the explanation!"
-        ]
-        
-        messages = []
-        
-        for i, user_input in enumerate(conversation):
-            print(f"\n👤 用户 {i+1}: {user_input}")
-            
-            # 添加用户消息
-            messages.append(LLMMessage(role="user", content=user_input))
-            
-            # 生成响应
-            response = await client.generate_response(messages)
-            print(f"🤖 助手 {i+1}: {response.content}")
-            
-            # 添加助手响应到对话历史
-            messages.append(LLMMessage(role="assistant", content=response.content))
-        
-        print(f"\n📊 对话统计: 共 {len(messages)} 条消息")
-        
-    except Exception as e:
-        print(f"❌ 对话流程测试失败: {e}")
-    finally:
-        await client.close()
-
-
-async def performance_benchmark():
-    """
-    性能基准测试
-    """
-    print("\n" + "="*70)
-    print("🚀 Performance Benchmark")
-    print("="*70)
-    
-    config = LLMConfig(
-        provider=LLMProvider.MOCK,
-        model="mock-gpt-3.5-turbo",
-        api_key="mock-key",
-        max_tokens=1000,
-        temperature=0.7
-    )
-    
-    client = MockLLMClient(config)
-    
-    try:
-        await client.initialize()
-        
-        # 测试批量请求性能
-        print("📋 测试批量请求性能...")
-        test_messages = [
-            LLMMessage(role="user", content=f"Test message {i}")
-            for i in range(10)
-        ]
-        
-        start_time = time.time()
-        
-        # 并发请求
-        tasks = []
-        for messages in [[msg] for msg in test_messages]:
-            task = client.generate_response(messages)
-            tasks.append(task)
-        
-        responses = await asyncio.gather(*tasks)
-        
-        total_time = time.time() - start_time
-        avg_time = total_time / len(responses)
-        
-        print(f"📊 性能统计:")
-        print(f"   • 总请求数: {len(responses)}")
-        print(f"   • 总耗时: {total_time:.2f}秒")
-        print(f"   • 平均耗时: {avg_time:.2f}秒/请求")
-        print(f"   • 吞吐量: {len(responses)/total_time:.2f}请求/秒")
-        
-        # 获取最终统计
-        stats = client.get_stats()
-        print(f"📈 客户端统计: {stats}")
-        
-    except Exception as e:
-        print(f"❌ 性能测试失败: {e}")
-    finally:
-        await client.close()
-
-
 async def main():
     """
     主函数：运行所有演示测试
@@ -369,23 +195,17 @@ async def main():
     
     try:
         # 运行所有测试
-        await test_mock_llm_client()
         await test_openai_llm_client()
         await test_error_handling()
         await test_rate_limiting()
-        await test_conversation_flow()
-        await performance_benchmark()
         
         print("\n" + "="*70)
         print("✅ 所有LLM集成测试完成！")
         print("="*70)
         print("\n📋 测试总结:")
-        print("• Mock LLM客户端功能验证")
         print("• OpenAI LLM客户端集成测试")
         print("• 错误处理和恢复机制")
         print("• 速率限制处理")
-        print("• 多轮对话流程")
-        print("• 性能基准测试")
         print("\n🎯 下一步:")
         print("• 配置真实的LLM API密钥")
         print("• 自定义提示模板")

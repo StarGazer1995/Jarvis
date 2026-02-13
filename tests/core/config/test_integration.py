@@ -221,9 +221,14 @@ class TestConfigurationIntegration:
         pass
     
     def _register_mocks(self, factory):
-        """注册模拟提供商"""
+        """注册Mock提供商"""
         factory.registry.register_provider("integration_mock", IntegrationMockClient)
         factory.registry.register_provider("slow_mock", SlowMockClient)
+        factory.registry.register_provider("mock", IntegrationMockClient)
+        
+        # 确保配置中的mock提供商被启用
+        if factory._config and "mock" in factory._config.providers:
+            factory._config.providers["mock"].enabled = True
     
     def test_end_to_end_config_loading(self, temp_config_file):
         """测试端到端配置加载"""

@@ -11,6 +11,7 @@ from typing import Dict, List, Any, Optional, Union
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from contextlib import AsyncExitStack
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.types import Tool, CallToolRequest, CallToolResult
@@ -29,6 +30,7 @@ class ARKMCPClient:
         self.logger = logging.getLogger(__name__)
         self.servers: Dict[str, SimpleMCPServerConfig] = {}
         self.sessions: Dict[str, ClientSession] = {}
+        self.server_exit_stacks: Dict[str, AsyncExitStack] = {}
         self.available_tools: Dict[str, Tool] = {}
         self.tool_schemas: Dict[str, Dict[str, Any]] = {}
         self.is_initialized = False
@@ -188,7 +190,8 @@ class ARKMCPClient:
             else:
                 # 尝试匹配简单名称
                 for key, t in self.available_tools.items():
-                    if t.name == tool_name:
+                    t_name = t.get("name") if isinstance(t, dict) else getattr(t, "name", None)
+                    if t_name == tool_name:
                         tool_key = key
                         tool = t
                         break
@@ -204,18 +207,20 @@ class ARKMCPClient:
                 raise ValueError(f"服务器 '{server_name}' 未连接")
             
             # 调用工具
-            request = CallToolRequest(
-                params={
-                    "name": tool.name,
-                    "arguments": arguments
-                }
-            )
+            tool_real_name = tool.get("name") if isinstance(tool, dict) else tool.name
             
-            result = await session.call_tool(request)
+            # 使用SDK的call_tool方法，直接传入名称和参数
+            result = await session.call_tool(tool_real_name, arguments)
+            
+            # Convert content objects to dicts
+            content = [
+                c.model_dump() if hasattr(c, "model_dump") else c 
+                for c in result.content
+            ]
             
             return {
                 "success": True,
-                "result": result.content,
+                "result": content,
                 "tool": tool_name,
                 "server": server_name
             }
@@ -271,10 +276,14 @@ class ARKMCPClient:
             是否成功断开连接
         """
         try:
-            session = self.sessions.get(server_name)
-            if session:
-                await session.close()
-                del self.sessions[server_name]
+            if server_name in self.sessions:
+                # Close the exit stack which closes the session and stdio streams
+                if server_name in self.server_exit_stacks:
+                    await self.server_exit_stacks[server_name].aclose()
+                    del self.server_exit_stacks[server_name]
+                
+                if server_name in self.sessions:
+                    del self.sessions[server_name]
                 
                 # 移除该服务器的工具
                 tools_to_remove = [key for key in self.available_tools.keys() 
@@ -654,26 +663,45 @@ class ARKMCPClient:
                 env=server_config.env
             )
             
+            # Create a new exit stack for this server
+            stack = AsyncExitStack()
+            self.server_exit_stacks[server_name] = stack
+            
             # 建立连接
-            async with stdio_client(server_params) as (read_stream, write_stream):
-                session = ClientSession(read_stream, write_stream)
-                
-                # 初始化会话
-                await session.initialize()
-                
-                # 存储会话
-                self.sessions[server_name] = session
-                
-                # 获取工具列表
-                tools_result = await session.list_tools()
-                for tool in tools_result.tools:
-                    tool_key = f"{server_name}:{tool.name}"
-                    self.available_tools[tool_key] = tool
-                
-                self.logger.info(f"成功连接到服务器 {server_name}，发现 {len(tools_result.tools)} 个工具")
+            # Enter the stdio context
+            read_stream, write_stream = await stack.enter_async_context(stdio_client(server_params))
+            
+            session = ClientSession(read_stream, write_stream)
+            # Enter the session context
+            await stack.enter_async_context(session)
+            
+            # 初始化会话
+            await session.initialize()
+            
+            # 存储会话
+            self.sessions[server_name] = session
+            
+            # 获取工具列表
+            tools_result = await session.list_tools()
+            for tool in tools_result.tools:
+                tool_info = {
+                    "name": tool.name,
+                    "description": tool.description or "",
+                    "inputSchema": tool.inputSchema,
+                    "server": server_name
+                }
+                tool_key = f"{server_name}:{tool.name}"
+                self.available_tools[tool_key] = tool_info
+                self.tool_schemas[tool_key] = tool.inputSchema
+            
+            self.logger.info(f"成功连接到服务器 {server_name}，发现 {len(tools_result.tools)} 个工具")
             
         except Exception as e:
             self.logger.error(f"连接到服务器 {server_name} 失败: {e}")
+            # Clean up the stack if connection failed
+            if server_name in self.server_exit_stacks:
+                await self.server_exit_stacks[server_name].aclose()
+                del self.server_exit_stacks[server_name]
             raise
     
     async def _disconnect_all_servers(self) -> None:

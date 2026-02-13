@@ -3,7 +3,7 @@
 
 # 全局配置
 global:
-  default_provider: "mock"  # 测试环境主要使用Mock提供商
+  default_provider: "openai"  # 测试环境使用OpenAI
   retry:
     max_attempts: 1  # 测试环境不重试，快速失败
     initial_delay: 0.1
@@ -19,54 +19,18 @@ global:
 
 # 提供商配置
 providers:
-  # Mock提供商 - 测试环境主要使用
-  mock:
-    enabled: true
-    api_key: "mock-key-test"
-    base_url: "http://localhost:8000"
-    default_model: "mock-test-model"
-    models:
-      mock-test-model:
-        max_tokens: 500  # 测试环境限制token数量
-        temperature: 0.0  # 测试环境使用确定性输出
-        top_p: 1.0
-        frequency_penalty: 0.0
-        presence_penalty: 0.0
-        response_delay: 0.01  # 极快响应用于测试
-      mock-gpt-3.5-turbo:
-        max_tokens: 1000
-        temperature: 0.0
-        top_p: 1.0
-        frequency_penalty: 0.0
-        presence_penalty: 0.0
-        response_delay: 0.01
-      mock-gpt-4:
-        max_tokens: 2000
-        temperature: 0.0
-        top_p: 1.0
-        frequency_penalty: 0.0
-        presence_penalty: 0.0
-        response_delay: 0.02
-    timeout:
-      connect: 2.0
-      read: 5.0
-      total: 10.0
-    retry:
-      max_attempts: 1
-      initial_delay: 0.1
-      max_delay: 0.1
-      exponential_base: 1.0
-
-  # OpenAI提供商 - 用于集成测试（可选）
+  # Mock提供商 - 已移除
+  # mock: ...
+  
+  # OpenAI提供商
   openai:
-    enabled: false  # 默认关闭，避免测试时产生费用
-    api_key: "${OPENAI_TEST_API_KEY}"
-    base_url: "https://api.openai.com/v1"
+    enabled: true
+    api_key: "${OPENAI_API_KEY}"
     default_model: "gpt-3.5-turbo"
     models:
       gpt-3.5-turbo:
-        max_tokens: 100  # 测试环境限制token使用
-        temperature: 0.0  # 确定性输出
+        max_tokens: 500  # 测试环境限制token数量
+        temperature: 0.0  # 测试环境使用确定性输出
         top_p: 1.0
         frequency_penalty: 0.0
         presence_penalty: 0.0

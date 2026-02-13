@@ -8,6 +8,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")
 
 from src.jarvis_agent import JarvisAgent, JarvisConfig
 from src.core.config.server import SimpleMCPServerConfig
+from src.core.config.loader import load_llm_config as load_yaml_config
+from src.core.llm.config import convert_to_client_config
 
 @cl.on_chat_start
 async def start():
@@ -26,6 +28,24 @@ async def start():
     
     # Initialize agent
     agent = JarvisAgent(config)
+    
+    # Load LLM Configuration from YAML
+    try:
+        # Default to production if not specified, to avoid Mock LLM in default run
+        env = os.getenv("JARVIS_ENV", "production")
+        yaml_config = load_yaml_config(environment=env)
+        client_config = convert_to_client_config(yaml_config)
+        
+        # Inject configuration into LLM Manager
+        # Note: We must do this before agent.initialize() is called
+        agent.ark_engine.llm_manager._default_config = client_config
+        
+        print(f"Loaded LLM Config: {client_config.provider_name} ({client_config.model})")
+        
+    except Exception as e:
+        print(f"Warning: Failed to load YAML configuration: {e}")
+        # Continue with default configuration (which might be Mock)
+    
     success = await agent.initialize()
     
     if not success:

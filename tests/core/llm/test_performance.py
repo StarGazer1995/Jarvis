@@ -27,7 +27,7 @@ class MockClient(BaseLLMClient):
 
 @pytest.fixture
 def mock_config():
-    return LLMConfig(provider=LLMProvider.MOCK, model="test")
+    return LLMConfig(provider=LLMProvider.OPENAI, model="test")
 
 @pytest.fixture
 def mock_client(mock_config):

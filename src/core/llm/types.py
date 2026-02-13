@@ -15,7 +15,6 @@ class LLMProvider(Enum):
     AZURE_OPENAI = "azure_openai"
     OLLAMA = "ollama"
     LITELLM = "litellm"  # LiteLLM统一接口
-    MOCK = "mock"  # 用于测试
 
 
 @dataclass
@@ -27,10 +26,18 @@ class LLMMessage:
 
 
 @dataclass
+class TokenUsage:
+    """Token usage statistics"""
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+
+@dataclass
 class LLMResponse:
     """LLM响应格式"""
     content: str
-    usage: Dict[str, int] = field(default_factory=dict)
+    usage: Union[Dict[str, int], TokenUsage] = field(default_factory=dict)
     model: str = ""
     finish_reason: str = ""
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -62,7 +69,7 @@ class LLMConfig:
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> 'LLMConfig':
         """Create LLMConfig from dictionary."""
-        provider_str = config_dict.get('provider', 'mock')
+        provider_str = config_dict.get('provider', 'openai')
         try:
             provider = LLMProvider(provider_str)
         except ValueError:
@@ -70,7 +77,8 @@ class LLMConfig:
             try:
                 provider = LLMProvider(provider_str.lower())
             except ValueError:
-                provider = LLMProvider.MOCK # Default to mock if unknown
+                # Default to OPENAI if unknown (Mock is deprecated)
+                provider = LLMProvider.OPENAI 
             
         return cls(
             provider=provider,
@@ -89,14 +97,15 @@ class LLMConfig:
     def from_env(cls) -> 'LLMConfig':
         """Create LLMConfig from environment variables."""
         import os
-        provider_str = os.getenv('LLM_PROVIDER', 'mock')
+        provider_str = os.getenv('LLM_PROVIDER', 'openai')
         try:
             provider = LLMProvider(provider_str)
         except ValueError:
             try:
                 provider = LLMProvider(provider_str.lower())
             except ValueError:
-                provider = LLMProvider.MOCK
+                # Default to OPENAI if unknown (Mock is deprecated)
+                provider = LLMProvider.OPENAI
             
         return cls(
             provider=provider,

@@ -1,0 +1,66 @@
+:root {
+  --primary: #00bcd4;
+  --secondary: #607d8b;
+  --background: #121212;
+  --paper: #1e1e1e;
+  --font-family: 'Roboto Mono', monospace;
+}
+
+body {
+  font-family: var(--font-family);
+  background-color: var(--background);
+  color: #e0e0e0;
+}
+
+/* Customizing the chat input */
+#chat-input {
+  background-color: var(--paper);
+  border: 1px solid #333;
+  color: #fff;
+  border-radius: 8px;
+}
+
+/* Customizing message bubbles */
+.message-bubble {
+  border-radius: 8px;
+}
+
+.user-message {
+  background-color: #263238;
+}
+
+.assistant-message {
+  background-color: #1e1e1e;
+  border-left: 3px solid var(--primary);
+}
+
+/* Header customization */
+header {
+  background-color: #000 !important;
+  border-bottom: 1px solid #333;
+}
+
+/* Code block styling */
+pre {
+  background-color: #111 !important;
+  border: 1px solid #333;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #121212; 
+}
+ 
+::-webkit-scrollbar-thumb {
+  background: #333; 
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555; 
+}

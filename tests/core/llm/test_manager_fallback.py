@@ -1,6 +1,6 @@
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from src.core.llm.client import LLMManager, LLMConfig, LLMProvider, LLMMessage, LLMResponse, BaseLLMClient
 
 class MockClient(BaseLLMClient):
@@ -26,21 +26,25 @@ class MockClient(BaseLLMClient):
 
 @pytest.mark.asyncio
 async def test_llm_manager_fallback():
-    # Setup configs
-    primary_config = LLMConfig(provider=LLMProvider.MOCK, model="primary")
-    fallback_config1 = LLMConfig(provider=LLMProvider.MOCK, model="fallback1")
-    fallback_config2 = LLMConfig(provider=LLMProvider.MOCK, model="fallback2")
+    # Setup configs (Using OPENAI to bypass type checks, but with MockClient implementation)
+    # Provide api_key to pass validation
+    primary_config = LLMConfig(provider=LLMProvider.OPENAI, model="primary", api_key="test-key")
+    fallback_config1 = LLMConfig(provider=LLMProvider.OPENAI, model="fallback1", api_key="test-key")
+    fallback_config2 = LLMConfig(provider=LLMProvider.OPENAI, model="fallback2", api_key="test-key")
     
     # Setup manager
     manager = LLMManager(primary_config)
     
-    # We need to manually inject our MockClient because LLMClientFactory creates new instances
-    # Or we can patch LLMClientFactory.
+    # We need to patch create_client to return our MockClient directly
+    # or patch initialize to do nothing
     
-    # Let's add clients normally first
-    await manager.initialize_default_client()
-    await manager.add_client("fallback1", fallback_config1)
-    await manager.add_client("fallback2", fallback_config2)
+    with patch("src.core.llm.providers.openai_client.OpenAILLMClient.initialize", new_callable=AsyncMock) as mock_init:
+        mock_init.return_value = True
+        
+        # Let's add clients normally first
+        await manager.initialize_default_client()
+        await manager.add_client("fallback1", fallback_config1)
+        await manager.add_client("fallback2", fallback_config2)
     
     # Now replace the clients with our controlled mocks
     primary_client = MockClient(primary_config, should_fail=True)

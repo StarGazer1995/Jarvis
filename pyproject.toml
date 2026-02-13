@@ -29,6 +29,7 @@ dependencies = [
     "langgraph>=1.0.6",
     "langchain-core>=1.2.7",
     "tavily-python>=0.3.0",
+    "fastmcp>=2.14.5",
 ]
 
 [project.optional-dependencies]
@@ -50,6 +51,9 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
 addopts = "-v --tb=short"
+markers = [
+    "e2e: End-to-end tests for the web interface",
+]
 
 [tool.coverage.run]
 source = ["src"]
@@ -65,4 +69,10 @@ exclude_lines = [
     "raise NotImplementedError",
     "if 0:",
     "if __name__ == .__main__.:",
+]
+
+[dependency-groups]
+dev = [
+    "playwright>=1.58.0",
+    "pytest-playwright>=0.7.2",
 ]
