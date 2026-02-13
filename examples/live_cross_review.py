@@ -1,8 +1,8 @@
 """
-Live Cross-Review Demo (Multi-Agent Loop)
+Live Cross-Review Demo (Generic Refinement Loop)
 
-This script demonstrates a real-time multi-document cross-review agent with a Reviewer loop.
-It uses Tavily for web research and implements a "Researcher -> Reviewer -> Researcher" feedback cycle.
+This script demonstrates a real-time multi-document cross-review agent using the
+generic RefinementLoop capability.
 
 Usage:
     export TAVILY_API_KEY="your-key"
@@ -13,7 +13,6 @@ import asyncio
 import logging
 import os
 import sys
-from typing import List, Dict, Any
 
 # Ensure project root is in path
 sys.path.append(os.getcwd())
@@ -23,6 +22,7 @@ from src.core.config.loader import load_llm_config as load_yaml_config
 from src.core.config.loader import LLMConfig as YamlLLMConfig, ProviderConfig, ModelConfig
 from src.core.llm.types import LLMConfig as ClientLLMConfig, LLMProvider
 from src.capabilities.web_research import WebResearcher
+from src.capabilities.refinement import RefinementLoop
 
 # Configure logging
 logging.basicConfig(
@@ -58,42 +58,15 @@ def convert_to_client_config(yaml_config: YamlLLMConfig) -> ClientLLMConfig:
         base_url=provider_cfg.base_url,
         temperature=model_cfg.temperature,
         max_tokens=model_cfg.max_tokens,
-        timeout=provider_cfg.timeout.total if getattr(provider_cfg, 'timeout', None) else 300.0,
+        timeout=provider_cfg.timeout.total if getattr(provider_cfg, 'timeout', None) else 600.0,
         provider_name=provider_name
     )
 
-async def run_reviewer_check(agent: JarvisAgent, research_output: str) -> str:
-    """
-    Run the Reviewer agent to validate the research output.
-    """
-    reviewer_prompt = f"""
-    You are a strict QA Reviewer. Your job is to validate the research report below.
-    
-    Research Report:
-    {research_output}
-    
-    Check for the following:
-    1. Are BOTH 'OpenAI o1' AND 'Claude 3.5 Sonnet' covered in detail?
-    2. Are there specific pricing numbers for BOTH models?
-    3. Are the sources listed and do they look relevant?
-    
-    If the report is complete and accurate, output exactly: "PASS"
-    If information is missing or incorrect, output "RETRY: " followed by specific instructions on what is missing.
-    
-    Example Failure: "RETRY: Missing pricing for Claude 3.5 Sonnet. Please search specifically for 'Claude 3.5 Sonnet pricing'."
-    """
-    
-    # We use the same agent but with a pure prompt (no tools needed for review ideally, but we keep it simple)
-    # Ideally we would disable tools for the reviewer, but here we just prompt it.
-    response = await agent.process_message(reviewer_prompt)
-    return response
-
 async def main():
-    logger.info("Starting Live Cross-Review Demo (Multi-Agent)...")
+    logger.info("Starting Live Cross-Review Demo (Generic Loop)...")
     
     if not os.getenv("TAVILY_API_KEY"):
         logger.warning("TAVILY_API_KEY not found. Web search will fail.")
-        logger.warning("Please set it via: export TAVILY_API_KEY='tvly-...'")
 
     # 1. Setup Agent
     try:
@@ -114,54 +87,62 @@ async def main():
     researcher = WebResearcher()
     agent.register_capabilities([researcher])
     
-    # 2. Initial Research Task
+    # 2. Define Generator and Reviewer Functions
+    
+    async def generator_func(prompt: str) -> str:
+        """The generator performs the research/writing task."""
+        return await agent.process_message(prompt)
+
+    async def reviewer_func(content: str) -> str:
+        """The reviewer validates the content."""
+        reviewer_prompt = f"""
+        You are a strict QA Reviewer. Validate the research report below.
+        
+        Report:
+        {content}
+        
+        Check for:
+        1. Coverage of BOTH 'OpenAI o1' AND 'Claude 3.5 Sonnet'.
+        2. Specific pricing numbers for BOTH.
+        3. Relevant source URLs listed.
+        
+        Output "PASS" if good.
+        Output "RETRY: <instructions>" if missing info.
+        """
+        # We assume the same agent can role-play the reviewer
+        # In a real system, you might use a different agent or model
+        return await agent.process_message(reviewer_prompt)
+
+    # 3. Execute via RefinementLoop Capability
+    loop = RefinementLoop(
+        generator=generator_func,
+        reviewer=reviewer_func,
+        max_retries=2
+    )
+    
     task_prompt = (
         "I need a cross-review of the latest AI models. "
-        "Please search for the latest pricing and capabilities of 'OpenAI o1' and 'Claude 3.5 Sonnet'. "
-        "Use the web_search tool to find information. "
-        "Then, provide a comparison table highlighting their differences in pricing and key features. "
+        "Search for pricing and capabilities of 'OpenAI o1' and 'Claude 3.5 Sonnet'. "
+        "PRIORITY: Use the 'web_search_knowledge' tool first to find high-quality information from Zhihu, Arxiv, and Scholar. "
+        "Only use standard web_search if knowledge sources are insufficient. "
+        "Provide a comparison table with differences. "
         "IMPORTANT: List all source URLs at the end."
     )
     
-    print(f"\n[Phase 1] Initial Research...\nUser: {task_prompt}\n")
+    print(f"\nUser: {task_prompt}\n")
     print("-" * 50)
     
-    research_output = await agent.process_message(task_prompt)
-    print(f"\n[Phase 1] Output:\n{research_output}\n")
-    print("-" * 50)
+    # Run the loop
+    final_result = await loop.run(task_prompt)
     
-    # 3. Review Loop
-    max_retries = 2
-    for attempt in range(max_retries):
-        print(f"\n[Phase 2] Reviewing (Attempt {attempt+1}/{max_retries})...")
-        review_result = await run_reviewer_check(agent, research_output)
-        print(f"Reviewer Verdict: {review_result}")
-        
-        if "PASS" in review_result:
-            print("\n✅ Research Approved!")
-            break
-        elif "RETRY:" in review_result:
-            print("\n❌ Research Rejected. Triggering Follow-up...")
-            
-            # Extract instructions
-            instructions = review_result.split("RETRY:", 1)[1].strip()
-            
-            # 4. Follow-up Research
-            follow_up_prompt = (
-                f"The previous research was incomplete. Reviewer feedback: {instructions}\n"
-                "Please perform additional searches to address these gaps specifically. "
-                "Then, combine the new findings with the previous information to generate an UPDATED comparison table. "
-                "Ensure ALL models (OpenAI o1 AND Claude 3.5 Sonnet) are covered."
-            )
-            
-            print(f"\n[Phase 3] Follow-up Research...\nInstruction: {follow_up_prompt}\n")
-            research_output = await agent.process_message(follow_up_prompt)
-            print(f"\n[Phase 3] Updated Output:\n{research_output}\n")
-            print("-" * 50)
-        else:
-            print("\n⚠️ Reviewer gave ambiguous response. Stopping loop.")
-            break
-            
+    # Save the result
+    saved_path = loop.save_result(final_result, directory="reports", prefix="cross_review", task=task_prompt)
+    
+    print("-" * 50)
+    print(f"\n✨ Final Report Saved Successfully!")
+    print(f"Path: {saved_path}")
+    print("-" * 50)
+
     await agent.stop()
 
 if __name__ == "__main__":

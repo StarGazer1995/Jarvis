@@ -29,12 +29,13 @@ class WebResearcher:
             
         self.client = TavilyClient(api_key=self.api_key) if self.api_key else None
 
-    def search(self, query: str) -> str:
+    def search(self, query: str, domains: Optional[list[str]] = None) -> str:
         """
         Search the web for a query and return relevant results.
         
         Args:
             query: The search query string.
+            domains: Optional list of domains to restrict the search to.
             
         Returns:
             A JSON string containing search results with titles, urls, and snippets.
@@ -48,6 +49,7 @@ class WebResearcher:
                 query=query,
                 search_depth="advanced",
                 max_results=5,
+                include_domains=domains,
                 include_answer=True
             )
             
@@ -63,6 +65,18 @@ class WebResearcher:
             
         except Exception as e:
             return f"Error performing search: {str(e)}"
+
+    def search_knowledge(self, query: str) -> str:
+        """
+        Search specifically on knowledge platforms like Zhihu, Arxiv, and Google Scholar.
+        """
+        knowledge_domains = [
+            "zhihu.com",
+            "arxiv.org",
+            "scholar.google.com",
+            "semanticscholar.org"
+        ]
+        return self.search(query, domains=knowledge_domains)
 
     def browse(self, url: str) -> str:
         """
@@ -109,6 +123,20 @@ class WebResearcher:
                 "schema": {
                     "name": "web_search",
                     "description": "Search the web for up-to-date information.",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string", "description": "The search query"}
+                        },
+                        "required": ["query"]
+                    }
+                }
+            },
+            "web_search_knowledge": {
+                "func": self.search_knowledge,
+                "schema": {
+                    "name": "web_search_knowledge",
+                    "description": "Search specifically on knowledge platforms like Zhihu, Arxiv, and Google Scholar.",
                     "input_schema": {
                         "type": "object",
                         "properties": {
