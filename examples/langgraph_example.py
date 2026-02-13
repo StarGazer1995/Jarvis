@@ -153,56 +153,8 @@ async def main():
         logger.warning("Could not register local tool function: tools_node not found on engine")
 
     # 4. Implement and register manage_tasks local tool
-    def manage_tasks(action: str, description: str = None, id: str = None, status: str = None, result: str = None):
-        """Manage the todo list."""
-        logger.info(f"*** MOCK MANAGE TASKS: {action} ***")
-        
-        if action == "add":
-            if not description:
-                return "Error: Description required for adding task."
-            task_id = str(len(engine.todo_list) + 1)
-            task = Task(
-                id=task_id,
-                description=description,
-                status=TaskStatus.PENDING
-            )
-            engine.todo_list.append(task)
-            logger.info(f"Task added: [{task_id}] {description}")
-            return f"Task added: [{task_id}] {description}"
-            
-        elif action == "update":
-            task_id = str(id)
-            task = next((t for t in engine.todo_list if t.id == task_id), None)
-            if not task:
-                logger.error(f"Error: Task {task_id} not found.")
-                return f"Error: Task {task_id} not found."
-            
-            if status:
-                try:
-                    task.status = TaskStatus(status)
-                except ValueError:
-                    pass
-            if result:
-                task.result = result
-                logger.info(f"Task {task_id} updated.")
-            return f"Task {task_id} updated."
-            
-        elif action == "complete":
-            task_id = str(id)
-            task = next((t for t in engine.todo_list if t.id == task_id), None)
-            if not task:
-                logger.error(f"Error: Task {task_id} not found.")
-                return f"Error: Task {task_id} not found."
-            task.status = TaskStatus.COMPLETED
-            if result:
-                task.result = result
-                logger.info(f"Task {task_id} completed.")
-            return f"Task {task_id} completed."
-        logger.error(f"Error: Unknown action {action}.")
-        return f"Error: Unknown action {action}."
-
-    if hasattr(engine, 'tools_node'):
-        engine.tools_node.register_tool("manage_tasks", manage_tasks)
+    # REMOVED: We now rely on the native manage_tasks handler in ToolsNode
+    # The engine's ToolsNode automatically handles 'manage_tasks' calls if the tool definition exists.
 
     # 3. Register the tool definition (Metadata) so LLM knows it exists
     # Note: engine.initialize() resets available_tools, so we must add this AFTER initialize
@@ -236,13 +188,20 @@ async def main():
         }
     }
     
-    logger.info("Registered local tool: manage_tasks")
+    logger.info("Enabled native tool: manage_tasks")
     logger.info("Registered local tool: buy_item")
+
+    # Display available tools
+    print("\n--- Available Tools ---")
+    for tool_name, tool_info in engine.available_tools.items():
+        description = tool_info.get("description", "No description")
+        print(f"- {tool_name}: {description}")
+    print("-" * 50)
 
     # Run Real Interaction
     # We ask a question that requires both planning (adding a task) and execution (doing it).
     # This demonstrates the full "Plan -> Execute -> Complete" cycle.
-    user_input = "Please add a task to buy 5 cartons of milk and then execute it using the 'buy_item' tool."
+    user_input = "Please add a task to buy 5 cartons of milk, execute it using the 'buy_item' tool, and finally mark the task as completed. IMPORTANT: You must explicitly call manage_tasks with action='complete' and wait for the confirmation message before giving your final answer."
     print(f"\nUser: {user_input}")
     print("-" * 50)
     
