@@ -1,0 +1,1 @@
+# Capabilities package for extended agent functionalities

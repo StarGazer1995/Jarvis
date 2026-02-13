@@ -124,6 +124,36 @@ class JarvisAgent:
             self.logger.error(f"Jarvis Agent initialization failed: {e}")
             return False
     
+    def register_capabilities(self, capabilities: List[Any]) -> None:
+        """
+        Register capabilities with the ARK engine.
+        
+        Args:
+            capabilities: List of capability objects that implement get_tools()
+        """
+        if not self.is_initialized:
+            self.logger.warning("Agent not initialized. Capabilities might be overwritten during initialization.")
+            
+        for capability in capabilities:
+            if not hasattr(capability, 'get_tools'):
+                self.logger.warning(f"Capability {capability} does not implement get_tools()")
+                continue
+                
+            tools = capability.get_tools()
+            for tool_key, tool_def in tools.items():
+                func = tool_def.get('func')
+                schema = tool_def.get('schema')
+                
+                if func and schema:
+                    tool_name = schema['name']
+                    # Register function logic
+                    if hasattr(self.ark_engine, 'tools_node'):
+                        self.ark_engine.tools_node.register_tool(tool_name, func)
+                    
+                    # Register schema
+                    self.ark_engine.available_tools[tool_name] = schema
+                    self.logger.info(f"Registered tool: {tool_name}")
+
     async def start(self) -> None:
         """Start Jarvis Agent."""
         if not self.is_initialized:
