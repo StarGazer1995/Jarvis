@@ -24,3 +24,13 @@ class JarvisState(TypedDict):
     
     # The last node that executed (useful for routing)
     sender: str
+
+class MultiAgentState(JarvisState):
+    """
+    Extended state for Multi-Agent Supervisor System.
+    """
+    # The next agent to route to
+    next: str
+    
+    # Shared structured data for inter-agent protocol
+    structured_data: Dict[str, Any]

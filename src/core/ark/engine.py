@@ -205,8 +205,10 @@ class ARKEngine(ReActAgent):
                 last_msg = messages[-1]
                 if isinstance(last_msg, AIMessage):
                     response = last_msg.content
-                else:
+                elif hasattr(last_msg, 'content'):
                     response = str(last_msg.content)
+                else:
+                    response = str(last_msg)
             
             # 5. Update Context (Legacy)
             if self.state != ARKState.ERROR:
@@ -245,7 +247,7 @@ class ARKEngine(ReActAgent):
         # But for now we can leave it as is or delegate to new logic.
         # Since ToolsNode handles it on the state copy, this instance method
         # modifies self.todo_list directly.
-        return super()._manage_tasks(action, **kwargs) # ReActAgent doesn't have _manage_tasks, wait.
+        # return super()._manage_tasks(action, **kwargs) # ReActAgent doesn't have _manage_tasks, wait.
         # ARKEngine defined _manage_tasks. I should implement it here if I want to support direct calls.
         # But since I overwrote the file, I need to put the logic back if I want to keep it.
         # For now, I will skip implementing it as it's not used by LangGraph path.

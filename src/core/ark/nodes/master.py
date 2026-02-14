@@ -8,15 +8,19 @@ from langchain_core.runnables import RunnableConfig
 from ..state import JarvisState
 from ...llm.client import LLMManager, LLMMessage
 from ...agent.types import AgentStep
+from ..utils import clean_llm_response, AgentSpec
 
 logger = logging.getLogger("ark.nodes.master")
 
 class MasterNode:
     """
     The main reasoning node (Agent) for Jarvis.
+    Merges responsibilities of Supervisor (Scheduling) and Executor (Tools).
     """
-    def __init__(self, llm_manager: LLMManager):
+    def __init__(self, llm_manager: LLMManager, agents: Optional[List[AgentSpec]] = None):
         self.llm_manager = llm_manager
+        self.agents = agents or []
+        self.agent_map = {a.name: a for a in self.agents}
 
     async def __call__(self, state: JarvisState, config: RunnableConfig) -> Dict[str, Any]:
         """
@@ -39,14 +43,17 @@ class MasterNode:
         logger.debug("MasterNode calling LLM...")
         try:
             response = await self.llm_manager.generate_response(messages)
-            content = response.content
+            raw_content = response.content
         except Exception as e:
             logger.error(f"LLM call failed: {e}")
-            content = f"Error: Failed to generate response from LLM: {e}"
+            raw_content = f"Error: Failed to generate response from LLM: {e}"
         
-        logger.debug(f"LLM Response: {content[:100]}...")
+        logger.debug(f"LLM Response (Raw): {raw_content[:100]}...")
         
-        # 4. Parse Response for Tools
+        # 4. Clean Response (<think> tags)
+        content = clean_llm_response(raw_content)
+        
+        # 5. Parse Response for Tools OR Agents
         tool_call = self._parse_tool_call(content)
         
         if tool_call:
@@ -106,6 +113,10 @@ class MasterNode:
             if m.type == "tool":
                 role = "user"
                 content = f"Observation: {content}"
+            elif m.name and m.name in self.agent_map:
+                 # Worker Output
+                 content = f"[WORKER OUTPUT from {m.name}]:\n{content}"
+                 role = "user"
             
             out.append(LLMMessage(role=role, content=str(content)))
         return out
@@ -139,25 +150,35 @@ class MasterNode:
                 tools_desc += f"- {name}: {desc}\n  Schema: {schema}\n"
         else:
             tools_desc += "No tools available.\n"
+            
+        # 3. Available Agents (Workers)
+        agents_desc = ""
+        if self.agents:
+            agents_desc = "Available Worker Agents:\n"
+            for agent in self.agents:
+                agents_desc += f"- {agent.name}: {agent.description}\n"
         
-        return f"""You are Jarvis, an intelligent agent using the ReAct framework.
+        return f"""You are Jarvis, an intelligent agent acting as an Orchestrator.
 
 {todo_status}
 
 {tools_desc}
 
+{agents_desc}
+
 Instructions:
 1. Analyze the user's request.
 2. Break it down into a list of tasks using 'manage_tasks' if needed.
-3. Execute tasks one by one.
-4. Use available tools to gather information or perform actions.
+3. Schedule execution by delegating to Worker Agents or using Tools.
+   - To delegate to a Worker Agent, use 'Action: <AgentName>' with appropriate input.
+4. Execute tasks one by one.
 5. Update task status as you progress.
 6. When finished, provide a Final Answer.
 
 Format your response as follows:
 
 Thought: <your reasoning>
-Action: <tool_name>
+Action: <tool_name_or_agent_name>
 Action Input: <json_or_string_input>
 
 OR
@@ -206,15 +227,17 @@ Final Answer: <your final response to the user>
                             else:
                                 raise
                     else:
-                        # Fallback to error dict
-                        action_input = {"error": "Failed to extract JSON from input", "raw_input": input_str}
+                        # Fallback to error dict or string
+                        # If action is an agent, input might be string (task description)
+                        # Let's handle plain string input if JSON fail
+                        action_input = input_str
                 except:
-                    # If extraction fails, use error dict
-                    action_input = {"error": "JSON extraction exception", "raw_input": input_str}
+                     action_input = input_str
             
-            # Final safety check: ensure action_input is a dict
-            if not isinstance(action_input, dict):
-                action_input = {"error": "Invalid input type", "raw_input": str(action_input)}
+            # If action_input is just a string, wrap it if needed or return as is?
+            # ReActAgent logic returned dict or string.
+            # MasterNode logic expects dict usually for tools.
+            # If we allow string for agents, we should return it.
                  
             return {
                 "action": action,
