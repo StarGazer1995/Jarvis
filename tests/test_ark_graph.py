@@ -3,8 +3,9 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock
 from langchain_core.messages import AIMessage, HumanMessage
 
-from src.core.ark.graph import create_ark_graph
-from src.core.ark.state import JarvisState
+from src.core.ark.graph import create_ark_graph, create_supervisor_graph
+from src.core.ark.state import JarvisState, MultiAgentState
+from src.core.ark.utils import AgentSpec, create_agent_node
 from src.core.llm.client import LLMManager, LLMResponse
 from src.core.mcp.client import ARKMCPClient
 
@@ -85,3 +86,58 @@ async def test_ark_graph_tool_execution():
     
     # Check Final Answer
     assert messages[3].content == "Final Answer: Done."
+
+@pytest.mark.asyncio
+async def test_supervisor_flow():
+    # Mock Dependencies
+    mock_llm = MagicMock(spec=LLMManager)
+    mock_llm.generate_response = AsyncMock()
+    
+    # Define a Worker Agent
+    async def worker_func(state: MultiAgentState):
+        return {"content": "Worker Task Done", "data": {"status": "complete"}}
+        
+    worker_node = create_agent_node("WorkerA", worker_func)
+    agent_spec = AgentSpec(name="WorkerA", description="Does work", node=worker_node)
+    
+    # Scenario: User -> Supervisor (Delegate to WorkerA) -> WorkerA -> Supervisor (Final Answer)
+    
+    # 1. Supervisor delegates to WorkerA (using tool-call syntax for routing)
+    # MasterNode parses "Action: WorkerA" as a tool call
+    response1 = LLMResponse(content="Thought: Delegate to WorkerA.\nAction: WorkerA\nAction Input: {}")
+    
+    # 2. Supervisor receives WorkerA output and finishes
+    response2 = LLMResponse(content="Final Answer: Task Complete.")
+    
+    mock_llm.generate_response.side_effect = [response1, response2]
+    
+    graph = create_supervisor_graph(mock_llm, [agent_spec])
+    
+    initial_state = {
+        "messages": [HumanMessage(content="Do work")],
+        "user_input": "Do work",
+        "todo_list": [],
+        "scratchpad": {},
+        "structured_data": {},
+        "sender": "user"
+    }
+    
+    result = await graph.ainvoke(initial_state, {"recursion_limit": 10})
+    
+    messages = result["messages"]
+    # Expected: [Human, AI(Delegate), WorkerOutput, AI(Final)]
+    
+    assert len(messages) == 4
+    
+    # Check Delegation (AI Message with Tool Call)
+    assert isinstance(messages[1], AIMessage)
+    assert messages[1].tool_calls[0]["name"] == "WorkerA"
+    
+    # Check Worker Output
+    # Worker output is a HumanMessage with name=WorkerA
+    assert isinstance(messages[2], HumanMessage)
+    assert messages[2].name == "WorkerA"
+    assert messages[2].content == "Worker Task Done"
+    
+    # Check Final Answer
+    assert messages[3].content == "Final Answer: Task Complete."

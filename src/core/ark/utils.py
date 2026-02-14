@@ -80,8 +80,4 @@ def clean_llm_response(text: str) -> str:
     # Strip whitespace
     cleaned = cleaned.strip()
     
-    # If multiple lines, take the last non-empty line
-    lines = [l.strip() for l in cleaned.split('\n') if l.strip()]
-    if lines:
-        return lines[-1]
     return cleaned
