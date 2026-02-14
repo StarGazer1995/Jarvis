@@ -186,6 +186,8 @@ class TestARKEngine(unittest.IsolatedAsyncioTestCase):
     async def test_legacy_methods(self):
         """Test legacy methods for compatibility."""
         # _get_system_prompt
+        # Note: MasterNode now handles prompt, but engine still has legacy method calling super
+        # Since ARKEngine inherits from ReActAgent, we mock ReActAgent methods
         with patch('src.core.agent.react.ReActAgent._get_system_prompt', return_value="sys prompt"):
             prompt = self.engine._get_system_prompt()
             self.assertEqual(prompt, "sys prompt")
@@ -244,17 +246,7 @@ class TestARKEngine(unittest.IsolatedAsyncioTestCase):
 
     async def test_discover_tools_exception(self):
         """Test _discover_tools exception handling (internal loop)."""
-        # We need to make sessions access raise exception
-        # But sessions is a property or dict on mock.
-        # If we can't easily mock attribute access raising, we can try mocking discover_tools to fail
-        # But we want the OUTER try/catch in _discover_tools (lines 276-278)
-        
-        # The outer try catch wraps the whole function body basically.
-        # So if any line inside raises, it catches.
-        
-        # Let's mock mcp_client.sessions.keys() to raise exception
-        # We need to mock the sessions attribute itself to be something that raises on keys()
-        
+        # Mock sessions keys raising exception
         mock_sessions = MagicMock()
         mock_sessions.keys.side_effect = Exception("Sessions Access Fail")
         self.mock_mcp_client.sessions = mock_sessions
@@ -263,8 +255,6 @@ class TestARKEngine(unittest.IsolatedAsyncioTestCase):
         
         # Should catch exception and reset available_tools
         self.assertEqual(self.engine.available_tools, {})
-        # Logs should contain error
-        # We can't easily check logs unless we mock logger, but code coverage will show it.
 
     async def test_process_input_edge_cases(self):
         """Test edge cases in process_input."""
