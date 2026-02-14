@@ -4,21 +4,45 @@ This directory contains demonstration scripts that showcase the capabilities of 
 
 ## Available Examples
 
-### 1. Basic ARK Demo (`basic_ark_demo.py`)
-**Purpose**: Demonstrates the core ARK engine functionality
+### 1. Complete System Demo (`complete_demo.py`)
+**Purpose**: Comprehensive demonstration of the entire ARK system
 **Features**:
-- ARK engine initialization and configuration
-- Context management and conversation turns
-- Intent recognition and entity extraction
-- Security validation and tool execution simulation
-- Response generation and decision making
+- Full system initialization and configuration
+- Multi-turn conversation flow simulation
+- Tool integration and execution
+- Context persistence across sessions
+- Performance monitoring and metrics
+- End-to-end workflow demonstration
 
 **Usage**:
 ```bash
-python examples/basic_ark_demo.py --verbose
+# Run complete demonstration
+python examples/complete_demo.py --verbose
+
+# Run specific demonstration modules
+python examples/complete_demo.py --demo conversation
+python examples/complete_demo.py --demo tools
+python examples/complete_demo.py --demo context
+python examples/complete_demo.py --demo performance
+
+# Quick demonstration with fewer test cases
+python examples/complete_demo.py --quick
 ```
 
-### 2. MCP Integration Demo (`mcp_integration_demo.py`)
+### 2. Conversation Demo (`conversation_demo.py`)
+**Purpose**: Interactive conversation demonstration
+**Features**:
+- Interactive command-line interface
+- Real-time conversation with the agent
+- Support for system commands (help, status, tools)
+- Tool execution during conversation
+
+**Usage**:
+```bash
+python examples/conversation_demo.py
+```
+
+### 3. MCP Integration Demo (`mcp_integration_demo.py`)
 **Purpose**: Shows Model Context Protocol (MCP) server integration
 **Features**:
 - MCP server discovery and connection
@@ -32,7 +56,7 @@ python examples/basic_ark_demo.py --verbose
 python examples/mcp_integration_demo.py --verbose
 ```
 
-### 3. Context Management Demo (`context_management_demo.py`)
+### 4. Context Management Demo (`context_management_demo.py`)
 **Purpose**: Demonstrates conversation context handling
 **Features**:
 - Multi-turn conversation management
@@ -44,20 +68,6 @@ python examples/mcp_integration_demo.py --verbose
 **Usage**:
 ```bash
 python examples/context_management_demo.py --verbose
-```
-
-### 4. Intent Recognition Demo (`intent_recognition_demo.py`)
-**Purpose**: Shows intent recognition and entity extraction
-**Features**:
-- Basic intent classification
-- Named entity recognition
-- Pattern matching and confidence scoring
-- Multi-language support
-- Context-aware intent recognition
-
-**Usage**:
-```bash
-python examples/intent_recognition_demo.py --verbose
 ```
 
 ### 5. Security Validation Demo (`security_validation_demo.py`)
@@ -74,29 +84,30 @@ python examples/intent_recognition_demo.py --verbose
 python examples/security_validation_demo.py --verbose
 ```
 
-### 6. Complete System Demo (`complete_system_demo.py`)
-**Purpose**: Comprehensive demonstration of the entire ARK system
+### 6. LLM Integration Demo (`comprehensive_llm_demo.py`)
+**Purpose**: Low-level LLM client and provider testing
 **Features**:
-- Full system initialization and configuration
-- Multi-turn conversation flow simulation
-- Tool integration and execution
-- Context persistence across sessions
-- Performance monitoring and metrics
-- End-to-end workflow demonstration
+- OpenAI/Anthropic client testing
+- Error handling and retry mechanisms
+- Rate limiting verification
+- Streaming response handling
 
 **Usage**:
 ```bash
-# Run complete demonstration
-python examples/complete_system_demo.py --verbose
+python examples/comprehensive_llm_demo.py
+```
 
-# Run specific demonstration modules
-python examples/complete_system_demo.py --demo conversation
-python examples/complete_system_demo.py --demo tools
-python examples/complete_system_demo.py --demo context
-python examples/complete_system_demo.py --demo performance
+### 7. LangGraph Example (`langgraph_example.py`)
+**Purpose**: Demonstrates LangGraph-based engine with real LLM
+**Features**:
+- Loading configuration from YAML
+- Custom tool registration
+- LangGraph workflow execution
+- "Plan -> Execute -> Complete" cycle
 
-# Quick demonstration with fewer test cases
-python examples/complete_system_demo.py --quick
+**Usage**:
+```bash
+python examples/langgraph_example.py
 ```
 
 ## Running Examples
@@ -104,7 +115,7 @@ python examples/complete_system_demo.py --quick
 ### Prerequisites
 1. Ensure you're in the project root directory
 2. Install all dependencies: `uv sync`
-3. Set up any required environment variables
+3. Set up any required environment variables (e.g. `OPENAI_API_KEY`, `TAVILY_API_KEY`)
 
 ### General Usage Pattern
 ```bash
@@ -172,7 +183,7 @@ for example in examples/*.py; do
 done
 
 # Test specific example with verbose output
-python examples/complete_system_demo.py --verbose --demo all
+python examples/complete_demo.py --verbose --demo all
 ```
 
 ## Troubleshooting

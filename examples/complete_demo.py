@@ -244,8 +244,7 @@ async def demonstrate_jarvis_capabilities():
         print(f"  ✅ 对话历史导出成功")
         
         print("\n💡 接下来你可以:")
-        print("  1. 运行 python examples/simple_test.py 进行基本功能测试")
-        print("  2. 运行 python examples/conversation_demo.py 进行交互式对话")
+        print("  1. 运行 python examples/conversation_demo.py 进行交互式对话")
         print("  3. 查看 docs/README.md 了解更多API文档")
         print("  4. 运行 pytest 执行完整的测试套件")
         

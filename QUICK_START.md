@@ -20,15 +20,7 @@ uv run python examples/complete_demo.py
 - ✅ 用户偏好设置
 - ✅ 对话历史导出
 
-### 2. 基本功能测试
-
-运行简单的功能测试：
-
-```bash
-uv run python examples/simple_test.py
-```
-
-### 3. 交互式对话测试
+### 2. 交互式对话测试
 
 运行交互式对话演示（需要手动输入）：
 
@@ -36,7 +28,7 @@ uv run python examples/simple_test.py
 uv run python examples/conversation_demo.py
 ```
 
-### 4. 运行测试套件
+### 3. 运行测试套件
 
 验证所有代码功能正常：
 
@@ -71,7 +63,6 @@ uv run pytest --cov=src tests/ -v
 │   └── core/              # 核心功能模块
 ├── examples/              # 演示脚本
 │   ├── complete_demo.py   # 完整功能演示
-│   ├── simple_test.py     # 基本功能测试
 │   └── conversation_demo.py # 交互式对话
 ├── tests/                 # 测试文件
 └── docs/                  # 文档
