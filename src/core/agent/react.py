@@ -45,13 +45,13 @@ class ReActAgent(BaseAgent):
         """Execute the ReAct loop."""
         steps: List[AgentStep] = []
         
+        # Initial message
+        messages = self._build_initial_messages(user_input)
+        
         for i in range(self.max_steps):
             self.logger.info(f"ReAct Step {i+1}/{self.max_steps}")
             
-            # 1. Build Prompt
-            messages = self._build_prompt(user_input, steps)
-            
-            # 2. Get LLM Response
+            # 1. Get LLM Response
             try:
                 llm_response = await self.llm_manager.generate_response(messages)
                 response_text = llm_response.content
@@ -60,103 +60,128 @@ class ReActAgent(BaseAgent):
                 
             self.logger.debug(f"LLM Response: {response_text}")
             
-            # 3. Parse Response
-            step = self._parse_response(response_text)
+            # Clean up response (remove any potential previous tool response if duplicated)
+            if '<tool_response>' in response_text:
+                response_text = response_text.split('<tool_response>')[0]
+                
+            messages.append(LLMMessage(role="assistant", content=response_text))
             
-            if step.action == "Final Answer":
-                steps.append(step)
-                return step.observation or "No final answer content provided."
+            # 2. Parse Response
+            # Check for Final Answer
+            if '<answer>' in response_text and '</answer>' in response_text:
+                answer = response_text.split('<answer>')[1].split('</answer>')[0]
+                return answer.strip()
+            
+            # Check for Tool Calls
+            tool_calls = re.findall(r'<tool_call>(.*?)</tool_call>', response_text, re.DOTALL)
+            
+            if tool_calls:
+                self.logger.info(f"DEBUG: Found {len(tool_calls)} tool calls")
+                # 3. Execute Actions (Parallel)
+                import asyncio
+                tasks = []
+                for tc in tool_calls:
+                    self.logger.info(f"DEBUG: Processing tool call: {tc}")
+                    tasks.append(self._execute_single_tool_call(tc))
                 
-            if step.action:
-                # 4. Execute Action
-                observation = await self.execute_tool(step.action, step.action_input)
-                step.observation = str(observation)
-                steps.append(step)
+                results = await asyncio.gather(*tasks)
+                self.logger.info(f"DEBUG: Tool results: {results}")
+                
+                # 4. Append Observation
+                combined_response = "\n".join(results)
+                tool_response_msg = f"<tool_response>\n{combined_response}\n</tool_response>"
+                messages.append(LLMMessage(role="user", content=tool_response_msg))
+                
+                # Also track in steps for compatibility/logging if needed, though message history is primary now
+                steps.append(AgentStep(
+                    thought="Processed tool calls",
+                    action="Multiple Tools",
+                    action_input=tool_calls,
+                    observation=combined_response
+                ))
             else:
-                # No action, just thought or error
-                if not step.thought:
-                     step.observation = "Error: Invalid format. Please provide 'Action:' and 'Action Input:' or 'Final Answer:'."
-                steps.append(step)
-                
+                # No tool call and no answer?
+                # Check for just thought
+                if '<thought>' in response_text and '</thought>' in response_text:
+                    # Just thinking, let it continue or prompt it?
+                    # Ideally the model should output thought AND tool_call OR answer.
+                    # If it only outputs thought, we might need to nudge it.
+                    # For now, we'll assume it might be a multi-step thought process or error.
+                    # Let's add a system reminder if it seems stuck, or just continue.
+                    pass
+                else:
+                    self.logger.warning("No valid XML tags found in response.")
+                    # Optional: Add a user message prompting to use correct format?
+        
         return "Reached maximum steps without finding a final answer."
 
-    def _build_prompt(self, user_input: str, steps: List[AgentStep]) -> List[LLMMessage]:
-        """Build the prompt messages."""
+    def _build_initial_messages(self, user_input: str) -> List[LLMMessage]:
+        """Build the initial prompt messages."""
         system_prompt = self._get_system_prompt()
-        
-        messages = [
+        return [
             LLMMessage(role="system", content=system_prompt),
-            LLMMessage(role="user", content=f"User Request: {user_input}")
+            LLMMessage(role="user", content=user_input)
         ]
-        
-        # Add history
-        history_text = ""
-        for step in steps:
-            history_text += f"Thought: {step.thought}\n"
-            if step.action:
-                history_text += f"Action: {step.action}\n"
-                input_str = json.dumps(step.action_input, ensure_ascii=False) if isinstance(step.action_input, (dict, list)) else str(step.action_input)
-                history_text += f"Action Input: {input_str}\n"
-                history_text += f"Observation: {step.observation}\n\n"
-            else:
-                history_text += f"Observation: {step.observation}\n\n"
-                
-        if history_text:
-            messages.append(LLMMessage(role="assistant", content=history_text))
-            
-        return messages
 
-    def _parse_response(self, response_text: str) -> AgentStep:
-        """Parse LLM response into an AgentStep."""
-        thought_match = re.search(r"Thought:\s*(.*?)(?=\nAction|\nFinal Answer|$)", response_text, re.DOTALL)
-        thought = thought_match.group(1).strip() if thought_match else ""
-        
-        final_answer_match = re.search(r"Final Answer:\s*(.*)", response_text, re.DOTALL)
-        if final_answer_match:
-            return AgentStep(
-                thought=thought,
-                action="Final Answer",
-                observation=final_answer_match.group(1).strip()
-            )
+    async def _execute_single_tool_call(self, tool_call_str: str) -> str:
+        """Parse and execute a single tool call string."""
+        try:
+            # Handle PythonInterpreter special format (JSON + <code>)
+            if "<code>" in tool_call_str:
+                json_part = tool_call_str.split("<code>")[0].strip()
+                code_part = tool_call_str.split("<code>")[1].split("</code>")[0].strip()
+                try:
+                    tool_info = json.loads(json_part)
+                    tool_name = tool_info.get("name")
+                    # Special handling for PythonInterpreter if supported, 
+                    # or pass code as argument if the tool expects it
+                    return await self.execute_tool(tool_name, {"code": code_part, **tool_info.get("arguments", {})})
+                except json.JSONDecodeError:
+                    return "Error: Invalid JSON in tool call."
             
-        action_match = re.search(r"Action:\s*(.*?)\n", response_text)
-        action_input_match = re.search(r"Action Input:\s*(.*)", response_text, re.DOTALL)
-        
-        if action_match and action_input_match:
-            action = action_match.group(1).strip()
-            input_str = action_input_match.group(1).strip()
+            # Standard JSON
+            tool_call = json.loads(tool_call_str)
+            tool_name = tool_call.get("name")
+            tool_args = tool_call.get("arguments", {})
             
-            # Clean up input
-            if input_str.startswith("```"):
-                input_str = re.sub(r"^```\w*\n|```$", "", input_str).strip()
-            elif input_str.startswith("`"):
-                input_str = input_str.strip("`")
-                
-            try:
-                action_input = json.loads(input_str)
-            except json.JSONDecodeError:
-                action_input = input_str
-                
-            return AgentStep(thought=thought, action=action, action_input=action_input)
+            return await self.execute_tool(tool_name, tool_args)
             
-        return AgentStep(thought=thought, observation="Error: Could not parse Action and Action Input.")
+        except json.JSONDecodeError:
+            return f"Error: Tool call is not valid JSON: {tool_call_str}"
+        except Exception as e:
+            return f"Error executing tool: {str(e)}"
 
     def _get_system_prompt(self) -> str:
         """Get the system prompt. Override in subclasses."""
         return """You are an AI agent using the ReAct framework.
 Use the available tools to answer the user's request.
 
-Format:
-Thought: ...
-Action: ...
-Action Input: ...
-Observation: ...
+IMPORTANT: You must use the following XML format for your response.
 
-OR
+1. To think (optional but recommended):
+<thought>
+Your reasoning here...
+</thought>
 
-Thought: ...
-Final Answer: ...
+2. To use a tool (you can use multiple tools in parallel):
+<tool_call>
+{"name": "tool_name", "arguments": {"arg1": "value1"}}
+</tool_call>
+
+3. To provide the final answer:
+<answer>
+Your final answer here...
+</answer>
 """
+    
+    # Deprecated/Unused methods kept for compatibility if needed, or remove
+    def _build_prompt(self, user_input: str, steps: List[AgentStep]) -> List[LLMMessage]:
+         # This is replaced by message history maintenance in _run_loop
+         return []
+
+    def _parse_response(self, response_text: str) -> AgentStep:
+        # This is replaced by inline parsing in _run_loop
+        return AgentStep(thought="", action="", action_input={})
 
     async def execute_tool(self, name: str, params: Any) -> Any:
         """Execute a tool. Override in subclasses."""

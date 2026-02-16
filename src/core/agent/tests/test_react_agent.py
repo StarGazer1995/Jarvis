@@ -27,8 +27,12 @@ class TestReActAgent(unittest.IsolatedAsyncioTestCase):
     async def test_react_loop_final_answer(self):
         """Test simple thought -> final answer loop."""
         response_obj = MagicMock()
-        response_obj.content = """Thought: I know the answer.
-Final Answer: The answer is 42.
+        response_obj.content = """<thought>
+I know the answer.
+</thought>
+<answer>
+The answer is 42.
+</answer>
 """
         self.agent.llm_manager.generate_response.return_value = response_obj
         
@@ -38,23 +42,37 @@ Final Answer: The answer is 42.
         self.assertEqual(self.agent.state, AgentState.READY)
         
     async def test_react_loop_with_tool(self):
-        """Test thought -> action -> observation -> final answer."""
+        """Test thought -> tool -> response -> final answer."""
         
         # Step 1: Tool call
         response1 = MagicMock()
-        response1.content = """Thought: I need to calculate.
-Action: calculator
-Action Input: {"expr": "2+2"}
+        response1.content = """<thought>
+I need to calculate.
+</thought>
+<tool_call>
+{"name": "calculator", "arguments": {"expr": "2+2"}}
+</tool_call>
 """
         
-        # Step 2: Final answer
+        # Step 2: Final answer (after tool execution)
         response2 = MagicMock()
-        response2.content = """Thought: The result is 4.
-Final Answer: 4
+        response2.content = """<thought>
+The result is 4.
+</thought>
+<answer>
+4
+</answer>
 """
         
+        # Configure side effects for LLM calls
+        # Note: The loop calls generate_response.
+        # Call 1: Gets tool call
+        # Agent executes tool -> appends <tool_response>
+        # Call 2: Gets final answer
         self.agent.llm_manager.generate_response.side_effect = [response1, response2]
-        self.agent.execute_tool.return_value = "4"
+        
+        # Configure tool execution
+        self.agent.execute_tool = AsyncMock(return_value="4")
         
         result = await self.agent.process_input("Calculate 2+2")
         
@@ -67,9 +85,10 @@ Final Answer: 4
         self.agent.max_steps = 2
         
         response = MagicMock()
-        response.content = """Thought: Thinking...
-Action: wait
-Action Input: "forever"
+        response.content = """<thought>Thinking...</thought>
+<tool_call>
+{"name": "wait", "arguments": "forever"}
+</tool_call>
 """
         self.agent.llm_manager.generate_response.return_value = response
         
@@ -77,6 +96,30 @@ Action Input: "forever"
         
         self.assertIn("Reached maximum steps", result)
         self.assertEqual(self.agent.llm_manager.generate_response.call_count, 2)
+
+    async def test_parallel_tool_calls(self):
+        """Test parallel tool execution."""
+        response1 = MagicMock()
+        response1.content = """<thought>Two calcs</thought>
+<tool_call>
+{"name": "calc", "arguments": {"x": 1}}
+</tool_call>
+<tool_call>
+{"name": "calc", "arguments": {"x": 2}}
+</tool_call>
+"""
+        response2 = MagicMock()
+        response2.content = "<answer>Done</answer>"
+        
+        self.agent.llm_manager.generate_response.side_effect = [response1, response2]
+        self.agent.execute_tool = AsyncMock(side_effect=["Res1", "Res2"])
+        
+        await self.agent.process_input("Do two things")
+        
+        self.assertEqual(self.agent.execute_tool.call_count, 2)
+        # Verify both calls were made
+        self.agent.execute_tool.assert_any_call("calc", {"x": 1})
+        self.agent.execute_tool.assert_any_call("calc", {"x": 2})
 
 if __name__ == '__main__':
     unittest.main()
