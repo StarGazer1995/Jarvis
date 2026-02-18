@@ -9,7 +9,7 @@ and decision-making capabilities.
 import logging
 import asyncio
 import json
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Callable
 from dataclasses import dataclass
 from enum import Enum
 
@@ -154,7 +154,7 @@ class ARKEngine(ReActAgent):
             self.ark_logger.error(traceback.format_exc())
             return False
             
-    async def process_input(self, user_input: str) -> str:
+    async def process_input(self, user_input: str, callbacks: Optional[Dict[str, Callable]] = None, **kwargs) -> str:
         """Process user input using LangGraph."""
         if self.state != ARKState.READY:
             return "ARK Engine is not ready."
@@ -199,6 +199,7 @@ class ARKEngine(ReActAgent):
             
             # 4. Extract Final Response
             messages = final_state.get("messages", [])
+            logging.info(f"ARK: Final messages after graph execution: {messages}")
             response = "No response generated."
             
             if messages:

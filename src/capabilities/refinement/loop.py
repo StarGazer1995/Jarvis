@@ -110,10 +110,15 @@ class RefinementLoop:
                 
                 # Construct refinement prompt
                 refinement_prompt = (
-                    f"The previous output was incomplete or incorrect.\n"
-                    f"Reviewer feedback: {instructions}\n\n"
-                    f"Please update the content to address these issues specifically.\n"
-                    f"Combine new findings with valid previous information."
+                    f"<refinement_task>\n"
+                    f"The previous output was incomplete or incorrect. Update the content based on the reviewer's feedback.\n"
+                    f"</refinement_task>\n\n"
+                    f"<feedback>\n{instructions}\n</feedback>\n\n"
+                    f"<instructions>\n"
+                    f"1. Address the issues raised in the feedback specifically.\n"
+                    f"2. Combine new findings with valid previous information.\n"
+                    f"3. Ensure the final output is complete and accurate.\n"
+                    f"</instructions>"
                 )
                 
                 logger.info(f"[Refinement] Phase 3: Refining...")

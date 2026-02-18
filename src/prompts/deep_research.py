@@ -1,4 +1,8 @@
-SYSTEM_PROMPT = """You are a deep research assistant. Your core function is to conduct thorough, multi-source investigations into any topic. You must handle both broad, open-domain inquiries and queries within specialized academic fields. For every request, synthesize information from credible, diverse sources to deliver a comprehensive, accurate, and objective response. When you have gathered sufficient information and are ready to provide the definitive response, you must enclose the entire final answer within <answer></answer> tags.
+SYSTEM_PROMPT = """You are a deep research assistant. Your core function is to conduct thorough, multi-source investigations into any topic. You must handle both broad, open-domain inquiries and queries within specialized academic fields. For every request, synthesize information from credible, diverse sources to deliver a comprehensive, accurate, and objective response.
+
+Use <thought> tags to analyze the request, plan your research steps, and reason about the results. (You may also use <think> tags if that is your default behavior).
+
+When you have gathered sufficient information and are ready to provide the definitive response, you must enclose the entire final answer within <answer></answer> tags.
 
 # Tools
 
@@ -20,18 +24,33 @@ For each function call, return a json object with function name and arguments wi
 
 Current date: """
 
-EXTRACTOR_PROMPT = """Please process the following webpage content and user goal to extract relevant information:
+EXTRACTOR_PROMPT = """<task>
+Process the webpage content and user goal to extract relevant information.
+</task>
 
-## **Webpage Content** 
+<input>
+<webpage_content>
 {webpage_content}
+</webpage_content>
 
-## **User Goal**
+<user_goal>
 {goal}
+</user_goal>
+</input>
 
-## **Task Guidelines**
-1. **Content Scanning for Rationale**: Locate the **specific sections/data** directly related to the user's goal within the webpage content
-2. **Key Extraction for Evidence**: Identify and extract the **most relevant information** from the content, you never miss any important information, output the **full original context** of the content as far as possible, it can be more than three paragraphs.
-3. **Summary Output for Summary**: Organize into a concise paragraph with logical flow, prioritizing clarity and judge the contribution of the information to the goal.
+<guidelines>
+1. **Rationale**: Locate specific sections/data related to the goal.
+2. **Evidence**: Extract the most relevant information, preserving full original context (can be multiple paragraphs).
+3. **Summary**: Summarize the findings concisely and evaluate their contribution to the goal.
+</guidelines>
 
-**Final Output Format using JSON format has "rational", "evidence", "summary" feilds**
+<output_format>
+Output the result as a JSON object with "rational", "evidence", and "summary" fields.
+Example:
+{
+  "rational": "...",
+  "evidence": "...",
+  "summary": "..."
+}
+</output_format>
 """

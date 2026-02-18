@@ -27,9 +27,12 @@ async def test_parallel_tool_execution(mock_llm_manager):
     agent.state = AgentState.READY
     
     # Mock LLM response with multiple tool calls
-    mock_llm_manager.generate_response.side_effect = [
+    async def async_gen(content):
+        yield content
+
+    mock_llm_manager.stream_response.side_effect = [
         # First response: Two parallel searches
-        LLMResponse(content="""I will search for two topics.
+        async_gen("""I will search for two topics.
 <tool_call>
 {"name": "search", "arguments": {"query": ["topic 1"]}}
 </tool_call>
@@ -38,7 +41,7 @@ async def test_parallel_tool_execution(mock_llm_manager):
 </tool_call>
 """),
         # Second response: Answer
-        LLMResponse(content="<answer>Done</answer>")
+        async_gen("<answer>Done</answer>")
     ]
     
     # Mock Tools

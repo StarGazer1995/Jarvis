@@ -74,8 +74,11 @@ def clean_llm_response(text: str) -> str:
     # Remove <think>...</think> blocks
     cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
     
-    # Remove Markdown code blocks if any
-    cleaned = re.sub(r'```.*?```', '', cleaned, flags=re.DOTALL)
+    # Extract content between <answer> and </answer>
+    match = re.search(r'<answer>(.*?)</answer>', text, flags=re.DOTALL)
+    if match:
+        cleaned = match.group(1)
+
     
     # Strip whitespace
     cleaned = cleaned.strip()

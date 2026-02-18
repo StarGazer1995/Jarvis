@@ -52,30 +52,35 @@ class PromptManager:
         system_prompt = PromptTemplate(
             name="jarvis_system",
             type=PromptType.SYSTEM,
-            template="""You are Jarvis, an intelligent AI assistant powered by the ARK (Adaptive Reasoning Kernel) engine.
+            template="""<system_instruction>
+You are Jarvis, an intelligent AI assistant powered by the ARK (Adaptive Reasoning Kernel) engine.
 
-Your core capabilities include:
+<capabilities>
 - Natural language understanding and conversation
 - Intent recognition and context analysis
 - Tool usage and task execution
 - Adaptive reasoning and decision making
 - Multi-turn conversation management
+</capabilities>
 
-Current context:
-- Agent Name: {agent_name}
-- Current Time: {current_time}
-- User Preferences: {user_preferences}
-- Available Tools: {available_tools}
+<context>
+<agent_name>{agent_name}</agent_name>
+<current_time>{current_time}</current_time>
+<user_preferences>{user_preferences}</user_preferences>
+<available_tools>{available_tools}</available_tools>
+</context>
 
-Guidelines:
+<guidelines>
 1. Be helpful, accurate, and conversational
 2. Use available tools when appropriate
 3. Maintain context across conversations
 4. Provide clear and actionable responses
 5. Ask for clarification when needed
 6. Be proactive in offering assistance
+</guidelines>
 
-Remember: You are designed to be an adaptive and intelligent assistant that can reason about user needs and provide meaningful help.""",
+Remember: You are designed to be an adaptive and intelligent assistant that can reason about user needs and provide meaningful help.
+</system_instruction>""",
             variables=["agent_name", "current_time", "user_preferences", "available_tools"],
             description="Jarvis系统的主要系统提示词"
         )
@@ -84,31 +89,40 @@ Remember: You are designed to be an adaptive and intelligent assistant that can 
         conversation_prompt = PromptTemplate(
             name="conversation_response",
             type=PromptType.CONVERSATION,
-            template="""Based on the conversation context and user input, generate an appropriate response.
+            template="""<task>
+Based on the conversation context and user input, generate an appropriate response.
+</task>
 
-Conversation Context:
+<conversation_context>
 {conversation_history}
+</conversation_context>
 
-Current User Input: {user_input}
+<user_input>
+{user_input}
+</user_input>
 
-Intent Analysis:
-- Detected Intent: {intent}
-- Confidence: {confidence}
-- Entities: {entities}
+<intent_analysis>
+<detected_intent>{intent}</detected_intent>
+<confidence>{confidence}</confidence>
+<entities>{entities}</entities>
+</intent_analysis>
 
-Context Information:
-- User Preferences: {user_preferences}
-- Previous Actions: {previous_actions}
-- Available Tools: {available_tools}
+<context_information>
+<user_preferences>{user_preferences}</user_preferences>
+<previous_actions>{previous_actions}</previous_actions>
+<available_tools>{available_tools}</available_tools>
+</context_information>
 
+<instructions>
 Please generate a natural, helpful response that:
 1. Addresses the user's intent appropriately
 2. Uses relevant context information
 3. Suggests tool usage if beneficial
 4. Maintains conversational flow
 5. Provides actionable information when possible
+</instructions>
 
-Response:""",
+<response>""",
             variables=["conversation_history", "user_input", "intent", "confidence", "entities", 
                       "user_preferences", "previous_actions", "available_tools"],
             description="用于生成对话响应的提示词"
@@ -118,26 +132,34 @@ Response:""",
         tool_usage_prompt = PromptTemplate(
             name="tool_usage_decision",
             type=PromptType.TOOL_USAGE,
-            template="""Analyze the user request and determine if any tools should be used.
+            template="""<task>
+Analyze the user request and determine if any tools should be used.
+</task>
 
-User Request: {user_input}
-Intent: {intent}
-Available Tools: {available_tools}
+<input>
+<user_request>{user_input}</user_request>
+<intent>{intent}</intent>
+<available_tools>{available_tools}</available_tools>
+</input>
 
+<instructions>
 For each potentially useful tool, consider:
 1. Is this tool relevant to the user's request?
 2. Do we have the required parameters?
 3. Would using this tool provide value to the user?
 4. Are there any dependencies or prerequisites?
 
-Provide your analysis in the following format:
-- Tool Name: [tool_name]
-- Relevance: [high/medium/low]
-- Required Parameters: [list of parameters]
-- Reasoning: [why this tool should or shouldn't be used]
-- Recommended Action: [use/skip/ask_for_params]
+Provide your analysis in the following XML format:
+<analysis>
+<tool_name>[tool_name]</tool_name>
+<relevance>[high/medium/low]</relevance>
+<required_parameters>[list of parameters]</required_parameters>
+<reasoning>[why this tool should or shouldn't be used]</reasoning>
+<recommended_action>[use/skip/ask_for_params]</recommended_action>
+</analysis>
+</instructions>
 
-Decision:""",
+<decision>""",
             variables=["user_input", "intent", "available_tools"],
             description="用于决定是否使用工具的提示词"
         )
@@ -146,12 +168,16 @@ Decision:""",
         intent_recognition_prompt = PromptTemplate(
             name="intent_recognition",
             type=PromptType.INTENT_RECOGNITION,
-            template="""Analyze the user input to identify the intent and extract relevant entities.
+            template="""<task>
+Analyze the user input to identify the intent and extract relevant entities.
+</task>
 
-User Input: "{user_input}"
-Conversation Context: {conversation_context}
+<input>
+<user_input>{user_input}</user_input>
+<conversation_context>{conversation_context}</conversation_context>
+</input>
 
-Available Intent Categories:
+<intent_categories>
 - greeting: User is greeting or starting conversation
 - question: User is asking for information
 - request: User is requesting an action or task
@@ -161,15 +187,20 @@ Available Intent Categories:
 - chitchat: General conversation or small talk
 - complaint: User is expressing dissatisfaction
 - compliment: User is expressing appreciation
+</intent_categories>
 
-Please analyze and provide:
-1. Primary Intent: [intent_category]
-2. Confidence Level: [0.0-1.0]
-3. Entities: [list of extracted entities with types]
-4. Context Clues: [relevant context information]
-5. Reasoning: [explanation of the analysis]
+<instructions>
+Please analyze and provide the output in XML format:
+<analysis>
+<primary_intent>[intent_category]</primary_intent>
+<confidence_level>[0.0-1.0]</confidence_level>
+<entities>[list of extracted entities with types]</entities>
+<context_clues>[relevant context information]</context_clues>
+<reasoning>[explanation of the analysis]</reasoning>
+</analysis>
+</instructions>
 
-Analysis:""",
+<analysis>""",
             variables=["user_input", "conversation_context"],
             description="用于识别用户意图的提示词"
         )
@@ -178,23 +209,31 @@ Analysis:""",
         response_generation_prompt = PromptTemplate(
             name="response_generation",
             type=PromptType.RESPONSE_GENERATION,
-            template="""Generate a natural and helpful response based on the analysis results.
+            template="""<task>
+Generate a natural and helpful response based on the analysis results.
+</task>
 
-User Input: {user_input}
-Intent: {intent} (confidence: {confidence})
-Entities: {entities}
-Tool Results: {tool_results}
-Context: {context}
+<input>
+<user_input>{user_input}</user_input>
+<intent_analysis>
+<intent>{intent}</intent>
+<confidence>{confidence}</confidence>
+</intent_analysis>
+<entities>{entities}</entities>
+<tool_results>{tool_results}</tool_results>
+<context>{context}</context>
+</input>
 
-Response Requirements:
+<requirements>
 1. Be natural and conversational
 2. Address the user's intent directly
 3. Incorporate tool results if available
 4. Maintain appropriate tone and style
 5. Provide actionable information when relevant
 6. Ask follow-up questions if needed
+</requirements>
 
-Generate Response:""",
+<response>""",
             variables=["user_input", "intent", "confidence", "entities", "tool_results", "context"],
             description="用于生成最终响应的提示词"
         )
@@ -237,7 +276,7 @@ Generate Response:""",
         Args:
             name: 模板名称
             
-        Returns:
+            Returns:
             提示词模板，如果不存在则返回None
         """
         return self.templates.get(name)
@@ -250,7 +289,7 @@ Generate Response:""",
             name: 模板名称
             **kwargs: 模板变量
             
-        Returns:
+            Returns:
             渲染后的提示词
         """
         template = self.get_template(name)
@@ -298,7 +337,7 @@ Generate Response:""",
             intent_info: 意图信息
             tool_results: 工具结果
             
-        Returns:
+            Returns:
             LLM消息列表
         """
         messages = []
@@ -348,7 +387,7 @@ Generate Response:""",
             user_input: 用户输入
             conversation_context: 对话上下文
             
-        Returns:
+            Returns:
             意图识别提示词
         """
         context_str = ""
@@ -379,7 +418,7 @@ Generate Response:""",
             intent: 识别的意图
             available_tools: 可用工具列表
             
-        Returns:
+            Returns:
             工具使用决策提示词
         """
         tools_info = []
@@ -416,7 +455,7 @@ Generate Response:""",
             tool_results: 工具执行结果
             context: 上下文信息
             
-        Returns:
+            Returns:
             响应生成提示词
         """
         entities_str = json.dumps(entities, ensure_ascii=False) if entities else "No entities"
@@ -449,7 +488,7 @@ Generate Response:""",
         Args:
             name: 模板名称
             
-        Returns:
+            Returns:
             模板信息字典
         """
         template = self.get_template(name)
@@ -494,7 +533,7 @@ Generate Response:""",
         Args:
             templates_data: 模板数据字典
             
-        Returns:
+            Returns:
             导入的模板数量
         """
         imported_count = 0

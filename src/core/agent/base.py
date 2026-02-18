@@ -2,7 +2,7 @@
 Base Agent Class
 """
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Callable
 from abc import ABC, abstractmethod
 
 from .types import AgentState
@@ -38,12 +38,14 @@ class BaseAgent(ABC):
         self.available_tools: Dict[str, Any] = {}
         
     @abstractmethod
-    async def process_input(self, user_input: str) -> str:
+    async def process_input(self, user_input: str, callbacks: Optional[Dict[str, Callable]] = None, **kwargs) -> str:
         """
         Process user input and return a response.
         
         Args:
             user_input: The user's message or query
+            callbacks: Optional dictionary of callback functions
+            **kwargs: Additional keyword arguments
             
         Returns:
             The agent's response

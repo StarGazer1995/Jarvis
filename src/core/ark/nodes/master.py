@@ -158,89 +158,86 @@ class MasterNode:
             for agent in self.agents:
                 agents_desc += f"- {agent.name}: {agent.description}\n"
         
-        return f"""You are Jarvis, an intelligent agent acting as an Orchestrator.
+        return f"""<system_instruction>
+You are Jarvis, an intelligent agent acting as an Orchestrator.
 
+<context>
 {todo_status}
-
 {tools_desc}
-
 {agents_desc}
+</context>
 
-Instructions:
+<instructions>
 1. Analyze the user's request.
 2. Break it down into a list of tasks using 'manage_tasks' if needed.
 3. Schedule execution by delegating to Worker Agents or using Tools.
-   - To delegate to a Worker Agent, use 'Action: <AgentName>' with appropriate input.
 4. Execute tasks one by one.
 5. Update task status as you progress.
 6. When finished, provide a Final Answer.
+</instructions>
 
-Format your response as follows:
+<response_format>
+You must output your response in XML format.
 
-Thought: <your reasoning>
-Action: <tool_name_or_agent_name>
-Action Input: <json_or_string_input>
+1. To think about the plan or analysis:
+<think>
+Your reasoning here...
+</think>
 
-OR
+2. To execute a tool or delegate to an agent:
+<tool_call>
+{{"name": "tool_name_or_agent_name", "arguments": {{"arg1": "value1", ...}}}}
+</tool_call>
 
-Thought: <your reasoning>
-Final Answer: <your final response to the user>
-"""
+3. To provide the final answer:
+<answer>
+Your final response to the user...
+</answer>
+</response_format>
+</system_instruction>"""
 
     def _parse_tool_call(self, text: str) -> Optional[Dict[str, Any]]:
-        """Parse LLM response for ReAct pattern."""
-        # Regex adapted from ReActAgent
-        action_match = re.search(r"Action:\s*(.*?)\n", text)
-        action_input_match = re.search(r"Action Input:\s*(.*)", text, re.DOTALL)
+        """Parse LLM response for XML tool calls."""
+        # Look for <tool_call> tags
+        tool_call_match = re.search(r"<tool_call>(.*?)</tool_call>", text, re.DOTALL)
         
-        if action_match and action_input_match:
-            action = action_match.group(1).strip()
-            # Clean up action name (take first word, remove trailing punctuation)
-            action = action.split()[0].rstrip(",.:")
+        if tool_call_match:
+            content = tool_call_match.group(1).strip()
             
-            input_str = action_input_match.group(1).strip()
-            
-            # Clean up input
-            if input_str.startswith("```"):
-                input_str = re.sub(r"^```\w*\n|```$", "", input_str).strip()
-            elif input_str.startswith("`"):
-                input_str = input_str.strip("`")
-                
-            try:
-                action_input = json.loads(input_str)
-            except json.JSONDecodeError:
-                # Attempt to find JSON substring if parsing failed
+            # Handle PythonInterpreter special format (JSON + <code>)
+            if "<code>" in content:
+                json_part = content.split("<code>")[0].strip()
+                code_part = content.split("<code>")[1].split("</code>")[0].strip()
                 try:
-                    # Find first {
-                    start = input_str.find("{")
-                    if start != -1:
-                        # Try to decode just the JSON object part
-                        try:
-                            decoder = json.JSONDecoder()
-                            action_input, _ = decoder.raw_decode(input_str[start:])
-                        except json.JSONDecodeError:
-                            # Fallback to finding the last } if raw_decode fails
-                            end = input_str.rfind("}")
-                            if end != -1 and end > start:
-                                json_str = input_str[start:end+1]
-                                action_input = json.loads(json_str)
-                            else:
-                                raise
-                    else:
-                        # Fallback to error dict or string
-                        # If action is an agent, input might be string (task description)
-                        # Let's handle plain string input if JSON fail
-                        action_input = input_str
+                    tool_info = json.loads(json_part)
+                    tool_name = tool_info.get("name")
+                    return {
+                        "action": tool_name,
+                        "action_input": {"code": code_part, **tool_info.get("arguments", {})}
+                    }
+                except json.JSONDecodeError:
+                    pass
+
+            # Standard JSON
+            try:
+                tool_call = json.loads(content)
+                return {
+                    "action": tool_call.get("name"),
+                    "action_input": tool_call.get("arguments", {})
+                }
+            except json.JSONDecodeError:
+                # Try to find JSON if there's extra text
+                try:
+                    start = content.find("{")
+                    end = content.rfind("}")
+                    if start != -1 and end != -1:
+                        json_str = content[start:end+1]
+                        tool_call = json.loads(json_str)
+                        return {
+                            "action": tool_call.get("name"),
+                            "action_input": tool_call.get("arguments", {})
+                        }
                 except:
-                     action_input = input_str
-            
-            # If action_input is just a string, wrap it if needed or return as is?
-            # ReActAgent logic returned dict or string.
-            # MasterNode logic expects dict usually for tools.
-            # If we allow string for agents, we should return it.
-                 
-            return {
-                "action": action,
-                "action_input": action_input
-            }
+                    pass
+        
         return None

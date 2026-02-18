@@ -50,9 +50,9 @@ async def test_ark_graph_tool_execution():
     # Scenario: User -> LLM (Tool Call) -> Tool -> LLM (Final Answer)
     
     # First LLM call returns a Tool Call
-    response1 = LLMResponse(content="Thought: Need to use tool.\nAction: test_tool\nAction Input: {\"arg\": 1}")
+    response1 = LLMResponse(content="<think>Need to use tool.</think>\n<tool_call>{\"name\": \"test_tool\", \"arguments\": {\"arg\": 1}}</tool_call>")
     # Second LLM call returns Final Answer
-    response2 = LLMResponse(content="Final Answer: Done.")
+    response2 = LLMResponse(content="<answer>Done.</answer>")
     
     mock_llm.generate_response.side_effect = [response1, response2]
     
@@ -85,7 +85,7 @@ async def test_ark_graph_tool_execution():
     assert messages[2].name == "test_tool"
     
     # Check Final Answer
-    assert messages[3].content == "Final Answer: Done."
+    assert messages[3].content == "<answer>Done.</answer>"
 
 @pytest.mark.asyncio
 async def test_supervisor_flow():
@@ -104,10 +104,10 @@ async def test_supervisor_flow():
     
     # 1. Supervisor delegates to WorkerA (using tool-call syntax for routing)
     # MasterNode parses "Action: WorkerA" as a tool call
-    response1 = LLMResponse(content="Thought: Delegate to WorkerA.\nAction: WorkerA\nAction Input: {}")
+    response1 = LLMResponse(content="<think>Delegate to WorkerA.</think>\n<tool_call>{\"name\": \"WorkerA\", \"arguments\": {}}</tool_call>")
     
     # 2. Supervisor receives WorkerA output and finishes
-    response2 = LLMResponse(content="Final Answer: Task Complete.")
+    response2 = LLMResponse(content="<answer>Task Complete.</answer>")
     
     mock_llm.generate_response.side_effect = [response1, response2]
     
@@ -140,4 +140,4 @@ async def test_supervisor_flow():
     assert messages[2].content == "Worker Task Done"
     
     # Check Final Answer
-    assert messages[3].content == "Final Answer: Task Complete."
+    assert messages[3].content == "<answer>Task Complete.</answer>"

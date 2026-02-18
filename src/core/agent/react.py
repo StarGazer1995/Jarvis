@@ -4,7 +4,7 @@ ReAct Agent Implementation
 import json
 import re
 import logging
-from typing import List, Dict, Any, Optional, Union
+from typing import List, Dict, Any, Optional, Union, Callable
 
 from .base import BaseAgent
 from .types import AgentState, AgentStep
@@ -20,7 +20,7 @@ class ReActAgent(BaseAgent):
         self.max_steps = self.config.get('max_steps', 15)
         self.logger = logging.getLogger('agent.react')
         
-    async def process_input(self, user_input: str) -> str:
+    async def process_input(self, user_input: str, callbacks: Optional[Dict[str, Callable]] = None, **kwargs) -> str:
         """
         Process user input using the ReAct loop.
         """
@@ -31,7 +31,8 @@ class ReActAgent(BaseAgent):
             self.state = AgentState.PROCESSING
             self.logger.info(f"Processing input: '{user_input[:50]}...'")
             
-            response = await self._run_loop(user_input)
+            response = await self._run_loop(user_input, callbacks)
+            logging.info(f"ReAct loop completed. Response: {response}")
             
             self.state = AgentState.READY
             return response
@@ -41,7 +42,7 @@ class ReActAgent(BaseAgent):
             self.logger.error(f"Error processing input: {e}")
             return f"Error: {str(e)}"
             
-    async def _run_loop(self, user_input: str) -> str:
+    async def _run_loop(self, user_input: str, callbacks: Optional[Dict[str, Callable]] = None) -> str:
         """Execute the ReAct loop."""
         steps: List[AgentStep] = []
         
@@ -53,8 +54,7 @@ class ReActAgent(BaseAgent):
             
             # 1. Get LLM Response
             try:
-                llm_response = await self.llm_manager.generate_response(messages)
-                response_text = llm_response.content
+                response_text = await self._generate_and_stream_response(messages, callbacks)
             except Exception as e:
                 return f"Error communicating with LLM: {e}"
                 
@@ -115,6 +115,124 @@ class ReActAgent(BaseAgent):
         
         return "Reached maximum steps without finding a final answer."
 
+    async def _generate_and_stream_response(self, messages: List[LLMMessage], callbacks: Optional[Dict[str, Callable]] = None) -> str:
+        """
+        Generate response with streaming and callbacks.
+        Parses <thought>, <think> and <answer> tags during streaming.
+        Supports relaxed parsing for models that don't strictly adhere to XML.
+        """
+        full_response = ""
+        buffer = ""
+        in_thought = False
+        current_thought_tag = "<think>" # Default, can be <think>
+        
+        # Helper for callbacks
+        def safe_callback(name, *args):
+            if callbacks and name in callbacks:
+                try:
+                    callbacks[name](*args)
+                except Exception as e:
+                    self.logger.error(f"Error in callback {name}: {e}")
+
+        async for chunk in self.llm_manager.stream_response(messages):
+            full_response += chunk
+            buffer += chunk
+            
+            while buffer:
+                if in_thought:
+                    # Determine end tag based on start tag
+                    end_tag = "</thought>" if current_thought_tag == "<thought>" else "</think>"
+                    logging.info("end_tag is :{}".format(end_tag))
+                    idx = buffer.find(end_tag)
+                    if idx != -1:
+                        content = buffer[:idx]
+                        if content:
+                            safe_callback("on_thought_token", content)
+                        safe_callback("on_thought_end")
+                        in_thought = False
+                        buffer = buffer[idx+len(end_tag):]
+                    else:
+                        # No complete end tag. Check for partial.
+                        # Find the last '<'
+                        last_lt = buffer.rfind('<')
+                        if last_lt != -1:
+                            # Check if buffer[last_lt:] is a prefix of end_tag
+                            potential_tag = buffer[last_lt:]
+                            if end_tag.startswith(potential_tag):
+                                # It's a partial tag, keep it in buffer
+                                to_emit = buffer[:last_lt]
+                                if to_emit:
+                                    safe_callback("on_thought_token", to_emit)
+                                buffer = potential_tag # Keep for next chunk
+                                break # Wait for more data
+                            else:
+                                # Not a partial end tag, emit everything
+                                safe_callback("on_thought_token", buffer)
+                                buffer = ""
+                        else:
+                            # No '<', emit everything
+                            safe_callback("on_thought_token", buffer)
+                            buffer = ""
+                else:
+                    # Look for start of any interesting tag
+                    # We care about <thought>, <think>, <answer>, </answer>
+                    # Find the first '<'
+                    idx = buffer.find('<')
+                    if idx != -1:
+                        # Emit everything before '<' as regular token
+                        if idx > 0:
+                            safe_callback("on_token", buffer[:idx])
+                            buffer = buffer[idx:]
+                        
+                        # Now buffer starts with '<'
+                        # Check against known tags
+                        known_tags = ["<thought>", "<think>", "<answer>", "</answer>"]
+                        matched_tag = None
+                        
+                        # Check for exact match at start
+                        for tag in known_tags:
+                            if buffer.startswith(tag):
+                                matched_tag = tag
+                                break
+                        
+                        if matched_tag:
+                            if matched_tag in ["<thought>", "<think>"]:
+                                safe_callback("on_thought_start")
+                                in_thought = True
+                                current_thought_tag = matched_tag
+                            # For <answer> and </answer>, we just skip them but consume them
+                            
+                            buffer = buffer[len(matched_tag):]
+                            continue
+                        
+                        # Check for partial match
+                        is_partial = False
+                        for tag in known_tags:
+                            if tag.startswith(buffer):
+                                is_partial = True
+                                break
+                        
+                        if is_partial:
+                            # Wait for more data
+                            break
+                        else:
+                            # Not a known tag start. Emit '<' and continue.
+                            safe_callback("on_token", "<")
+                            buffer = buffer[1:]
+                    else:
+                        # No '<', emit everything
+                        safe_callback("on_token", buffer)
+                        buffer = ""
+
+        # Flush remaining buffer
+        if buffer:
+            if in_thought:
+                safe_callback("on_thought_token", buffer)
+            else:
+                safe_callback("on_token", buffer)
+
+        return full_response
+
     def _build_initial_messages(self, user_input: str) -> List[LLMMessage]:
         """Build the initial prompt messages."""
         system_prompt = self._get_system_prompt()
@@ -159,9 +277,9 @@ Use the available tools to answer the user's request.
 IMPORTANT: You must use the following XML format for your response.
 
 1. To think (optional but recommended):
-<thought>
+<think>
 Your reasoning here...
-</thought>
+</think>
 
 2. To use a tool (you can use multiple tools in parallel):
 <tool_call>

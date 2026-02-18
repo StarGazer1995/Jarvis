@@ -35,7 +35,7 @@ class TestReActAgent:
         
         assert response == "Final Response"
         assert agent.state == AgentState.READY
-        agent._run_loop.assert_called_once_with("Hi")
+        agent._run_loop.assert_called_once_with("Hi", None)
 
     @pytest.mark.asyncio
     async def test_process_input_error(self, agent):
@@ -51,51 +51,59 @@ class TestReActAgent:
     @pytest.mark.asyncio
     async def test_run_loop_final_answer(self, agent):
         """Test loop reaching Final Answer immediately."""
-        agent.llm_manager.generate_response.return_value = LLMResponse(
-            content="<thought>I know the answer.</thought><answer>42</answer>",
-            usage={}
-        )
+        async def mock_stream(*args, **kwargs):
+            yield "<thought>I know the answer.</thought><answer>42</answer>"
+            
+        agent.llm_manager.stream_response = MagicMock(side_effect=mock_stream)
         
         response = await agent._run_loop("What is 6*7?")
         
         assert response == "42"
-        agent.llm_manager.generate_response.assert_called_once()
+        agent.llm_manager.stream_response.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_run_loop_with_action(self, agent):
         """Test loop with one action execution."""
         # First response: Action
         # Second response: Final Answer
-        agent.llm_manager.generate_response.side_effect = [
-            LLMResponse(content='<thought>Check calculator.</thought><tool_call>{"name": "calculator", "arguments": {"expr": "6*7"}}</tool_call>', usage={}),
-            LLMResponse(content='<thought>Got it.</thought><answer>42</answer>', usage={})
+        responses = [
+            '<thought>Check calculator.</thought><tool_call>{"name": "calculator", "arguments": {"expr": "6*7"}}</tool_call>',
+            '<thought>Got it.</thought><answer>42</answer>'
         ]
+        
+        async def mock_stream(*args, **kwargs):
+            if responses:
+                yield responses.pop(0)
+        
+        agent.llm_manager.stream_response = MagicMock(side_effect=mock_stream)
         
         agent.execute_tool = AsyncMock(return_value="42")
         
         response = await agent._run_loop("Calc 6*7")
         
         assert response == "42"
-        assert agent.llm_manager.generate_response.call_count == 2
+        assert agent.llm_manager.stream_response.call_count == 2
         agent.execute_tool.assert_called_once_with("calculator", {"expr": "6*7"})
 
     @pytest.mark.asyncio
     async def test_run_loop_max_steps(self, agent):
         """Test loop hitting max steps."""
         agent.max_steps = 2
-        agent.llm_manager.generate_response.return_value = LLMResponse(
-            content="<thought>Thinking...</thought>", usage={}
-        )
+        
+        async def mock_stream(*args, **kwargs):
+            yield "<thought>Thinking...</thought>"
+            
+        agent.llm_manager.stream_response = MagicMock(side_effect=mock_stream)
         
         response = await agent._run_loop("Hi")
         
         assert "Reached maximum steps" in response
-        assert agent.llm_manager.generate_response.call_count == 2
+        assert agent.llm_manager.stream_response.call_count == 2
 
     @pytest.mark.asyncio
     async def test_run_loop_llm_error(self, agent):
         """Test LLM failure handling."""
-        agent.llm_manager.generate_response.side_effect = Exception("API Error")
+        agent.llm_manager.stream_response = MagicMock(side_effect=Exception("API Error"))
         
         response = await agent._run_loop("Hi")
         
