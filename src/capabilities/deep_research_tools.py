@@ -17,7 +17,7 @@ except ImportError:
 
 from src.core.llm.client import LLMManager, LLMMessage
 from src.core.llm.config import load_llm_config
-from src.prompts.deep_research import EXTRACTOR_PROMPT
+from src.core.context.manager import EXTRACTOR_PROMPT
 from src.capabilities.interpreter import PythonInterpreter
 
 logger = logging.getLogger(__name__)

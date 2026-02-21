@@ -35,14 +35,16 @@ class JSONOutputParser(BaseOutputParser):
     - robust error handling using json_repair (if installed)
     """
     
-    def __init__(self, pydantic_model: Optional[Type[BaseModel]] = None):
+    def __init__(self, pydantic_model: Optional[Type[BaseModel]] = None, allow_repair: bool = False):
         """
         Initialize the parser.
         
         Args:
             pydantic_model: Optional Pydantic model to validate against.
+            allow_repair: Whether to attempt JSON repair when parsing fails.
         """
         self.pydantic_model = pydantic_model
+        self.allow_repair = allow_repair
         self.logger = logging.getLogger("llm.parsers.json")
         
     def parse(self, text: str) -> Union[Dict[str, Any], BaseModel]:
@@ -65,7 +67,7 @@ class JSONOutputParser(BaseOutputParser):
             data = json.loads(cleaned_text)
         except json.JSONDecodeError as e:
             # Second attempt: use json_repair if available
-            if json_repair:
+            if json_repair and self.allow_repair:
                 try:
                     self.logger.warning(f"Standard JSON parse failed, attempting repair: {e}")
                     decoded_object = json_repair.repair_json(cleaned_text, return_objects=True)

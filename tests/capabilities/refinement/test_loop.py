@@ -55,11 +55,6 @@ class TestRefinementLoop:
         assert loop.reviewer.call_count == 1
         # Loop breaks immediately
 
-    def test_clean_content(self, loop):
-        """Test content cleaning logic - DEPRECATED/REMOVED"""
-        pass
-
-
     def test_save_result(self, loop):
         """Test saving results to file."""
         m_open = mock_open()
