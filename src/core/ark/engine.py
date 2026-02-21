@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.runnables import RunnableConfig
 
 # Import generic agent framework
 from ..agent.react import ReActAgent
@@ -175,8 +176,9 @@ class ARKEngine(ReActAgent):
             # 2. Execute Graph
             if not self.graph:
                 return "Error: LangGraph not initialized."
-                
-            final_state = await self.graph.ainvoke(initial_state)
+            
+            run_config = RunnableConfig(configurable={"callbacks": callbacks}) if callbacks else {}
+            final_state = await self.graph.ainvoke(initial_state, config=run_config)
             
             # 3. Update internal state (todo list)
             new_todo_list_dicts = final_state.get("todo_list", [])

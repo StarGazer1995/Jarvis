@@ -27,12 +27,11 @@ class TestReActAgent(unittest.IsolatedAsyncioTestCase):
     async def test_react_loop_final_answer(self):
         """Test simple thought -> final answer loop."""
         response_obj = MagicMock()
-        response_obj.content = """<thought>
+        response_obj.content = """## Reasoning
 I know the answer.
-</thought>
-<answer>
+
+## Response
 The answer is 42.
-</answer>
 """
         self.agent.llm_manager.generate_response.return_value = response_obj
         
@@ -46,22 +45,23 @@ The answer is 42.
         
         # Step 1: Tool call
         response1 = MagicMock()
-        response1.content = """<thought>
+        response1.content = """## Reasoning
 I need to calculate.
-</thought>
-<tool_call>
-{"name": "calculator", "arguments": {"expr": "2+2"}}
-</tool_call>
+
+## Response
+{
+  "name": "calculator", 
+  "arguments": {"expr": "2+2"}
+}
 """
         
         # Step 2: Final answer (after tool execution)
         response2 = MagicMock()
-        response2.content = """<thought>
+        response2.content = """## Reasoning
 The result is 4.
-</thought>
-<answer>
+
+## Response
 4
-</answer>
 """
         
         # Configure side effects for LLM calls
@@ -85,10 +85,14 @@ The result is 4.
         self.agent.max_steps = 2
         
         response = MagicMock()
-        response.content = """<thought>Thinking...</thought>
-<tool_call>
-{"name": "wait", "arguments": "forever"}
-</tool_call>
+        response.content = """## Reasoning
+Thinking...
+
+## Response
+{
+  "name": "wait", 
+  "arguments": "forever"
+}
 """
         self.agent.llm_manager.generate_response.return_value = response
         
@@ -100,16 +104,17 @@ The result is 4.
     async def test_parallel_tool_calls(self):
         """Test parallel tool execution."""
         response1 = MagicMock()
-        response1.content = """<thought>Two calcs</thought>
-<tool_call>
-{"name": "calc", "arguments": {"x": 1}}
-</tool_call>
-<tool_call>
-{"name": "calc", "arguments": {"x": 2}}
-</tool_call>
+        response1.content = """## Reasoning
+Two calcs
+
+## Response
+[
+  {"name": "calc", "arguments": {"x": 1}},
+  {"name": "calc", "arguments": {"x": 2}}
+]
 """
         response2 = MagicMock()
-        response2.content = "<answer>Done</answer>"
+        response2.content = "## Response\nDone"
         
         self.agent.llm_manager.generate_response.side_effect = [response1, response2]
         self.agent.execute_tool = AsyncMock(side_effect=["Res1", "Res2"])

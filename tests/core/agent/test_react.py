@@ -52,7 +52,7 @@ class TestReActAgent:
     async def test_run_loop_final_answer(self, agent):
         """Test loop reaching Final Answer immediately."""
         async def mock_stream(*args, **kwargs):
-            yield "<thought>I know the answer.</thought><answer>42</answer>"
+            yield '{"thought": "I know the answer.", "type": "answer", "content": "42"}'
             
         agent.llm_manager.stream_response = MagicMock(side_effect=mock_stream)
         
@@ -67,8 +67,8 @@ class TestReActAgent:
         # First response: Action
         # Second response: Final Answer
         responses = [
-            '<thought>Check calculator.</thought><tool_call>{"name": "calculator", "arguments": {"expr": "6*7"}}</tool_call>',
-            '<thought>Got it.</thought><answer>42</answer>'
+            '{"thought": "Check calculator.", "type": "tool_call", "content": {"name": "calculator", "arguments": {"expr": "6*7"}}}',
+            '{"thought": "Got it.", "type": "answer", "content": "42"}'
         ]
         
         async def mock_stream(*args, **kwargs):
@@ -91,7 +91,7 @@ class TestReActAgent:
         agent.max_steps = 2
         
         async def mock_stream(*args, **kwargs):
-            yield "<thought>Thinking...</thought>"
+            yield '{"thought": "Thinking...", "type": "unknown", "content": ""}'
             
         agent.llm_manager.stream_response = MagicMock(side_effect=mock_stream)
         

@@ -131,29 +131,62 @@ class TestOpenAIClient:
     @pytest.mark.asyncio
     async def test_stream_response(self, openai_client):
         """Test streaming response"""
+        # Manually set initialized to True to skip initialize call in test
         openai_client._initialized = True
         
         # Mock stream chunks
-        chunk1 = MagicMock()
-        chunk1.choices = [MagicMock(delta=MagicMock(content="Hello"))]
-        chunk2 = MagicMock()
-        chunk2.choices = [MagicMock(delta=MagicMock(content=" World"))]
+        # In OpenAI SDK, the chunk.choices[0].delta.content is what we access
+        # but in our wrapper, we might be yielding the content string directly?
+        # Let's check the implementation of stream_response in openai_client.py
+        # It yields chunk.choices[0].delta.content
         
-        async def mock_stream_gen(**kwargs):
+        chunk1 = MagicMock()
+        chunk1.choices = [MagicMock()]
+        chunk1.choices[0].delta.content = "Hello"
+        # Fix: ensure reasoning_content is None, otherwise mock will be yielded
+        chunk1.choices[0].delta.reasoning_content = None
+        chunk1.choices[0].delta.model_extra = None
+        
+        chunk2 = MagicMock()
+        chunk2.choices = [MagicMock()]
+        chunk2.choices[0].delta.content = " World"
+        # Fix: ensure reasoning_content is None
+        chunk2.choices[0].delta.reasoning_content = None
+        chunk2.choices[0].delta.model_extra = None
+        
+        # So the mocked stream yields the chunk objects.
+        # And the client.stream_response yields the content strings.
+        
+        async def mock_stream_gen(*args, **kwargs):
             yield chunk1
             yield chunk2
+
             
-        with patch('openai.AsyncOpenAI') as mock_openai:
-            openai_client._client = mock_openai.return_value
-            openai_client._client.chat.completions.create = AsyncMock(side_effect=mock_stream_gen)
+        # Create a mock client
+        mock_client = MagicMock()
+        
+        # When we await client.chat.completions.create(), we get an async iterator
+        # So create() should return the async generator object directly (not a coroutine that returns it, wait)
+        # openai.AsyncOpenAI.chat.completions.create is an async method.
+        # So we await it. It returns an AsyncStream.
+        # AsyncStream is an async iterator.
+        
+        # So mock_client.chat.completions.create should be an AsyncMock.
+        # Its return value should be the async generator.
+        
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_stream_gen())
+        
+        # Assign the mock client to the OpenAIClient instance
+        openai_client._client = mock_client
             
-            messages = [LLMMessage(role="user", content="Hello")]
-            chunks = []
-            async for chunk in openai_client.stream_response(messages):
-                chunks.append(chunk)
-                
-            assert "".join(chunks) == "Hello World"
+        messages = [LLMMessage(role="user", content="Hello")]
+        chunks = []
+        async for chunk in openai_client.stream_response(messages):
+            chunks.append(chunk)
             
-            # Verify stream=True was passed
-            call_kwargs = openai_client._client.chat.completions.create.call_args.kwargs
-            assert call_kwargs["stream"] is True
+        assert "".join(chunks) == "Hello World"
+        
+        # Verify stream=True was passed
+        # call_args.kwargs is better than index access
+        call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+        assert call_kwargs["stream"] is True

@@ -16,7 +16,6 @@ from typing import Optional
 
 from .jarvis_agent import JarvisAgent, JarvisConfig
 from .core.config.server import SimpleMCPServerConfig
-from .core.ark.utils import clean_llm_response
 
 
 class JarvisApp:
@@ -199,8 +198,7 @@ Examples:
                 
                 # Process message through agent
                 response = await self.agent.process_message(user_input)
-                cleaned_response = clean_llm_response(response)
-                print(f"\n🤖 Jarvis: {cleaned_response}\n")
+                print(f"\n🤖 Jarvis: {response}\n")
                 
             except KeyboardInterrupt:
                 print("\n\nReceived interrupt signal...")
@@ -235,8 +233,7 @@ Examples:
             print(f"👤 Demo User: {message}")
             
             response = await self.agent.process_message(message)
-            cleaned_response = clean_llm_response(response)
-            print(f"🤖 Jarvis: {cleaned_response}\n")
+            print(f"🤖 Jarvis: {response}\n")
             
             # Add delay between messages for readability
             if i < len(demo_messages):

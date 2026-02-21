@@ -80,7 +80,7 @@ class OpenAILLMClient(BaseLLMClient):
                 base_url=self.config.base_url,
                 timeout=self.config.timeout,
                 max_retries=0,  # 我们使用自己的重试机制
-                http_client=http_client
+                http_client=http_client,
             )
             
             # 验证连接
@@ -263,10 +263,28 @@ class OpenAILLMClient(BaseLLMClient):
             stream = await self._client.chat.completions.create(**request_params)
             
             # 处理流式响应
+            in_reasoning = False
             async for chunk in stream:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    content = chunk.choices[0].delta.content
-                    yield content
+                if not chunk.choices:
+                    continue
+                    
+                delta = chunk.choices[0].delta
+                
+                # 尝试获取 reasoning_content (DeepSeek R1 等模型)
+                reasoning = getattr(delta, 'reasoning_content', None)
+                if reasoning is None and hasattr(delta, 'model_extra') and delta.model_extra:
+                    reasoning = delta.model_extra.get('reasoning_content')
+                
+                # 如果有 reasoning，我们暂时忽略它或者将其合并到 thought 中
+                # 在 JSON Mode 下，模型通常会将思考过程放入 "thought" 字段中
+                # 如果模型通过 reasoning_content 字段返回思考过程，这通常是非 JSON 的 raw text
+                # 这会破坏我们的 JSON 解析器。
+                # 策略：忽略 reasoning_content，因为我们在 System Prompt 中要求模型在 JSON 的 "thought" 字段中输出思考。
+                # if reasoning:
+                #    pass 
+                
+                if delta.content:
+                    yield delta.content
             
             # 记录请求完成
             duration = time.time() - start_time

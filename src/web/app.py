@@ -13,7 +13,6 @@ from src.core.config.server import SimpleMCPServerConfig
 from src.core.config.loader import load_llm_config as load_yaml_config
 from src.core.llm.config import convert_to_client_config
 from src.core.llm.client import LLMManager
-from src.core.ark.utils import clean_llm_response
 
 class StreamHandler:
     """Handler for streaming agent thoughts and responses."""
@@ -24,7 +23,10 @@ class StreamHandler:
         
     def on_thought_start(self):
         """Called when a thought block starts."""
-        self.thought_step = cl.Step(name="Thinking")
+        # Create a new Step for the thought process
+        # name="Thinking" will be the title of the step
+        # type="tool" renders it as a collapsible step in Chainlit
+        self.thought_step = cl.Step(name="Thinking", type="tool")
         asyncio.create_task(self.thought_step.send())
         
     def on_thought_token(self, token: str):
@@ -54,15 +56,16 @@ class StreamHandler:
             "on_token": self.on_token
         }
 
+@cl.set_chat_profiles
+async def chat_profiles(current_user: cl.User):
+    return [
+        cl.ChatProfile(name="Default", markdown_description="Standard Jarvis Agent"),
+        cl.ChatProfile(name="Deep Research", markdown_description="Deep Research Agent for complex queries")
+    ]
+
 @cl.on_chat_start
 async def start():
     """Initialize the agent when a new chat session starts."""
-    
-    # Set chat profiles
-    cl.set_chat_profiles([
-        cl.ChatProfile(name="Default", markdown_description="Standard Jarvis Agent"),
-        cl.ChatProfile(name="Deep Research", markdown_description="Deep Research Agent for complex queries")
-    ])
     
     chat_profile = cl.user_session.get("chat_profile")
     
@@ -153,11 +156,12 @@ async def main(message: cl.Message):
         response = await agent.process_input(message.content, callbacks=handler.to_callbacks())
         
         # Clean response before sending
-        cleaned_response = clean_llm_response(response)
+        # cleaned_response = clean_llm_response(response)
         
         # If the handler didn't stream anything (e.g. error or short response), send the response directly
         if not handler.final_message:
-             await cl.Message(content=cleaned_response).send()
+             # 如果没有流式输出，且不使用 clean_llm_response，则直接发送原始 response
+             await cl.Message(content=response).send()
         else:
              # Ensure the final message is updated with any remaining content
              # Note: StreamHandler might have already streamed tokens. 
@@ -168,26 +172,36 @@ async def main(message: cl.Message):
              # The 'response' from process_input is the final aggregated string.
              # Ideally we should clean it.
              # Let's update the final message with the cleaned content to be sure.
-             handler.final_message.content = cleaned_response
+             # handler.final_message.content = cleaned_response
              await handler.final_message.update()
              
     else:
         # Default Jarvis Agent
         # Show typing indicator
-        async with cl.Step(name="Jarvis Processing") as step:
-            step.input = message.content
-            
-            # Process message
-            response = await agent.process_message(message.content)
-            
-            # Clean response
-            cleaned_response = clean_llm_response(response)
-            
-            step.output = cleaned_response
-
-
-        # Send response
-        await cl.Message(content=cleaned_response).send()
+        handler = StreamHandler()
+        # DeepResearchAgent uses process_input with callbacks
+        response = await agent.process_message(message.content, callbacks=handler.to_callbacks())
+        # Clean response before sending
+        # cleaned_response = clean_llm_response(response)
+        
+        # If the handler didn't stream anything (e.g. error or short response), send the response directly
+        if not handler.final_message:
+            print("-------There is no streaming output.--------")
+            # 如果没有流式输出，且不使用 clean_llm_response，则直接发送原始 response
+            await cl.Message(content=response).send()
+        else:
+            print("-------Streaming output.--------")
+             # Ensure the final message is updated with any remaining content
+             # Note: StreamHandler might have already streamed tokens. 
+             # If we clean it now, we might replace content.
+             # However, StreamHandler currently streams 'on_token'.
+             # If 'on_token' received raw chunks, the user might have seen raw output.
+             # But 'on_token' usually comes from the LLM stream.
+             # The 'response' from process_input is the final aggregated string.
+             # Ideally we should clean it.
+             # Let's update the final message with the cleaned content to be sure.
+             # handler.final_message.content = cleaned_response
+            await handler.final_message.update()
 
 @cl.on_stop
 async def stop():

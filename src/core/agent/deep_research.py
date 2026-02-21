@@ -6,13 +6,12 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 
 from src.core.agent.react import ReActAgent
-from src.prompts.deep_research import SYSTEM_PROMPT
 from src.capabilities.deep_research_tools import DeepResearchTools
 
 class DeepResearchAgent(ReActAgent):
     """
-    Agent implementing the Deep Research paradigm with ReAct loop and XML-based tool calling.
-    Inherits from ReActAgent to reuse XML parsing and execution loop logic.
+    Agent implementing the Deep Research paradigm with ReAct loop and JSON-based tool calling.
+    Inherits from ReActAgent to reuse JSON parsing and execution loop logic.
     """
     
     def __init__(self, config: Optional[Dict[str, Any]] = None):
@@ -25,7 +24,7 @@ class DeepResearchAgent(ReActAgent):
     def _get_system_prompt(self) -> str:
         """Override system prompt with Deep Research specific prompt."""
         current_date = datetime.now().strftime("%Y-%m-%d")
-        return SYSTEM_PROMPT + current_date
+        return self.prompt_manager.render_template("deep_research_system", current_date=current_date)
 
     async def execute_tool(self, name: str, params: Any) -> Any:
         """
@@ -45,10 +44,10 @@ class DeepResearchAgent(ReActAgent):
             elif name == "parse_file":
                 return await self.tools.parse_file(params.get("files", []))
             elif name == "PythonInterpreter":
-                 # ReActAgent's parser injects 'code' into params if <code> tag was present
+                 # Code is provided in arguments
                  if 'code' in params:
                      return await self.tools.python_interpreter(params['code'])
-                 return "Error: PythonInterpreter must use <code> tags for code."
+                 return "Error: PythonInterpreter must provide 'code' argument."
             else:
                 return f"Error: Unknown tool '{name}'"
                 

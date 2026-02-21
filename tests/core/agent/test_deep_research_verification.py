@@ -26,22 +26,18 @@ async def test_parallel_tool_execution(mock_llm_manager):
     agent.llm_manager = mock_llm_manager
     agent.state = AgentState.READY
     
-    # Mock LLM response with multiple tool calls
+    # Mock LLM response with multiple tool calls using JSON Protocol
     async def async_gen(content):
         yield content
 
+    # Mock stream_response to return JSON strings
     mock_llm_manager.stream_response.side_effect = [
-        # First response: Two parallel searches
-        async_gen("""I will search for two topics.
-<tool_call>
-{"name": "search", "arguments": {"query": ["topic 1"]}}
-</tool_call>
-<tool_call>
-{"name": "search", "arguments": {"query": ["topic 2"]}}
-</tool_call>
-"""),
-        # Second response: Answer
-        async_gen("<answer>Done</answer>")
+        # First response: Tool Call 1
+        async_gen('{"thought": "Searching 1", "type": "tool_call", "content": {"name": "search", "arguments": {"query": ["topic 1"]}}}'),
+        # Second response: Tool Call 2
+        async_gen('{"thought": "Searching 2", "type": "tool_call", "content": {"name": "search", "arguments": {"query": ["topic 2"]}}}'),
+        # Third response: Answer
+        async_gen('{"thought": "Done", "type": "answer", "content": "Done"}')
     ]
     
     # Mock Tools
@@ -53,9 +49,10 @@ async def test_parallel_tool_execution(mock_llm_manager):
     await agent.process_input("test")
     
     # Verify tools were called
+    # In the new sequential loop (ReAct style), tools might be called sequentially if the LLM outputs them one by one.
+    # The original test assumed parallel execution from a single response containing multiple tool calls.
+    # If the LLM outputs one tool call per step, we will have 2 calls.
     assert agent.tools.search.call_count == 2
-    # Verify both calls happened (we can't strictly verify parallelism without delays, 
-    # but asyncio.gather ensures they are scheduled together)
 
 @pytest.mark.asyncio
 async def test_file_parser_routing():

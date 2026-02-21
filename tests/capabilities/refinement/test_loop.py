@@ -56,26 +56,9 @@ class TestRefinementLoop:
         # Loop breaks immediately
 
     def test_clean_content(self, loop):
-        """Test content cleaning logic."""
-        # 1. Remove <think> blocks
-        content = "<think>This is thought process</think>Real Content"
-        assert loop._clean_content(content) == "Real Content"
-        
-        # 2. Handle isolated closing tag
-        content = "Thought process</think>Real Content"
-        assert loop._clean_content(content) == "Real Content"
-        
-        # 3. Handle Final Answer
-        content = "Thought: thinking...\nFinal Answer: The Answer"
-        assert loop._clean_content(content) == "The Answer"
-        
-        # 4. Handle combined
-        content = "<think>Deep thought</think>Some chat.\nFinal Answer: Real Answer"
-        assert loop._clean_content(content) == "Real Answer"
+        """Test content cleaning logic - DEPRECATED/REMOVED"""
+        pass
 
-        # 5. Empty content
-        assert loop._clean_content(None) == ""
-        assert loop._clean_content("") == ""
 
     def test_save_result(self, loop):
         """Test saving results to file."""

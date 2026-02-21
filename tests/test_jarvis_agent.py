@@ -208,7 +208,7 @@ class TestJarvisAgent:
             response = await agent.process_message("Hello")
             
             assert response == "Test response"
-            mock_process.assert_called_once_with("Hello")
+            mock_process.assert_called_once_with("Hello", callbacks=None)
 
     @pytest.mark.asyncio
     async def test_health_check(self, agent):

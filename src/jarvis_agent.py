@@ -186,13 +186,14 @@ class JarvisAgent:
         
         self.logger.info("Jarvis Agent stopped")
     
-    async def process_message(self, message: str, user_id: Optional[str] = None) -> str:
+    async def process_message(self, message: str, user_id: Optional[str] = None, callbacks: Optional[Dict[str, Callable]] = None) -> str:
         """
         Process a user message and return a response.
         
         Args:
             message: User's message
             user_id: Optional user identifier
+            callbacks: Optional callbacks for streaming/events
             
         Returns:
             Agent's response
@@ -217,7 +218,7 @@ class JarvisAgent:
                     self.logger.warning(f"Message callback failed: {e}")
             
             # Process through ARK engine
-            response = await self.ark_engine.process_input(message)
+            response = await self.ark_engine.process_input(message, callbacks=callbacks)
             
             self.logger.debug(f"Generated response: '{response[:50]}...'")
             return response

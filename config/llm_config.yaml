@@ -31,7 +31,7 @@ providers:
     enabled: true
     api_key: "${NVIDIA_API_KEY}"
     base_url: "https://integrate.api.nvidia.com/v1"
-    default_model: "qwen/qwq-32b"
+    default_model: "moonshotai/kimi-k2-thinking"
     models:
       meta/llama-3.1-70b-instruct:
         max_tokens: 4096

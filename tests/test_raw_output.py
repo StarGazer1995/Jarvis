@@ -38,17 +38,17 @@ class TestARKEngineRawOutput(unittest.IsolatedAsyncioTestCase):
         self.create_graph_patcher.stop()
         self.tools_node_patcher.stop()
 
-    async def test_process_input_returns_raw_xml(self):
-        """Test process_input returns raw XML content including <think> tags."""
+    async def test_process_input_returns_raw_output(self):
+        """Test process_input returns raw content."""
         mock_graph = AsyncMock()
         self.engine.graph = mock_graph
         
-        # Mock graph response with XML tags
-        xml_content = "<think>Reasoning...</think><answer>Final Answer</answer>"
+        # Mock graph response with Markdown headers
+        raw_content = "## Reasoning\nReasoning...\n## Response\nFinal Answer"
         mock_graph.ainvoke.return_value = {
             "messages": [
                 HumanMessage(content="Question"),
-                AIMessage(content=xml_content)
+                AIMessage(content=raw_content)
             ],
             "todo_list": [],
             "sender": "master"
@@ -56,5 +56,5 @@ class TestARKEngineRawOutput(unittest.IsolatedAsyncioTestCase):
         
         response = await self.engine.process_input("Question")
         
-        # Verify that response is EXACTLY the XML content (no cleaning)
-        self.assertEqual(response, xml_content)
+        # Verify that response is EXACTLY the raw content (no cleaning)
+        self.assertEqual(response, raw_content)

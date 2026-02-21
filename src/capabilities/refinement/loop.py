@@ -46,37 +46,6 @@ class RefinementLoop:
             return await func(*args)
         return func(*args)
 
-    def _clean_content(self, content: str) -> str:
-        """
-        Clean Chain-of-Thought (CoT) artifacts from the content.
-        
-        Removes:
-        1. Content inside <think>...</think> tags.
-        2. Content before </think> tag if opening tag is missing.
-        3. Content before 'Final Answer:' marker.
-        """
-        if not content:
-            return ""
-            
-        cleaned = content
-        
-        # 1. Remove <think> blocks (DeepSeek/Qwen style)
-        # Handle complete blocks
-        cleaned = re.sub(r'<think>.*?</think>', '', cleaned, flags=re.DOTALL)
-        # Handle isolated closing tags (often happens if opening tag is at start)
-        if '</think>' in cleaned:
-            parts = cleaned.split('</think>', 1)
-            if len(parts) > 1:
-                cleaned = parts[1].strip()
-                
-        # 2. Remove "Thought: ... Final Answer:" (ReAct style)
-        # We look for the LAST occurrence of "Final Answer:" to be safe
-        final_answer_match = re.search(r"(?:.*?Final Answer:\s*)(.*)", cleaned, re.DOTALL)
-        if final_answer_match:
-            cleaned = final_answer_match.group(1).strip()
-            
-        return cleaned.strip()
-
     async def run(self, initial_prompt: str) -> str:
         """
         Execute the refinement loop.
@@ -110,15 +79,13 @@ class RefinementLoop:
                 
                 # Construct refinement prompt
                 refinement_prompt = (
-                    f"<refinement_task>\n"
-                    f"The previous output was incomplete or incorrect. Update the content based on the reviewer's feedback.\n"
-                    f"</refinement_task>\n\n"
-                    f"<feedback>\n{instructions}\n</feedback>\n\n"
-                    f"<instructions>\n"
+                    f"# Refinement Task\n"
+                    f"The previous output was incomplete or incorrect. Update the content based on the reviewer's feedback.\n\n"
+                    f"## Feedback\n{instructions}\n\n"
+                    f"## Instructions\n"
                     f"1. Address the issues raised in the feedback specifically.\n"
                     f"2. Combine new findings with valid previous information.\n"
                     f"3. Ensure the final output is complete and accurate.\n"
-                    f"</instructions>"
                 )
                 
                 logger.info(f"[Refinement] Phase 3: Refining...")
@@ -138,7 +105,7 @@ class RefinementLoop:
             content: The string content to save.
             directory: Target directory (relative to CWD).
             prefix: Filename prefix.
-            clean_cot: Whether to remove Chain-of-Thought artifacts before saving.
+            clean_cot: Deprecated. Content is assumed to be clean.
             task: Optional task description to include at the top of the file.
             
         Returns:
@@ -153,8 +120,8 @@ class RefinementLoop:
         filename = f"{prefix}_{timestamp}.md"
         file_path = os.path.join(abs_dir, filename)
         
-        # Clean content if requested
-        content_to_save = self._clean_content(content) if clean_cot else content
+        # Content is assumed to be clean
+        content_to_save = content
         
         # Add task description if provided
         if task:

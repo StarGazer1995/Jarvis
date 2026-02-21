@@ -65,22 +65,3 @@ def create_agent_node(agent_name: str, agent_func: Callable[[MultiAgentState], U
             "structured_data": data # This overwrites. For merging, we'd need a reducer.
         }
     return agent_node
-
-def clean_llm_response(text: str) -> str:
-    """
-    Clean the LLM response to extract the final decision.
-    Removes <think> blocks and looks for the final answer.
-    """
-    # Remove <think>...</think> blocks
-    cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
-    
-    # Extract content between <answer> and </answer>
-    match = re.search(r'<answer>(.*?)</answer>', text, flags=re.DOTALL)
-    if match:
-        cleaned = match.group(1)
-
-    
-    # Strip whitespace
-    cleaned = cleaned.strip()
-    
-    return cleaned

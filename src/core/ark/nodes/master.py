@@ -8,7 +8,10 @@ from langchain_core.runnables import RunnableConfig
 from ..state import JarvisState
 from ...llm.client import LLMManager, LLMMessage
 from ...agent.types import AgentStep
-from ..utils import clean_llm_response, AgentSpec
+from ..utils import AgentSpec
+from ...llm.stream_handler import StreamTokenHandler
+from ...llm.parsers import JSONOutputParser
+from ...prompt.manager import PromptManager
 
 logger = logging.getLogger("ark.nodes.master")
 
@@ -21,6 +24,8 @@ class MasterNode:
         self.llm_manager = llm_manager
         self.agents = agents or []
         self.agent_map = {a.name: a for a in self.agents}
+        self.prompt_manager = PromptManager()
+        self.parser = JSONOutputParser()
 
     async def __call__(self, state: JarvisState, config: RunnableConfig) -> Dict[str, Any]:
         """
@@ -32,6 +37,7 @@ class MasterNode:
         # 2. Dynamic System Prompt Injection
         # We construct the system prompt based on the current state (e.g. todo_list)
         system_prompt = self._get_system_prompt(state)
+        logger.info("system prompt is: {}s".format(system_prompt))
         
         # Check if the first message is system; if so, update it; otherwise insert it
         if messages and messages[0].role == "system":
@@ -42,48 +48,62 @@ class MasterNode:
         # 3. Call LLM
         logger.debug("MasterNode calling LLM...")
         try:
-            response = await self.llm_manager.generate_response(messages)
-            raw_content = response.content
+            callbacks = config.get("configurable", {}).get("callbacks") if config else None
+            handler = StreamTokenHandler(callbacks)
+            
+            # Enforce JSON mode for the Orchestrator
+            raw_content = await handler.process_stream(
+                self.llm_manager.stream_response(
+                    messages,
+                )
+            )
         except Exception as e:
             logger.error(f"LLM call failed: {e}")
             raw_content = f"Error: Failed to generate response from LLM: {e}"
         
-        logger.debug(f"LLM Response (Raw): {raw_content[:100]}...")
+        logger.info(f"LLM Response (Raw): {raw_content[:500]}...")
         
-        # 4. Clean Response (<think> tags)
-        content = clean_llm_response(raw_content)
+        # 4. Parse JSON Response
+        try:
+            parsed_response = self.parser.parse(raw_content)
+        except ValueError as e:
+            logger.error(f"Failed to parse JSON response: {e}")
+            # Return error message to user/agent loop
+            return {
+                "messages": [AIMessage(content=f"Error: Invalid JSON response: {raw_content}")],
+                "sender": "master"
+            }
+            
+        thought = parsed_response.get("thought", "")
+        response_type = parsed_response.get("type", "answer")
+        content = parsed_response.get("content", "")
         
-        # 5. Parse Response for Tools OR Agents
-        tool_call = self._parse_tool_call(content)
-        
-        if tool_call:
-            # Ensure args is a dictionary for Pydantic validation if possible
-            tool_args = tool_call["action_input"]
-            if not isinstance(tool_args, dict):
-                # Try to force it into a dict if it's a string, or wrap it
-                try:
-                    if isinstance(tool_args, str) and tool_args.strip().startswith("{"):
-                         tool_args = json.loads(tool_args)
-                except:
-                    pass
+        # 5. Handle Tool Calls
+        if response_type == "tool_call" and isinstance(content, dict):
+            tool_name = content.get("name")
+            tool_args = content.get("arguments", {})
             
             # Construct AIMessage with tool_calls
             lc_tool_call = {
-                "name": tool_call["action"],
+                "name": tool_name,
                 "args": tool_args,
                 "id": f"call_{len(state['messages'])}" # Simple ID generation
             }
             
+            # We include the thought in the content for history context
             return {
-                "messages": [AIMessage(content=content, tool_calls=[lc_tool_call])],
+                "messages": [AIMessage(content=thought, tool_calls=[lc_tool_call])],
                 "sender": "master"
             }
         else:
-            # Normal response (Thought or Final Answer)
+            # Normal response (Answer)
+            # If content is a string, combine with thought
+            final_content = f"{thought}\n\n{content}" if isinstance(content, str) else thought
             return {
-                "messages": [AIMessage(content=content)],
+                "messages": [AIMessage(content=final_content)],
                 "sender": "master"
             }
+
 
     def _convert_messages(self, lc_messages: List[BaseMessage]) -> List[LLMMessage]:
         """Convert LangChain messages to internal LLMMessage format."""
@@ -158,86 +178,9 @@ class MasterNode:
             for agent in self.agents:
                 agents_desc += f"- {agent.name}: {agent.description}\n"
         
-        return f"""<system_instruction>
-You are Jarvis, an intelligent agent acting as an Orchestrator.
-
-<context>
-{todo_status}
-{tools_desc}
-{agents_desc}
-</context>
-
-<instructions>
-1. Analyze the user's request.
-2. Break it down into a list of tasks using 'manage_tasks' if needed.
-3. Schedule execution by delegating to Worker Agents or using Tools.
-4. Execute tasks one by one.
-5. Update task status as you progress.
-6. When finished, provide a Final Answer.
-</instructions>
-
-<response_format>
-You must output your response in XML format.
-
-1. To think about the plan or analysis:
-<think>
-Your reasoning here...
-</think>
-
-2. To execute a tool or delegate to an agent:
-<tool_call>
-{{"name": "tool_name_or_agent_name", "arguments": {{"arg1": "value1", ...}}}}
-</tool_call>
-
-3. To provide the final answer:
-<answer>
-Your final response to the user...
-</answer>
-</response_format>
-</system_instruction>"""
-
-    def _parse_tool_call(self, text: str) -> Optional[Dict[str, Any]]:
-        """Parse LLM response for XML tool calls."""
-        # Look for <tool_call> tags
-        tool_call_match = re.search(r"<tool_call>(.*?)</tool_call>", text, re.DOTALL)
-        
-        if tool_call_match:
-            content = tool_call_match.group(1).strip()
-            
-            # Handle PythonInterpreter special format (JSON + <code>)
-            if "<code>" in content:
-                json_part = content.split("<code>")[0].strip()
-                code_part = content.split("<code>")[1].split("</code>")[0].strip()
-                try:
-                    tool_info = json.loads(json_part)
-                    tool_name = tool_info.get("name")
-                    return {
-                        "action": tool_name,
-                        "action_input": {"code": code_part, **tool_info.get("arguments", {})}
-                    }
-                except json.JSONDecodeError:
-                    pass
-
-            # Standard JSON
-            try:
-                tool_call = json.loads(content)
-                return {
-                    "action": tool_call.get("name"),
-                    "action_input": tool_call.get("arguments", {})
-                }
-            except json.JSONDecodeError:
-                # Try to find JSON if there's extra text
-                try:
-                    start = content.find("{")
-                    end = content.rfind("}")
-                    if start != -1 and end != -1:
-                        json_str = content[start:end+1]
-                        tool_call = json.loads(json_str)
-                        return {
-                            "action": tool_call.get("name"),
-                            "action_input": tool_call.get("arguments", {})
-                        }
-                except:
-                    pass
-        
-        return None
+        return self.prompt_manager.render_template(
+            "master_system",
+            todo_status=todo_status,
+            tools_desc=tools_desc,
+            agents_desc=agents_desc
+        )
