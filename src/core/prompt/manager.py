@@ -43,7 +43,7 @@ class PromptManager:
         """初始化提示词管理器"""
         self.templates: Dict[str, PromptTemplate] = {}
         self.logger = logging.getLogger("prompt.manager")
-        self._load_default_templates()
+        self.load_default_templates()
     
     def _load_default_templates(self) -> None:
         """加载默认提示词模板"""

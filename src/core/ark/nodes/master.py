@@ -35,9 +35,7 @@ class MasterNode:
         messages = self._convert_messages(state["messages"])
         
         # 2. Dynamic System Prompt Injection
-        # We construct the system prompt based on the current state (e.g. todo_list)
         system_prompt = self._get_system_prompt(state)
-        logger.info("system prompt is: {}s".format(system_prompt))
         
         # Check if the first message is system; if so, update it; otherwise insert it
         if messages and messages[0].role == "system":
@@ -61,14 +59,31 @@ class MasterNode:
             logger.error(f"LLM call failed: {e}")
             raw_content = f"Error: Failed to generate response from LLM: {e}"
         
-        logger.info(f"LLM Response (Raw): {raw_content[:500]}...")
-        
-        # 4. Parse JSON Response
+        # 4. Clean and Parse JSON Response
         try:
-            parsed_response = self.parser.parse(raw_content)
+            # Clean raw_content to handle Markdown code blocks and common JSON issues
+            cleaned_content = raw_content.strip()
+            # Remove Markdown code blocks if present
+            if cleaned_content.startswith("```json"):
+                cleaned_content = cleaned_content[7:]
+            elif cleaned_content.startswith("```"):
+                cleaned_content = cleaned_content[3:]
+            if cleaned_content.endswith("```"):
+                cleaned_content = cleaned_content[:-3]
+            cleaned_content = cleaned_content.strip()
+            
+            parsed_response = self.parser.parse(cleaned_content)
         except ValueError as e:
-            logger.error(f"Failed to parse JSON response: {e}")
-            # Return error message to user/agent loop
+            logger.error(f"Failed to parse JSON response: {e}. Raw content: {raw_content[:100]}...")
+            
+            # Fallback: Try to use the raw content directly if it looks like an answer
+            # This is a robust fallback for when LLM fails to output valid JSON but gives a valid text answer
+            if not raw_content.startswith("{"):
+                 return {
+                    "messages": [AIMessage(content=raw_content, additional_kwargs={"raw_json": raw_content, "parse_error": str(e)})],
+                    "sender": "master"
+                }
+
             return {
                 "messages": [AIMessage(content=f"Error: Invalid JSON response: {raw_content}")],
                 "sender": "master"
@@ -87,20 +102,26 @@ class MasterNode:
             lc_tool_call = {
                 "name": tool_name,
                 "args": tool_args,
-                "id": f"call_{len(state['messages'])}" # Simple ID generation
+                "id": f"call_{len(state['messages'])}" 
             }
             
-            # We include the thought in the content for history context
+            # Keep thought in context but don't expose it as main content if possible
+            # But for ReAct, thought is usually prepended.
+            # Let's keep it consistent: thought is internal reasoning.
             return {
-                "messages": [AIMessage(content=thought, tool_calls=[lc_tool_call])],
+                "messages": [AIMessage(content=thought, tool_calls=[lc_tool_call], additional_kwargs={"raw_json": raw_content})],
                 "sender": "master"
             }
         else:
             # Normal response (Answer)
-            # If content is a string, combine with thought
-            final_content = f"{thought}\n\n{content}" if isinstance(content, str) else thought
+            # Only return the content to the user, keep thought in metadata
+            final_content = content if isinstance(content, str) else str(content)
+            
+            # Log the thought for debugging/audit
+            logger.info(f"MasterNode Thought: {thought}")
+            
             return {
-                "messages": [AIMessage(content=final_content)],
+                "messages": [AIMessage(content=final_content, additional_kwargs={"raw_json": raw_content, "thought": thought})],
                 "sender": "master"
             }
 

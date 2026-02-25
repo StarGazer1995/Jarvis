@@ -20,6 +20,7 @@ class StreamHandler:
     def __init__(self):
         self.thought_step = None
         self.final_message = None
+        self.send_task = None
         
     def on_thought_start(self):
         """Called when a thought block starts."""
@@ -43,9 +44,17 @@ class StreamHandler:
     def on_token(self, token: str):
         """Called when a token is generated for the final answer."""
         if not self.final_message:
-            self.final_message = cl.Message(content="")
-            asyncio.create_task(self.final_message.send())
-        asyncio.create_task(self.final_message.stream_token(token))
+            # Only start streaming if we have substantial content or specific tokens
+            # But we want to show *something* eventually.
+            # Let's create the message but with content.
+            # Avoid sending empty content initially
+            if not token:
+                return
+                
+            self.final_message = cl.Message(content=token)
+            self.send_task = asyncio.create_task(self.final_message.send())
+        else:
+             asyncio.create_task(self.final_message.stream_token(token))
 
     def to_callbacks(self):
         """Convert handler methods to a callbacks dictionary."""
@@ -143,6 +152,7 @@ async def start():
 @cl.on_message
 async def main(message: cl.Message):
     """Handle incoming user messages."""
+    session_id = cl.user_session.get("id")
     agent = cl.user_session.get("agent")
     agent_type = cl.user_session.get("agent_type")
     
@@ -163,45 +173,41 @@ async def main(message: cl.Message):
              # 如果没有流式输出，且不使用 clean_llm_response，则直接发送原始 response
              await cl.Message(content=response).send()
         else:
+             # Wait for the send task to complete
+             if handler.send_task:
+                 await handler.send_task
              # Ensure the final message is updated with any remaining content
-             # Note: StreamHandler might have already streamed tokens. 
-             # If we clean it now, we might replace content.
-             # However, StreamHandler currently streams 'on_token'.
-             # If 'on_token' received raw chunks, the user might have seen raw output.
-             # But 'on_token' usually comes from the LLM stream.
-             # The 'response' from process_input is the final aggregated string.
-             # Ideally we should clean it.
-             # Let's update the final message with the cleaned content to be sure.
-             # handler.final_message.content = cleaned_response
-             await handler.final_message.update()
+             if handler.final_message.content != response:
+                 handler.final_message.content = response
+                 await handler.final_message.update()
              
     else:
         # Default Jarvis Agent
-        # Show typing indicator
+        # Show typing indicator (removed to prevent premature scrolling)
+        # handler = StreamHandler()
+        
+        # Use cl.Step to wrap the thinking process if needed, or just let StreamHandler manage the output.
+        # But Chainlit's default behavior is to scroll to bottom on new message.
+        # We need to make sure we don't emit ANY message until we have content.
+        
         handler = StreamHandler()
-        # DeepResearchAgent uses process_input with callbacks
         response = await agent.process_message(message.content, callbacks=handler.to_callbacks())
         # Clean response before sending
         # cleaned_response = clean_llm_response(response)
         
         # If the handler didn't stream anything (e.g. error or short response), send the response directly
         if not handler.final_message:
-            print("-------There is no streaming output.--------")
             # 如果没有流式输出，且不使用 clean_llm_response，则直接发送原始 response
             await cl.Message(content=response).send()
         else:
-            print("-------Streaming output.--------")
+            # Wait for the send task to complete
+            if handler.send_task:
+                await handler.send_task
              # Ensure the final message is updated with any remaining content
-             # Note: StreamHandler might have already streamed tokens. 
-             # If we clean it now, we might replace content.
-             # However, StreamHandler currently streams 'on_token'.
-             # If 'on_token' received raw chunks, the user might have seen raw output.
-             # But 'on_token' usually comes from the LLM stream.
-             # The 'response' from process_input is the final aggregated string.
-             # Ideally we should clean it.
-             # Let's update the final message with the cleaned content to be sure.
-             # handler.final_message.content = cleaned_response
-            await handler.final_message.update()
+            if handler.final_message.content != response:
+                handler.final_message.content = response
+                await handler.final_message.update()
+
 
 @cl.on_stop
 async def stop():

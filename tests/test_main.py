@@ -572,30 +572,34 @@ class TestCliMain:
     def test_cli_main_success(self):
         """Test cli_main with successful execution."""
         with patch('asyncio.run', return_value=0):
-            with patch('sys.exit') as mock_exit:
-                cli_main()
-                mock_exit.assert_called_with(0)
+            with patch('src.main.main') as mock_main:
+                with patch('sys.exit') as mock_exit:
+                    cli_main()
+                    mock_exit.assert_called_with(0)
     
     def test_cli_main_failure(self):
         """Test cli_main with failure."""
         with patch('asyncio.run', return_value=1):
-            with patch('sys.exit') as mock_exit:
-                cli_main()
-                mock_exit.assert_called_with(1)
+            with patch('src.main.main') as mock_main:
+                with patch('sys.exit') as mock_exit:
+                    cli_main()
+                    mock_exit.assert_called_with(1)
     
     def test_cli_main_keyboard_interrupt(self):
         """Test cli_main with keyboard interrupt."""
         with patch('asyncio.run', side_effect=KeyboardInterrupt()):
-            with patch('sys.exit') as mock_exit:
-                cli_main()
-                mock_exit.assert_called_with(0)
+            with patch('src.main.main') as mock_main:
+                with patch('sys.exit') as mock_exit:
+                    cli_main()
+                    mock_exit.assert_called_with(0)
     
     def test_cli_main_exception(self):
         """Test cli_main with general exception."""
         with patch('asyncio.run', side_effect=Exception("Test error")):
-            with patch('sys.exit') as mock_exit:
-                cli_main()
-                mock_exit.assert_called_with(1)
+            with patch('src.main.main') as mock_main:
+                with patch('sys.exit') as mock_exit:
+                    cli_main()
+                    mock_exit.assert_called_with(1)
 
 
 if __name__ == "__main__":

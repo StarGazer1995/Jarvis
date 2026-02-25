@@ -77,7 +77,7 @@ class BaseAgent(ABC):
         """Initialize the LLM client."""
         success = await self.llm_manager.initialize_default_client()
         if not success:
-            self.logger.warning("LLM client initialization failed")
+            self.logger.error("LLM client initialization failed")
             self.llm_enabled = False
             
     async def shutdown(self) -> None:

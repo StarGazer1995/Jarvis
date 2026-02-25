@@ -14,6 +14,7 @@ import json
 
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_community.chat_models import ChatOllama
@@ -166,6 +167,7 @@ class ConversationTurn:
     entities: Dict[str, Any] = field(default_factory=dict)
     tools_used: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
+    raw_response: Optional[str] = None
     
     @property
     def processing_time(self) -> float:
@@ -191,9 +193,26 @@ class ConversationTurn:
             "intent": self.intent,
             "entities": self.entities,
             "tools_used": self.tools_used,
-            "metadata": self.metadata
+            "metadata": self.metadata,
+            "raw_response": self.raw_response
         }
     
+    def to_langchain_message(self) -> List[BaseMessage]:
+        """
+        Convert conversation turn to LangChain messages.
+        
+        Returns:
+            List of LangChain BaseMessage objects (HumanMessage, AIMessage)
+        """
+        messages = []
+        if self.user_input:
+            messages.append(HumanMessage(content=self.user_input))
+        if self.agent_response:
+            # Use raw JSON response if available, otherwise use processed response
+            content = self.raw_response if self.raw_response else self.agent_response
+            messages.append(AIMessage(content=content))
+        return messages
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'ConversationTurn':
         """
@@ -212,7 +231,8 @@ class ConversationTurn:
             intent=data.get("intent"),
             entities=data.get("entities", {}),
             tools_used=data.get("tools_used", []),
-            metadata=data.get("metadata", {})
+            metadata=data.get("metadata", {}),
+            raw_response=data.get("raw_response")
         )
 
 
@@ -276,7 +296,8 @@ class ConversationContext:
         agent_response: str, 
         intent: Optional[str] = None,
         tools_used: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        raw_response: Optional[str] = None
     ) -> None:
         """
         Add a conversation exchange to the context.
@@ -287,6 +308,7 @@ class ConversationContext:
             intent: Recognized intent (if any)
             tools_used: List of tools used in this exchange
             metadata: Additional metadata for this turn
+            raw_response: Raw JSON response from LLM
         """
         turn = ConversationTurn(
             user_input=user_input,
@@ -294,10 +316,12 @@ class ConversationContext:
             timestamp=datetime.now().timestamp(),
             intent=intent,
             tools_used=tools_used or [],
-            metadata=metadata or {}
+            metadata=metadata or {},
+            raw_response=raw_response
         )
         
         self.conversation_history.append(turn)
+        self.ark_logger.debug(f"ARK context: Added exchange with intent '{intent}', tools: {tools_used}")
         
         # Maintain history size limit
         if len(self.conversation_history) > self.max_history:
@@ -444,6 +468,125 @@ class ConversationContext:
             "intents": intents,
             "duration": duration
         }
+
+    def get_cleaned_history(self, max_messages: int = 20) -> List[BaseMessage]:
+        """
+        Get cleaned conversation history formatted as LangChain messages.
+        
+        Implements cleaning rules R1-R6:
+        R1: Clear history before "reset"/"clear" commands.
+        R2: Filter invalid/error messages.
+        R3: Remove trailing assistant messages.
+        R4: Merge consecutive user messages.
+        R5: Truncate based on token/count budget.
+        R6: Ensure history starts with user message.
+        
+        Args:
+            max_messages: Maximum number of messages to return (R5)
+            
+        Returns:
+            List of cleaned LangChain BaseMessage objects
+        """
+        # Convert all turns to a flat list of messages
+        raw_messages: List[BaseMessage] = []
+        for turn in self.conversation_history:
+            raw_messages.extend(turn.to_langchain_message())
+        
+        if not raw_messages:
+            return []
+            
+        # R1: Clear history before "reset"/"clear" commands
+        # Find the last occurrence of a reset command
+        reset_index = -1
+        reset_keywords = {"reset", "clear", "restart", "start over"}
+        
+        for i, msg in enumerate(raw_messages):
+            if isinstance(msg, HumanMessage) and msg.content.strip().lower() in reset_keywords:
+                reset_index = i
+
+      
+        if reset_index != -1:
+            # Keep messages starting from AFTER the reset command? 
+            # Or should we keep the reset command itself?
+            # Usually if I say "reset", the history should be empty for the NEXT turn.
+            # But here we are retrieving history.
+            # If the history contains "reset", it means the user said it in the past.
+            # If the user said "reset", we probably want to ignore everything before it.
+            # Let's drop everything up to and including the reset command.
+            # Wait, if there was a response to "reset" (e.g. "Okay"), we might want to drop that too?
+            # But let's start simple: drop everything up to the reset command.
+            raw_messages = raw_messages[reset_index + 1:]
+
+        
+        if not raw_messages:
+            return []
+
+        cleaned_messages: List[BaseMessage] = []
+        
+
+        for msg in raw_messages:
+            if not msg.content or not msg.content.strip():
+                continue
+            cleaned_messages.append(msg)
+
+        if not cleaned_messages:
+            return []
+            
+        # R3: Remove trailing assistant messages
+        # Refined R3: Only remove if empty or invalid. R2 already handles empty.
+        # So we generally WANT history to end with AI, so that when we append User, we get H-A-H pattern.
+        # However, if the last message is AI and we are about to add another AI (unlikely here as we add User),
+        # or if we want to force user to answer user (unlikely).
+        # The only case to remove trailing AI is if it's "incomplete" or we are retrying.
+        # Since R2 filters empty, we assume existing AIs are valid.
+        # So we SKIP unconditional removal.
+        # while cleaned_messages and isinstance(cleaned_messages[-1], AIMessage):
+        #    cleaned_messages.pop()
+
+        
+        if not cleaned_messages:
+            return []
+            
+        # R4: Merge consecutive user messages
+
+        merged_messages: List[BaseMessage] = []
+        current_user_buffer: List[str] = []
+        
+        for msg in cleaned_messages:
+            if isinstance(msg, HumanMessage):
+                current_user_buffer.append(msg.content)
+            else:
+                if current_user_buffer:
+                    # Flush user buffer
+                    merged_content = "\n".join(current_user_buffer)
+                    merged_messages.append(HumanMessage(content=merged_content))
+                    current_user_buffer = []
+                merged_messages.append(msg)
+        
+        # Flush remaining user buffer
+        if current_user_buffer:
+            merged_content = "\n".join(current_user_buffer)
+            merged_messages.append(HumanMessage(content=merged_content))
+            
+        cleaned_messages = merged_messages
+        
+        if not cleaned_messages:
+            return []
+            
+
+        
+        # R5: Truncate based on count budget
+        if len(cleaned_messages) > max_messages:
+            cleaned_messages = cleaned_messages[-max_messages:]
+
+            
+        # R6: Ensure history starts with user message
+        # If the first message is an AIMessage, remove it.
+        if cleaned_messages and isinstance(cleaned_messages[0], AIMessage):
+            cleaned_messages.pop(0)
+
+            
+        return cleaned_messages
 
     def update_user_preference(self, key: str, value: Any) -> None:
         """
@@ -707,5 +850,6 @@ class ConversationContext:
             "start_time": self.session_start.isoformat(),
             "turn_count": 0
         }
+        self.session_id = self.session_metadata['session_id']
         
         self.ark_logger.info(f"ARK context: Reset session from {old_session_id} to {self.session_metadata['session_id']}")

@@ -39,6 +39,9 @@ class TestARKEngine(unittest.IsolatedAsyncioTestCase):
         self.mock_mcp_client.connect_to_server = AsyncMock(return_value=True)
         self.mock_mcp_client.discover_tools = AsyncMock(return_value=[])
         
+        # Setup mock context manager behavior
+        self.mock_context_manager.get_cleaned_history.return_value = []
+        
     async def asyncTearDown(self):
         self.mcp_client_patcher.stop()
         self.context_manager_patcher.stop()

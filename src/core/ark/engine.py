@@ -87,8 +87,6 @@ class ARKEngine(ReActAgent):
             max_history=self.config.get('max_conversation_history', 100)
         )
         
-        self.prompt_manager = PromptManager()
-        
         # ARK-specific attributes
         self.tool_usage_stats: Dict[str, int] = {}
         self.todo_list: List[Task] = []
@@ -128,9 +126,7 @@ class ARKEngine(ReActAgent):
             
             # Discover available tools
             await self._discover_tools()
-            
-            # Load default prompts
-            self.prompt_manager.load_default_templates()
+
             
             # Initialize LangGraph
             self.ark_logger.info("ARK: Initializing LangGraph workflow")
@@ -163,8 +159,11 @@ class ARKEngine(ReActAgent):
         self.ark_logger.info(f"ARK: Processing input via LangGraph: '{user_input[:50]}...'")
         
         # 1. Prepare Initial State
+        history_messages = self.context_manager.get_cleaned_history(max_messages=20)
+        self.ark_logger.info(f"ARK: Retrieved {len(history_messages)} history messages for session {self.context_manager.session_id}")
+        
         initial_state = {
-            "messages": [HumanMessage(content=user_input)],
+            "messages": history_messages + [HumanMessage(content=user_input)],
             "user_input": user_input,
             "todo_list": [t.to_dict() for t in self.todo_list],
             "available_tools": self.available_tools,
@@ -216,15 +215,26 @@ class ARKEngine(ReActAgent):
             # 5. Update Context (Legacy)
             if self.state != ARKState.ERROR:
                 try:
+                    # Try to get raw JSON response from additional_kwargs
+                    raw_response = None
+                    if messages:
+                        last_msg = messages[-1]
+                        if isinstance(last_msg, AIMessage):
+                            raw_response = last_msg.additional_kwargs.get("raw_json")
+
+                    self.ark_logger.info(f"ARK: Updating context for session {self.context_manager.session_id} with response len {len(response)}")
                     self.context_manager.add_exchange(
                         user_input=user_input,
                         agent_response=response,
                         intent="langgraph_execution",
                         tools_used=[t.description for t in self.todo_list], # simplified
-                        metadata={"todo_count": len(self.todo_list)}
+                        metadata={"todo_count": len(self.todo_list)},
+                        raw_response=raw_response
                     )
                 except Exception as e:
                     self.ark_logger.warning(f"Failed to update context: {e}")
+            else:
+                self.ark_logger.warning(f"ARK: State is ERROR ({self.state}), skipping context update.")
             
             return response
             
