@@ -69,7 +69,6 @@ class TestPromptManager:
         """Test prompt manager initialization."""
         # PromptManager now automatically loads default templates
         assert len(prompt_manager.templates) > 0
-        assert 'intent_recognition' in prompt_manager.templates
         assert 'response_generation' in prompt_manager.templates
     
     def test_load_default_templates(self, prompt_manager):
@@ -81,7 +80,6 @@ class TestPromptManager:
         assert 'jarvis_system' in prompt_manager.templates
         assert 'conversation_response' in prompt_manager.templates
         assert 'tool_usage_decision' in prompt_manager.templates
-        assert 'intent_recognition' in prompt_manager.templates
         assert 'response_generation' in prompt_manager.templates
     
     def test_build_conversation_messages(self, prompt_manager):
@@ -98,5 +96,6 @@ class TestPromptManager:
         
         assert isinstance(messages, list)
         assert len(messages) > 0
-        assert any(msg.role == "system" for msg in messages)
-        assert any(msg.role == "user" for msg in messages)
+        from langchain_core.messages import SystemMessage, HumanMessage
+        assert any(isinstance(msg, SystemMessage) for msg in messages)
+        assert any(isinstance(msg, HumanMessage) for msg in messages)

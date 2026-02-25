@@ -20,7 +20,8 @@ class TestMasterNode:
             "messages": []
         }
         
-        prompt = node._get_system_prompt(state)
+        prompt_messages = node._get_system_prompt(state)
+        prompt = prompt_messages[0].content
         
         assert "No tasks in todo list." in prompt
         assert "No tools available." in prompt
@@ -41,7 +42,8 @@ class TestMasterNode:
             "messages": []
         }
         
-        prompt = node._get_system_prompt(state)
+        prompt_messages = node._get_system_prompt(state)
+        prompt = prompt_messages[0].content
         
         assert "Current Todo List:" in prompt
         assert "- [1] pending: Test Task" in prompt

@@ -7,33 +7,17 @@
 import logging
 import json
 from typing import Dict, List, Any, Optional, Union
-from dataclasses import dataclass, field
-from enum import Enum
 from datetime import datetime
 
+from langchain_core.prompts import (
+    ChatPromptTemplate,
+    SystemMessagePromptTemplate,
+    HumanMessagePromptTemplate,
+    MessagesPlaceholder
+)
+from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage
+
 from ..llm.client import LLMMessage
-
-
-class PromptType(Enum):
-    """提示词类型"""
-    SYSTEM = "system"
-    CONVERSATION = "conversation"
-    TOOL_USAGE = "tool_usage"
-    INTENT_RECOGNITION = "intent_recognition"
-    RESPONSE_GENERATION = "response_generation"
-
-
-@dataclass
-class PromptTemplate:
-    """提示词模板"""
-    name: str
-    type: PromptType
-    template: str
-    variables: List[str] = field(default_factory=list)
-    description: str = ""
-    version: str = "1.0"
-    created_at: datetime = field(default_factory=datetime.now)
-    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 class PromptManager:
@@ -41,18 +25,16 @@ class PromptManager:
     
     def __init__(self):
         """初始化提示词管理器"""
-        self.templates: Dict[str, PromptTemplate] = {}
+        self.templates: Dict[str, ChatPromptTemplate] = {}
         self.logger = logging.getLogger("prompt.manager")
         self.load_default_templates()
     
     def _load_default_templates(self) -> None:
         """加载默认提示词模板"""
         
-        # 系统提示词
-        system_prompt = PromptTemplate(
-            name="jarvis_system",
-            type=PromptType.SYSTEM,
-            template="""# System Instruction
+        # System Prompt
+        self.templates["jarvis_system"] = ChatPromptTemplate.from_messages([
+            SystemMessagePromptTemplate.from_template("""# System Instruction
 You are Jarvis, an intelligent AI assistant powered by the ARK (Adaptive Reasoning Kernel) engine.
 
 ## Capabilities
@@ -80,16 +62,12 @@ You are Jarvis, an intelligent AI assistant powered by the ARK (Adaptive Reasoni
 You MUST output your response in JSON format.
 
 Remember: You are designed to be an adaptive and intelligent assistant that can reason about user needs and provide meaningful help.
-""",
-            variables=["agent_name", "current_time", "user_preferences", "available_tools"],
-            description="Jarvis系统的主要系统提示词"
-        )
-        
-        # 对话生成提示词
-        conversation_prompt = PromptTemplate(
-            name="conversation_response",
-            type=PromptType.CONVERSATION,
-            template="""# Task
+""")
+        ])
+
+        # Conversation Response
+        self.templates["conversation_response"] = ChatPromptTemplate.from_messages([
+            SystemMessagePromptTemplate.from_template("""# Task
 Based on the conversation context and user input, generate an appropriate response.
 
 ## Conversation Context
@@ -122,17 +100,12 @@ You MUST output your response in the following JSON format:
   "response": "Your natural language response here",
   "suggested_actions": ["action1", "action2"]
 }}
-""",
-            variables=["conversation_history", "user_input", "intent", "confidence", "entities", 
-                      "user_preferences", "previous_actions", "available_tools"],
-            description="用于生成对话响应的提示词"
-        )
-        
-        # 工具使用提示词
-        tool_usage_prompt = PromptTemplate(
-            name="tool_usage_decision",
-            type=PromptType.TOOL_USAGE,
-            template="""# Task
+""")
+        ])
+
+        # Tool Usage
+        self.templates["tool_usage_decision"] = ChatPromptTemplate.from_messages([
+            SystemMessagePromptTemplate.from_template("""# Task
 Analyze the user request and determine if any tools should be used.
 
 ## Input
@@ -160,57 +133,12 @@ Provide your analysis in the following JSON format:
     }}
   ]
 }}
-""",
-            variables=["user_input", "intent", "available_tools"],
-            description="用于决定是否使用工具的提示词"
-        )
-        
-        # 意图识别提示词
-        intent_recognition_prompt = PromptTemplate(
-            name="intent_recognition",
-            type=PromptType.INTENT_RECOGNITION,
-            template="""# Task
-Analyze the user input to identify the intent and extract relevant entities.
+""")
+        ])
 
-## Input
-- User Input: {user_input}
-- Conversation Context: {conversation_context}
-
-## Intent Categories
-- greeting: User is greeting or starting conversation
-- question: User is asking for information
-- request: User is requesting an action or task
-- tool_usage: User wants to use a specific tool or capability
-- clarification: User is asking for clarification
-- goodbye: User is ending the conversation
-- chitchat: General conversation or small talk
-- complaint: User is expressing dissatisfaction
-- compliment: User is expressing appreciation
-
-## Instructions
-Please analyze and provide the output in the following JSON format:
-{{
-  "primary_intent": "[intent_category]",
-  "confidence_level": 0.0-1.0,
-  "entities": [
-    {{
-      "type": "[entity_type]",
-      "value": "[entity_value]"
-    }}
-  ],
-  "context_clues": "[relevant context information]",
-  "reasoning": "[explanation of the analysis]"
-}}
-""",
-            variables=["user_input", "conversation_context"],
-            description="用于识别用户意图的提示词"
-        )
-        
-        # 响应生成提示词
-        response_generation_prompt = PromptTemplate(
-            name="response_generation",
-            type=PromptType.RESPONSE_GENERATION,
-            template="""# Task
+        # Response Generation
+        self.templates["response_generation"] = ChatPromptTemplate.from_messages([
+            SystemMessagePromptTemplate.from_template("""# Task
 Generate a natural and helpful response based on the analysis results.
 
 ## Input
@@ -236,16 +164,12 @@ You MUST output your response in the following JSON format:
   "response": "Your natural language response here",
   "follow_up_questions": ["question1", "question2"]
 }}
-""",
-            variables=["user_input", "intent", "confidence", "entities", "tool_results", "context"],
-            description="用于生成最终响应的提示词"
-        )
+""")
+        ])
 
-        # ReAct Agent 系统提示词
-        react_system_prompt = PromptTemplate(
-            name="react_system",
-            type=PromptType.SYSTEM,
-            template="""{{
+        # ReAct Agent System Prompt
+        self.templates["react_system"] = ChatPromptTemplate.from_messages([
+            SystemMessagePromptTemplate.from_template("""{{
   "system_description": "You are an AI agent using the ReAct framework. Use the available tools to answer the user's request.",
   "response_format": {{
     "type": "json_schema",
@@ -274,16 +198,12 @@ You MUST output your response in the following JSON format:
       }}
     }}
   ]
-}}""",
-            variables=[],
-            description="ReAct Agent 的系统提示词"
-        )
+}}""")
+        ])
 
-        # Master Node 系统提示词
-        master_system_prompt = PromptTemplate(
-            name="master_system",
-            type=PromptType.SYSTEM,
-            template="""{{
+        # Master Node System Prompt
+        self.templates["master_system"] = ChatPromptTemplate.from_messages([
+            SystemMessagePromptTemplate.from_template("""{{
   "system_description": "You are Jarvis, an intelligent agent acting as an Orchestrator. Your role is to analyze requests, manage tasks, and delegate to worker agents or use tools.",
   "context": {{
     "todo_status": "{todo_status}",
@@ -325,16 +245,12 @@ You MUST output your response in the following JSON format:
       }}
     }}
   ]
-}}""",
-            variables=["todo_status", "tools_desc", "agents_desc"],
-            description="Master Node 的系统提示词"
-        )
+}}""")
+        ])
 
-        # Deep Research 系统提示词
-        deep_research_system_prompt = PromptTemplate(
-            name="deep_research_system",
-            type=PromptType.SYSTEM,
-            template="""{{
+        # Deep Research System Prompt
+        self.templates["deep_research_system"] = ChatPromptTemplate.from_messages([
+            SystemMessagePromptTemplate.from_template("""{{
   "system_description": "You are a deep research assistant. Your core function is to conduct thorough, multi-source investigations into any topic. You must handle both broad, open-domain inquiries and queries within specialized academic fields. For every request, synthesize information from credible, diverse sources to deliver a comprehensive, accurate, and objective response.",
   "response_format": {{
     "type": "json_schema",
@@ -443,58 +359,35 @@ You MUST output your response in the following JSON format:
   "context": {{
     "current_date": "{current_date}"
   }}
-}}""",
-            variables=["current_date"],
-            description="Deep Research 的系统提示词"
-        )
+}}""")
+        ])
 
-        # Deep Research 提取器提示词
-        deep_research_extractor_prompt = PromptTemplate(
-            name="deep_research_extractor",
-            type=PromptType.SYSTEM,
-            template="""# Task
-Process the webpage content and user goal to extract relevant information.
-
-## Input
-- Webpage Content: {webpage_content}
-- User Goal: {goal}
-
-## Guidelines
-1. **Rationale**: Locate specific sections/data related to the goal.
-2. **Evidence**: Extract the most relevant information, preserving full original context (can be multiple paragraphs).
-3. **Summary**: Summarize the findings concisely and evaluate their contribution to the goal.
-
-## Output Format
-Output the result as a JSON object with "rational", "evidence", and "summary" fields.
-Example:
-{{
-  "rational": "...",
-  "evidence": "...",
-  "summary": "..."
-}}
-""",
-            variables=["webpage_content", "goal"],
-            description="Deep Research 的内容提取提示词"
-        )
+        # Deep Research Extractor Prompt
+        self.templates["deep_research_extractor"] = ChatPromptTemplate.from_messages([
+            SystemMessagePromptTemplate.from_template("""{{
+  "task": "Process the webpage content and user goal to extract relevant information.",
+  "input": {{
+    "webpage_content": "{webpage_content}",
+    "goal": "{goal}"
+  }},
+  "guidelines": [
+    "Rationale: Locate specific sections/data related to the goal.",
+    "Evidence: Extract the most relevant information, preserving full original context (can be multiple paragraphs).",
+    "Summary: Summarize the findings concisely and evaluate their contribution to the goal."
+  ],
+  "response_format": {{
+    "type": "json_schema",
+    "description": "You MUST output ONLY a valid JSON object. No markdown, no code blocks, no other text.",
+    "schema": {{
+      "rational": "...",
+      "evidence": "...",
+      "summary": "..."
+    }}
+  }}
+}}""")
+        ])
         
-        # 注册所有默认模板
-        templates = [
-            system_prompt,
-            conversation_prompt,
-            tool_usage_prompt,
-            intent_recognition_prompt,
-            response_generation_prompt,
-            react_system_prompt,
-            master_system_prompt,
-            deep_research_system_prompt,
-            deep_research_extractor_prompt
-        ]
-        
-        for template in templates:
-            self.templates[template.name] = template
-            self.logger.debug(f"加载提示词模板: {template.name}")
-        
-        self.logger.info(f"加载了 {len(templates)} 个默认提示词模板")
+        self.logger.info(f"加载了 {len(self.templates)} 个默认提示词模板")
     
     def load_default_templates(self) -> None:
         """
@@ -502,17 +395,18 @@ Example:
         """
         self._load_default_templates()
     
-    def add_template(self, template: PromptTemplate) -> None:
+    def add_template(self, name: str, template: ChatPromptTemplate) -> None:
         """
         添加提示词模板
         
         Args:
+            name: 模板名称
             template: 提示词模板
         """
-        self.templates[template.name] = template
-        self.logger.info(f"添加提示词模板: {template.name}")
+        self.templates[name] = template
+        self.logger.info(f"添加提示词模板: {name}")
     
-    def get_template(self, name: str) -> Optional[PromptTemplate]:
+    def get_template(self, name: str) -> Optional[ChatPromptTemplate]:
         """
         获取提示词模板
         
@@ -524,7 +418,7 @@ Example:
         """
         return self.templates.get(name)
     
-    def render_template(self, name: str, **kwargs) -> str:
+    def render_template(self, name: str, **kwargs) -> List[BaseMessage]:
         """
         渲染提示词模板
         
@@ -533,30 +427,17 @@ Example:
             **kwargs: 模板变量
             
             Returns:
-            渲染后的提示词
+            渲染后的消息列表
         """
         template = self.get_template(name)
         if not template:
             raise ValueError(f"提示词模板 '{name}' 不存在")
         
         try:
-            # 为缺失的变量提供默认值
-            template_vars = {}
-            for var in template.variables:
-                if var in kwargs:
-                    template_vars[var] = kwargs[var]
-                else:
-                    template_vars[var] = f"[{var}]"  # 占位符
-                    self.logger.warning(f"模板变量 '{var}' 未提供，使用占位符")
-            
-            # 添加额外的变量
-            for key, value in kwargs.items():
-                if key not in template_vars:
-                    template_vars[key] = value
-            
-            rendered = template.template.format(**template_vars)
+            # 渲染模板
+            messages = template.format_messages(**kwargs)
             self.logger.debug(f"渲染提示词模板: {name}")
-            return rendered
+            return messages
             
         except Exception as e:
             self.logger.error(f"渲染提示词模板 '{name}' 失败: {e}")
@@ -569,7 +450,7 @@ Example:
         system_context: Dict[str, Any],
         intent_info: Optional[Dict[str, Any]] = None,
         tool_results: Optional[List[Dict[str, Any]]] = None
-    ) -> List[LLMMessage]:
+    ) -> List[BaseMessage]:
         """
         构建对话消息列表
         
@@ -581,71 +462,33 @@ Example:
             tool_results: 工具结果
             
             Returns:
-            LLM消息列表
+            BaseMessage消息列表
         """
         messages = []
         
         # 构建系统消息
-        system_prompt = self.render_template(
+        system_messages = self.render_template(
             "jarvis_system",
             agent_name=system_context.get("agent_name", "Jarvis"),
             current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             user_preferences=json.dumps(system_context.get("user_preferences", {}), ensure_ascii=False),
             available_tools=json.dumps(system_context.get("available_tools", []), ensure_ascii=False)
         )
-        
-        messages.append(LLMMessage(
-            role="system",
-            content=system_prompt,
-            metadata={"type": "system_context"}
-        ))
+        messages.extend(system_messages)
         
         # 添加对话历史
         for entry in conversation_history[-10:]:  # 只保留最近10轮对话
-            if entry.get("role") in ["user", "assistant"]:
-                messages.append(LLMMessage(
-                    role=entry["role"],
-                    content=entry["content"],
-                    metadata={"type": "history"}
-                ))
+            role = entry.get("role")
+            content = entry.get("content", "")
+            if role == "user":
+                messages.append(HumanMessage(content=content))
+            elif role == "assistant":
+                messages.append(AIMessage(content=content))
         
         # 添加当前用户输入
-        messages.append(LLMMessage(
-            role="user",
-            content=user_input,
-            metadata={"type": "current_input"}
-        ))
+        messages.append(HumanMessage(content=user_input))
         
         return messages
-    
-    def build_intent_recognition_prompt(
-        self,
-        user_input: str,
-        conversation_context: List[Dict[str, str]]
-    ) -> str:
-        """
-        构建意图识别提示词
-        
-        Args:
-            user_input: 用户输入
-            conversation_context: 对话上下文
-            
-            Returns:
-            意图识别提示词
-        """
-        context_str = ""
-        if conversation_context:
-            recent_context = conversation_context[-3:]  # 最近3轮对话
-            context_str = "\n".join([
-                f"{entry.get('role', 'unknown')}: {entry.get('content', '')}"
-                for entry in recent_context
-            ])
-        
-        return self.render_template(
-            "intent_recognition",
-            user_input=user_input,
-            conversation_context=context_str or "No previous context"
-        )
     
     def build_tool_usage_prompt(
         self,
@@ -671,12 +514,13 @@ Example:
         
         tools_str = "\n".join(tools_info) if tools_info else "No tools available"
         
-        return self.render_template(
+        messages = self.render_template(
             "tool_usage_decision",
             user_input=user_input,
             intent=intent,
             available_tools=tools_str
         )
+        return messages[0].content
     
     def build_response_generation_prompt(
         self,
@@ -705,7 +549,7 @@ Example:
         tool_results_str = json.dumps(tool_results, ensure_ascii=False) if tool_results else "No tool results"
         context_str = json.dumps(context, ensure_ascii=False) if context else "No additional context"
         
-        return self.render_template(
+        messages = self.render_template(
             "response_generation",
             user_input=user_input,
             intent=intent,
@@ -714,91 +558,7 @@ Example:
             tool_results=tool_results_str,
             context=context_str
         )
-    
+        return messages[0].content
+
     def list_templates(self) -> List[str]:
-        """
-        列出所有模板名称
-        
-        Returns:
-            模板名称列表
-        """
         return list(self.templates.keys())
-    
-    def get_template_info(self, name: str) -> Optional[Dict[str, Any]]:
-        """
-        获取模板信息
-        
-        Args:
-            name: 模板名称
-            
-            Returns:
-            模板信息字典
-        """
-        template = self.get_template(name)
-        if not template:
-            return None
-        
-        return {
-            "name": template.name,
-            "type": template.type.value,
-            "description": template.description,
-            "variables": template.variables,
-            "version": template.version,
-            "created_at": template.created_at.isoformat()
-        }
-    
-    def export_templates(self) -> Dict[str, Any]:
-        """
-        导出所有模板
-        
-        Returns:
-            模板数据字典
-        """
-        exported = {}
-        for name, template in self.templates.items():
-            exported[name] = {
-                "name": template.name,
-                "type": template.type.value,
-                "template": template.template,
-                "variables": template.variables,
-                "description": template.description,
-                "version": template.version,
-                "created_at": template.created_at.isoformat(),
-                "metadata": template.metadata
-            }
-        
-        return exported
-    
-    def import_templates(self, templates_data: Dict[str, Any]) -> int:
-        """
-        导入模板
-        
-        Args:
-            templates_data: 模板数据字典
-            
-            Returns:
-            导入的模板数量
-        """
-        imported_count = 0
-        
-        for name, data in templates_data.items():
-            try:
-                template = PromptTemplate(
-                    name=data["name"],
-                    type=PromptType(data["type"]),
-                    template=data["template"],
-                    variables=data.get("variables", []),
-                    description=data.get("description", ""),
-                    version=data.get("version", "1.0"),
-                    created_at=datetime.fromisoformat(data.get("created_at", datetime.now().isoformat())),
-                    metadata=data.get("metadata", {})
-                )
-                
-                self.add_template(template)
-                imported_count += 1
-                
-            except Exception as e:
-                self.logger.error(f"导入模板 '{name}' 失败: {e}")
-        
-        self.logger.info(f"成功导入 {imported_count} 个模板")
-        return imported_count

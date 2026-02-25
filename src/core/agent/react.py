@@ -9,6 +9,7 @@ from typing import List, Dict, Any, Optional, Union, Callable
 from .base import BaseAgent
 from .types import AgentState, AgentStep
 from ..llm.client import LLMMessage
+from ..llm.converters import convert_langchain_to_llm_messages
 from ..prompt.manager import PromptManager
 from ..llm.parsers import JSONOutputParser
 
@@ -125,17 +126,17 @@ class ReActAgent(BaseAgent):
 
     def _build_initial_messages(self, user_input: str) -> List[LLMMessage]:
         """Build the initial prompt messages."""
-        system_prompt = self._get_system_prompt()
-        return [
-            LLMMessage(role="system", content=system_prompt),
-            LLMMessage(role="user", content=user_input)
-        ]
+        system_messages = self._get_system_prompt()
+        llm_system_messages = convert_langchain_to_llm_messages(system_messages)
+        
+        return llm_system_messages + [LLMMessage(role="user", content=user_input)]
 
     async def execute_tool(self, name: str, params: Any) -> Any:
         """Execute a tool. Override in subclasses."""
         return f"Error: Tool execution not implemented for '{name}'"
 
-    def _get_system_prompt(self) -> str:
+    def _get_system_prompt(self) -> List[Any]:
         """Get the system prompt. Override in subclasses."""
-        return self.prompt_manager.render_template("react_system")
+        messages = self.prompt_manager.render_template("react_system")
+        return messages
 

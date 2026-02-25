@@ -2,7 +2,7 @@
 Deep Research Agent Implementation
 """
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 from src.core.agent.react import ReActAgent
@@ -21,10 +21,11 @@ class DeepResearchAgent(ReActAgent):
         self.max_steps = self.config.get('max_steps', 30)
         self.tools = DeepResearchTools(self.llm_manager)
         
-    def _get_system_prompt(self) -> str:
+    def _get_system_prompt(self) -> List[Any]:
         """Override system prompt with Deep Research specific prompt."""
         current_date = datetime.now().strftime("%Y-%m-%d")
-        return self.prompt_manager.render_template("deep_research_system", current_date=current_date)
+        messages = self.prompt_manager.render_template("deep_research_system", current_date=current_date)
+        return messages
 
     async def execute_tool(self, name: str, params: Any) -> Any:
         """

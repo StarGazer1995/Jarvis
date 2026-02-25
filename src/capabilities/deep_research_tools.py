@@ -16,8 +16,9 @@ except ImportError:
     TavilyClient = None
 
 from src.core.llm.client import LLMManager, LLMMessage
+from src.core.llm.converters import convert_langchain_to_llm_messages
 from src.core.llm.config import load_llm_config
-from src.core.context.manager import EXTRACTOR_PROMPT
+from src.core.prompt.manager import PromptManager
 from src.capabilities.interpreter import PythonInterpreter
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,7 @@ class DeepResearchTools:
         self.tavily_api_key = os.getenv("TAVILY_API_KEY")
         self.tavily_client = TavilyClient(api_key=self.tavily_api_key) if (self.tavily_api_key and TavilyClient) else None
         
+        self.prompt_manager = PromptManager()
         self.llm_manager = llm_manager
         if not self.llm_manager:
             self.llm_manager = LLMManager(load_llm_config())
@@ -124,12 +126,9 @@ class DeepResearchTools:
         if len(content) > max_chars:
             content = content[:max_chars] + "...(truncated)"
 
-        prompt = EXTRACTOR_PROMPT.format(webpage_content=content, goal=goal)
+        prompt_messages = self.prompt_manager.render_template("deep_research_extractor", webpage_content=content, goal=goal)
+        messages = convert_langchain_to_llm_messages(prompt_messages)
         
-        messages = [
-            LLMMessage(role="user", content=prompt)
-        ]
-
         try:
             response = await self.llm_manager.generate_response(messages)
             return response.content

@@ -7,6 +7,7 @@ from langchain_core.runnables import RunnableConfig
 
 from ..state import JarvisState
 from ...llm.client import LLMManager, LLMMessage
+from ...llm.converters import convert_langchain_to_llm_messages
 from ...agent.types import AgentStep
 from ..utils import AgentSpec
 from ...llm.stream_handler import StreamTokenHandler
@@ -35,13 +36,14 @@ class MasterNode:
         messages = self._convert_messages(state["messages"])
         
         # 2. Dynamic System Prompt Injection
-        system_prompt = self._get_system_prompt(state)
+        system_messages = self._get_system_prompt(state)
+        llm_system_messages = convert_langchain_to_llm_messages(system_messages)
         
         # Check if the first message is system; if so, update it; otherwise insert it
         if messages and messages[0].role == "system":
-            messages[0].content = system_prompt
+            messages = llm_system_messages + messages
         else:
-            messages.insert(0, LLMMessage(role="system", content=system_prompt))
+            messages = llm_system_messages + messages
             
         # 3. Call LLM
         logger.debug("MasterNode calling LLM...")
@@ -162,7 +164,7 @@ class MasterNode:
             out.append(LLMMessage(role=role, content=str(content)))
         return out
 
-    def _get_system_prompt(self, state: JarvisState) -> str:
+    def _get_system_prompt(self, state: JarvisState) -> List[BaseMessage]:
         """Generate the system prompt based on state."""
         todo_list = state.get("todo_list", [])
         
@@ -199,9 +201,10 @@ class MasterNode:
             for agent in self.agents:
                 agents_desc += f"- {agent.name}: {agent.description}\n"
         
-        return self.prompt_manager.render_template(
+        messages = self.prompt_manager.render_template(
             "master_system",
             todo_status=todo_status,
             tools_desc=tools_desc,
             agents_desc=agents_desc
         )
+        return messages
