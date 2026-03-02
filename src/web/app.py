@@ -3,7 +3,7 @@ import os
 import asyncio
 from dotenv import load_dotenv
 import chainlit as cl
-from sqlalchemy import text
+import logging
 
 # Load environment variables from .env file
 load_dotenv()
@@ -11,43 +11,14 @@ load_dotenv()
 # Add project root to path to ensure imports work
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from src.jarvis_agent import JarvisAgent, JarvisConfig
-from src.core.agent.deep_research import DeepResearchAgent
-from src.core.config.server import SimpleMCPServerConfig
-from src.core.config.loader import load_llm_config as load_yaml_config
-from src.core.llm.config import convert_to_client_config
-from src.core.llm.client import LLMManager
 from src.web.data_layer import get_data_layer
 from src.web.auth import auth_callback
+from src.web.agent_factory import create_agent
+from src.web.history_manager import restore_agent_history, cleanup_system_messages
+from src.web.utils import clean_llm_response
 
-import json
-import re
-
-
-def clean_llm_response(response: str) -> str:
-    """
-    Clean LLM response by attempting to parse JSON and extract 'content'.
-    Handles cases where response is wrapped in markdown code blocks.
-    """
-    if not response:
-        return ""
-
-    cleaned = response.strip()
-
-    # Remove markdown code blocks if present
-    # e.g. ```json ... ```
-    match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", cleaned, re.DOTALL)
-    if match:
-        cleaned = match.group(1)
-
-    try:
-        parsed = json.loads(cleaned)
-        if isinstance(parsed, dict) and "content" in parsed:
-            return parsed["content"]
-    except json.JSONDecodeError:
-        pass
-
-    return response
+# Configure logger
+logger = logging.getLogger(__name__)
 
 
 # Configure Chainlit authentication
@@ -130,112 +101,31 @@ async def on_chat_resume(thread):
     """
     Called when a user resumes a chat session from the history.
     """
-    # Initialize the agent (similar to on_chat_start)
-    try:
-        env = os.getenv("JARVIS_ENV", "production")
-        yaml_config = load_yaml_config(environment=env)
-        client_config = convert_to_client_config(yaml_config)
-    except Exception as e:
-        print(f"Warning: Failed to load YAML configuration: {e}")
-        client_config = None
+    env = os.getenv("JARVIS_ENV", "production")
 
-    # Initialize Jarvis Agent (Default)
-    # TODO: In the future, store agent_type in thread metadata to restore correct agent
-    config = JarvisConfig()
+    # Initialize Agent using factory
+    # Assume default Jarvis agent for resume for now as metadata storage is a TODO
+    agent = await create_agent("jarvis", env)
 
-    # Add default MCP servers
-    config.mcp_servers = [
-        SimpleMCPServerConfig(
-            name="demo_server",
-            command=["python", "-m", "demo_mcp_server"],
-            description="Demonstration MCP server with basic tools",
-        )
-    ]
-
-    agent = JarvisAgent(config)
-
-    if client_config:
-        agent.ark_engine.llm_manager._default_config = client_config
-
-    success = await agent.initialize()
-    if not success:
+    if not agent:
         await cl.Message(content="❌ Failed to restore Jarvis Agent session.").send()
         return
 
-    await agent.start()
-
     # Restore conversation history
-    # We need to fetch steps from the thread and populate the agent's memory
-    # Chainlit passes the 'thread' object which can be a dict or object
+    restored_count = restore_agent_history(agent, thread)
 
-    steps = []
-    if isinstance(thread, dict):
-        steps = thread.get("steps", [])
-    elif hasattr(thread, "steps"):
-        steps = thread.steps
-
-    if steps:
-        # Sort steps by createdAt just in case
-        steps = sorted(steps, key=lambda x: x.get("createdAt", ""))
-
-        # Filter only user and assistant messages
-        # Chainlit steps are flat list. We need to iterate and reconstruct conversation.
-        # User message usually comes as a step with type="user_message"
-        # Assistant response is a step with type="assistant_message"
-
-        current_user_msg = None
-
-        for step in steps:
-            step_type = step.get("type")
-            step_name = step.get("name")
-            step_output = step.get("output", "")
-
-            # Chainlit 1.x uses different types for messages
-            # user_message: The message sent by the user
-            # assistant_message: The message sent by the assistant (final answer)
-            # run: Intermediate steps (thinking, tools)
-
-            if step_type == "user_message":
-                current_user_msg = step_output
-            elif step_type == "assistant_message":
-                if current_user_msg:
-                    agent_response = step_output
-                    # Add exchange to context
-                    agent.ark_engine.context_manager.add_exchange(
-                        user_input=current_user_msg,
-                        agent_response=agent_response,
-                        intent="restored_history",
-                        metadata={"restored": True, "step_id": step.get("id")},
-                    )
-                    current_user_msg = None  # Reset for next turn
-
-        print(
-            f"Restored {len(agent.ark_engine.context_manager.conversation_history)} conversation turns."
+    if restored_count > 0:
+        # Cleanup old restore messages
+        thread_id = getattr(
+            thread, "id", thread.get("id") if isinstance(thread, dict) else None
         )
+        await cleanup_system_messages(thread_id)
 
-        if len(agent.ark_engine.context_manager.conversation_history) > 0:
-            # Cleanup old restore messages before sending a new one
-            try:
-                dl = get_data_layer()
-                if dl and hasattr(dl, "engine"):
-                    thread_id = (
-                        thread.get("id") if isinstance(thread, dict) else thread.id
-                    )
-                    async with dl.engine.begin() as conn:
-                        await conn.execute(
-                            text(
-                                "DELETE FROM steps WHERE threadId = :tid AND name = 'System' AND output LIKE '🔄 **Context Restored**%'"
-                            ),
-                            {"tid": thread_id},
-                        )
-            except Exception as e:
-                print(f"Warning: Failed to cleanup old restore messages: {e}")
-
-            await cl.Message(
-                content=f"🔄 **Context Restored**: Loaded {len(agent.ark_engine.context_manager.conversation_history)} messages from history.",
-                author="System",
-                parent_id=None,
-            ).send()
+        await cl.Message(
+            content=f"🔄 **Context Restored**: Loaded {restored_count} messages from history.",
+            author="System",
+            parent_id=None,
+        ).send()
 
     # Check if LLM is enabled in the engine
     if hasattr(agent, "ark_engine") and hasattr(agent.ark_engine, "llm_enabled"):
@@ -254,81 +144,27 @@ async def on_chat_resume(thread):
 @cl.on_chat_start
 async def start():
     """Initialize the agent when a new chat session starts."""
-
     chat_profile = cl.user_session.get("chat_profile")
+    env = os.getenv("JARVIS_ENV", "production")
 
-    # Load LLM Configuration from YAML
-    client_config = None
-    try:
-        # Default to production if not specified, to avoid Mock LLM in default run
-        env = os.getenv("JARVIS_ENV", "production")
-        yaml_config = load_yaml_config(environment=env)
-        client_config = convert_to_client_config(yaml_config)
-        print(
-            f"Loaded LLM Config: {client_config.provider_name} ({client_config.model})"
-        )
-    except Exception as e:
-        print(f"Warning: Failed to load YAML configuration: {e}")
+    agent_type = "deep_research" if chat_profile == "Deep Research" else "jarvis"
 
-    if chat_profile == "Deep Research":
-        # Initialize Deep Research Agent
-        # DeepResearchAgent takes a config dict
-        agent_config = {}
-        agent = DeepResearchAgent(agent_config)
+    agent = await create_agent(agent_type, env)
 
-        if client_config:
-            agent.llm_manager = LLMManager(client_config)
-            # Update tools with the new LLM manager to ensure they use the configured client
-            if hasattr(agent, "tools") and hasattr(agent.tools, "llm_manager"):
-                agent.tools.llm_manager = agent.llm_manager
+    if not agent:
+        await cl.Message(
+            content="❌ Failed to initialize Agent. Please check the logs."
+        ).send()
+        return
 
-        # Initialize agent
-        if hasattr(agent, "initialize"):
-            if asyncio.iscoroutinefunction(agent.initialize):
-                await agent.initialize()
-            else:
-                agent.initialize()
+    cl.user_session.set("agent", agent)
+    cl.user_session.set("agent_type", agent_type)
 
-        cl.user_session.set("agent", agent)
-        cl.user_session.set("agent_type", "deep_research")
-
+    if agent_type == "deep_research":
         await cl.Message(
             content=f"🧠 **Deep Research Agent** initialized. Ask me anything!"
         ).send()
-
     else:
-        # Initialize Jarvis Agent (Default)
-        config = JarvisConfig()
-
-        # Add default MCP servers (matching main.py behavior)
-        config.mcp_servers = [
-            SimpleMCPServerConfig(
-                name="demo_server",
-                command=["python", "-m", "demo_mcp_server"],
-                description="Demonstration MCP server with basic tools",
-            )
-        ]
-
-        agent = JarvisAgent(config)
-
-        # Inject configuration into LLM Manager
-        if client_config:
-            agent.ark_engine.llm_manager._default_config = client_config
-
-        success = await agent.initialize()
-
-        if not success:
-            await cl.Message(
-                content="❌ Failed to initialize Jarvis Agent. Please check the logs."
-            ).send()
-            return
-
-        await agent.start()
-
-        # Store agent in user session
-        cl.user_session.set("agent", agent)
-        cl.user_session.set("agent_type", "jarvis")
-
         # Send welcome message
         welcome_message = await agent.start_conversation()
         await cl.Message(
@@ -425,12 +261,12 @@ async def main(message: cl.Message):
                     await dl.update_thread(
                         thread_id=cl.context.session.thread_id, user_id=user.id
                     )
-                    print(
+                    logger.info(
                         f"Thread {cl.context.session.thread_id} renamed to '{title}' and associated with user {user.id}"
                     )
 
     except Exception as e:
-        print(f"Warning: Failed to rename/associate thread: {e}")
+        logger.warning(f"Failed to rename/associate thread: {e}")
 
 
 @cl.on_stop

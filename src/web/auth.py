@@ -2,6 +2,9 @@ import os
 from typing import Optional
 import chainlit as cl
 
+# Cache admin password at module level
+_ADMIN_PASSWORD = os.environ.get("CHAINLIT_ADMIN_PASSWORD")
+
 
 def auth_callback(username: str, password: str) -> Optional[cl.User]:
     """
@@ -15,9 +18,7 @@ def auth_callback(username: str, password: str) -> Optional[cl.User]:
     Returns:
         Optional[cl.User]: Returns a User object if authentication is successful, None otherwise.
     """
-    admin_password = os.environ.get("CHAINLIT_ADMIN_PASSWORD")
-
-    if username == "admin" and password == admin_password:
+    if username == "admin" and password == _ADMIN_PASSWORD:
         return cl.User(identifier="admin")
 
     return None

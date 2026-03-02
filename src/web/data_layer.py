@@ -6,15 +6,23 @@ from chainlit.data.sql_alchemy import SQLAlchemyDataLayer
 logger = logging.getLogger(__name__)
 
 
+_data_layer_instance = None
+
+
 def get_data_layer():
     """
-    Initializes and returns the SQLAlchemyDataLayer.
+    Initializes and returns the SQLAlchemyDataLayer (Singleton).
 
     This function:
-    1. Loads DATABASE_URL from environment.
-    2. Initializes SQLAlchemyDataLayer with DATABASE_URL.
+    1. Loads LITE_DB_URL from environment.
+    2. Initializes SQLAlchemyDataLayer with LITE_DB_URL if not already initialized.
     3. Handles database creation if needed (implicitly via SQLAlchemyDataLayer).
     """
+    global _data_layer_instance
+
+    if _data_layer_instance is not None:
+        return _data_layer_instance
+
     database_url = os.environ.get("LITE_DB_URL")
 
     if not database_url:
@@ -28,10 +36,12 @@ def get_data_layer():
     try:
         # Initialize SQLAlchemyDataLayer
         # We enable show_logger for better visibility during development
-        data_layer = SQLAlchemyDataLayer(conninfo=database_url, show_logger=True)
+        _data_layer_instance = SQLAlchemyDataLayer(
+            conninfo=database_url, show_logger=True
+        )
 
         logger.info("SQLAlchemyDataLayer initialized successfully.")
-        return data_layer
+        return _data_layer_instance
     except Exception as e:
         logger.error(f"Failed to initialize SQLAlchemyDataLayer: {e}")
         return None

@@ -1,50 +1,41 @@
-import os
-import unittest
+import pytest
 from unittest.mock import patch, MagicMock
 from src.web.data_layer import get_data_layer
+import src.web.data_layer
 
 
-class TestDataLayer(unittest.TestCase):
-    @patch("os.environ.get")
-    def test_get_data_layer_success(self, mock_env):
-        # Mock successful environment variable retrieval
-        mock_env.return_value = "sqlite:///:memory:"
+@pytest.fixture
+def mock_sqlalchemy_layer():
+    with patch("src.web.data_layer.SQLAlchemyDataLayer") as mock:
+        yield mock
 
-        # Mock SQLAlchemyDataLayer to avoid actual DB connection
-        with patch("src.web.data_layer.SQLAlchemyDataLayer") as mock_dl:
-            mock_instance = MagicMock()
-            mock_dl.return_value = mock_instance
 
-            dl = get_data_layer()
+@pytest.fixture
+def reset_singleton():
+    # Reset the singleton before and after test
+    src.web.data_layer._data_layer_instance = None
+    yield
+    src.web.data_layer._data_layer_instance = None
 
-            # Verify initialization with correct parameters
-            mock_dl.assert_called_once_with(
-                conninfo="sqlite:///:memory:", show_logger=True
-            )
-            self.assertEqual(dl, mock_instance)
 
-    @patch("os.environ.get")
-    def test_get_data_layer_no_url(self, mock_env):
-        # Mock missing environment variable
-        mock_env.return_value = None
+def test_get_data_layer_singleton(mock_sqlalchemy_layer, reset_singleton):
+    with patch.dict("os.environ", {"LITE_DB_URL": "sqlite:///test.db"}):
+        dl1 = get_data_layer()
+        dl2 = get_data_layer()
 
+        assert dl1 is not None
+        assert dl1 is dl2
+        mock_sqlalchemy_layer.assert_called_once()
+
+
+def test_get_data_layer_no_env(reset_singleton):
+    with patch.dict("os.environ", {}, clear=True):
         dl = get_data_layer()
-
-        self.assertIsNone(dl)
-
-    @patch("os.environ.get")
-    def test_get_data_layer_exception(self, mock_env):
-        # Mock environment variable retrieval
-        mock_env.return_value = "sqlite:///:memory:"
-
-        # Mock SQLAlchemyDataLayer to raise an exception
-        with patch("src.web.data_layer.SQLAlchemyDataLayer") as mock_dl:
-            mock_dl.side_effect = Exception("Connection failed")
-
-            dl = get_data_layer()
-
-            self.assertIsNone(dl)
+        assert dl is None
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_get_data_layer_exception(mock_sqlalchemy_layer, reset_singleton):
+    mock_sqlalchemy_layer.side_effect = Exception("DB Error")
+    with patch.dict("os.environ", {"LITE_DB_URL": "sqlite:///test.db"}):
+        dl = get_data_layer()
+        assert dl is None

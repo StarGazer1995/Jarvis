@@ -7,6 +7,7 @@ OpenAI客户端单元测试
 import pytest
 import asyncio
 import os
+import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 from typing import List
 
@@ -102,7 +103,11 @@ class TestOpenAILLMClient:
         mock_response.choices[0].message.content = "Hello"
         mock_async_client.chat.completions.create.return_value = mock_response
 
-        with patch("builtins.__import__", return_value=mock_openai):
+        # Mock httpx
+        mock_httpx = MagicMock()
+
+        # Patch sys.modules to return mocks for openai and httpx
+        with patch.dict("sys.modules", {"openai": mock_openai, "httpx": mock_httpx}):
             result = await client.initialize()
 
         assert result is True
@@ -114,10 +119,22 @@ class TestOpenAILLMClient:
         """测试OpenAI库导入错误"""
         client = OpenAILLMClient(valid_config)
 
-        with patch(
-            "builtins.__import__", side_effect=ImportError("No module named 'openai'")
-        ):
-            result = await client.initialize()
+        # Remove openai from sys.modules if present
+        with patch.dict("sys.modules"):
+            if "openai" in sys.modules:
+                del sys.modules["openai"]
+
+            # Patch __import__ to raise ImportError
+            def side_effect(name, *args, **kwargs):
+                if name == "openai":
+                    raise ImportError("No module named 'openai'")
+                return __import__(name, *args, **kwargs)
+
+            # Need to patch builtins.__import__ specifically
+            import builtins
+
+            with patch.object(builtins, "__import__", side_effect=side_effect):
+                result = await client.initialize()
 
         assert result is False
         assert client._initialized is False
@@ -136,21 +153,30 @@ class TestOpenAILLMClient:
         class MockAuthenticationError(Exception):
             pass
 
+        class MockRateLimitError(Exception):
+            pass
+
+        class MockAPITimeoutError(Exception):
+            pass
+
+        class MockAPIError(Exception):
+            pass
+
         mock_openai.AuthenticationError = MockAuthenticationError
+        mock_openai.RateLimitError = MockRateLimitError
+        mock_openai.APITimeoutError = MockAPITimeoutError
+        mock_openai.APIError = MockAPIError
         mock_async_client.chat.completions.create.side_effect = MockAuthenticationError(
             "Invalid API key"
         )
 
-        # Patch builtins.__import__ 同时也需要处理 httpx
-        def side_effect(name, *args, **kwargs):
-            if name == "openai":
-                return mock_openai
-            if name == "httpx":
-                return MagicMock()
-            return __import__(name, *args, **kwargs)
+        mock_httpx = MagicMock()
 
-        with patch("builtins.__import__", side_effect=side_effect):
-            result = await client.initialize()
+        # Patch sys.modules for client's import
+        # And patch error_handler's openai reference
+        with patch.dict("sys.modules", {"openai": mock_openai, "httpx": mock_httpx}):
+            with patch("src.core.llm.utils.error_handler.openai", mock_openai):
+                result = await client.initialize()
 
         assert result is False
         assert client._initialized is False

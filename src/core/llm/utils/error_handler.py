@@ -154,6 +154,9 @@ def handle_openai_error(error: Exception) -> LLMError:
     """
     logger = logging.getLogger(__name__)
 
+    if isinstance(error, LLMError):
+        return error
+
     if openai is None:
         logger.warning("OpenAI库未安装，无法处理特定错误类型")
         return LLMError(f"LLM错误: {str(error)}")
