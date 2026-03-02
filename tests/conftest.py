@@ -27,7 +27,7 @@ from src.core.config.server import ARKServerConfigManager
 def event_loop():
     """
     Create an event loop for the entire test session.
-    
+
     This fixture ensures that async tests can run properly
     and share the same event loop across the session.
     """
@@ -40,7 +40,7 @@ def event_loop():
 def temp_dir():
     """
     Create a temporary directory for test files.
-    
+
     Returns:
         str: Path to the temporary directory
     """
@@ -53,10 +53,10 @@ def temp_dir():
 def temp_config_file(temp_dir):
     """
     Create a temporary configuration file for testing.
-    
+
     Args:
         temp_dir: Temporary directory fixture
-        
+
     Returns:
         str: Path to the temporary config file
     """
@@ -66,13 +66,14 @@ def temp_config_file(temp_dir):
         "version": "1.0.0",
         "debug": True,
         "max_conversation_length": 100,
-        "log_level": "DEBUG"
+        "log_level": "DEBUG",
     }
-    
+
     import json
-    with open(config_path, 'w') as f:
+
+    with open(config_path, "w") as f:
         json.dump(config_data, f)
-    
+
     return config_path
 
 
@@ -80,7 +81,7 @@ def temp_config_file(temp_dir):
 def temp_config_dir():
     """
     Create a temporary directory for config files.
-    
+
     Returns:
         Path: Path to the temporary config directory
     """
@@ -93,7 +94,7 @@ def temp_config_dir():
 def sample_jarvis_config():
     """
     Create a sample JarvisConfig for testing.
-    
+
     Returns:
         JarvisConfig: A configured JarvisConfig instance
     """
@@ -103,7 +104,7 @@ def sample_jarvis_config():
         debug=True,
         max_conversation_length=50,
         log_level="DEBUG",
-        config_file=None
+        config_file=None,
     )
 
 
@@ -111,14 +112,14 @@ def sample_jarvis_config():
 def sample_mcp_server_config():
     """
     Create a sample SimpleMCPServerConfig for testing.
-    
+
     Returns:
         SimpleMCPServerConfig: A configured SimpleMCPServerConfig instance
     """
     return SimpleMCPServerConfig(
         name="test_server",
         command=["python", "-m", "test_server"],
-        env={"TEST_ENV": "true"}
+        env={"TEST_ENV": "true"},
     )
 
 
@@ -126,7 +127,7 @@ def sample_mcp_server_config():
 def mock_mcp_client():
     """
     Create a mock MCP client for testing.
-    
+
     Returns:
         Mock: A mock ARKMCPClient instance
     """
@@ -136,14 +137,10 @@ def mock_mcp_client():
     client.add_server = AsyncMock(return_value=True)
     client.remove_server = AsyncMock(return_value=True)
     client.discover_tools = AsyncMock(return_value=[])
-    client.execute_tool = AsyncMock(return_value={
-        "status": "success",
-        "result": "Mock tool result"
-    })
-    client.get_server_status = Mock(return_value={
-        "connected": True,
-        "tools_count": 0
-    })
+    client.execute_tool = AsyncMock(
+        return_value={"status": "success", "result": "Mock tool result"}
+    )
+    client.get_server_status = Mock(return_value={"connected": True, "tools_count": 0})
     return client
 
 
@@ -151,7 +148,7 @@ def mock_mcp_client():
 def mock_context_manager():
     """
     Create a mock conversation context manager for testing.
-    
+
     Returns:
         Mock: A mock ConversationContext instance
     """
@@ -162,11 +159,9 @@ def mock_context_manager():
     context.clear_conversation = Mock()
     context.save_to_file = Mock(return_value=True)
     context.load_from_file = Mock(return_value=True)
-    context.get_conversation_stats = Mock(return_value={
-        "total_turns": 0,
-        "user_messages": 0,
-        "assistant_messages": 0
-    })
+    context.get_conversation_stats = Mock(
+        return_value={"total_turns": 0, "user_messages": 0, "assistant_messages": 0}
+    )
     return context
 
 
@@ -174,7 +169,7 @@ def mock_context_manager():
 def mock_tool_registry():
     """
     Create a mock tool registry for testing.
-    
+
     Returns:
         Mock: A mock ARKToolRegistry instance
     """
@@ -185,11 +180,9 @@ def mock_tool_registry():
     registry.get_tool = Mock(return_value=None)
     registry.list_tools = Mock(return_value=[])
     registry.get_tools_by_category = Mock(return_value=[])
-    registry.get_registry_stats = Mock(return_value={
-        "total_tools": 0,
-        "active_tools": 0,
-        "categories": []
-    })
+    registry.get_registry_stats = Mock(
+        return_value={"total_tools": 0, "active_tools": 0, "categories": []}
+    )
     return registry
 
 
@@ -197,7 +190,7 @@ def mock_tool_registry():
 def mock_server_config_manager():
     """
     Create a mock server configuration manager for testing.
-    
+
     Returns:
         Mock: A mock ARKServerConfigManager instance
     """
@@ -209,10 +202,9 @@ def mock_server_config_manager():
     manager.get_server = Mock(return_value=None)
     manager.list_servers = Mock(return_value=[])
     manager.validate_config = Mock(return_value=True)
-    manager.health_check = AsyncMock(return_value={
-        "status": "healthy",
-        "servers_count": 0
-    })
+    manager.health_check = AsyncMock(
+        return_value={"status": "healthy", "servers_count": 0}
+    )
     return manager
 
 
@@ -220,43 +212,34 @@ def mock_server_config_manager():
 def mock_ark_engine():
     """
     Create a mock ARK engine for testing.
-    
+
     Returns:
         Mock: A mock ARKEngine instance
     """
     engine = Mock(spec=ARKEngine)
     engine.initialize = AsyncMock(return_value=True)
     engine.shutdown = AsyncMock(return_value=True)
-    engine.process_input = AsyncMock(return_value={
-        "status": "success",
-        "response": "Mock ARK response",
-        "decision": {
-            "action": "respond",
-            "confidence": 0.9,
-            "tools_used": []
+    engine.process_input = AsyncMock(
+        return_value={
+            "status": "success",
+            "response": "Mock ARK response",
+            "decision": {"action": "respond", "confidence": 0.9, "tools_used": []},
         }
-    })
-    engine.get_status = Mock(return_value={
-        "state": "ready",
-        "initialized": True
-    })
+    )
+    engine.get_status = Mock(return_value={"state": "ready", "initialized": True})
     return engine
 
 
 @pytest.fixture
-def mock_jarvis_agent(
-    sample_jarvis_config,
-    mock_ark_engine,
-    mock_context_manager
-):
+def mock_jarvis_agent(sample_jarvis_config, mock_ark_engine, mock_context_manager):
     """
     Create a mock Jarvis agent for testing.
-    
+
     Args:
         sample_jarvis_config: Sample configuration fixture
         mock_ark_engine: Mock ARK engine fixture
         mock_context_manager: Mock context manager fixture
-        
+
     Returns:
         Mock: A mock JarvisAgent instance
     """
@@ -264,25 +247,28 @@ def mock_jarvis_agent(
     agent.config = sample_jarvis_config
     agent.ark_engine = mock_ark_engine
     agent.context_manager = mock_context_manager
-    
+
     agent.startup = AsyncMock(return_value=True)
     agent.shutdown = AsyncMock(return_value=True)
-    agent.process_message = AsyncMock(return_value={
-        "status": "success",
-        "response": "Mock agent response",
-        "conversation_id": "mock_conv_123"
-    })
-    agent.get_status = Mock(return_value={
-        "is_running": True,
-        "conversation_id": "mock_conv_123",
-        "config": sample_jarvis_config.to_dict()
-    })
+    agent.process_message = AsyncMock(
+        return_value={
+            "status": "success",
+            "response": "Mock agent response",
+            "conversation_id": "mock_conv_123",
+        }
+    )
+    agent.get_status = Mock(
+        return_value={
+            "is_running": True,
+            "conversation_id": "mock_conv_123",
+            "config": sample_jarvis_config.to_dict(),
+        }
+    )
     agent.clear_conversation = Mock(return_value=True)
-    agent.get_conversation_stats = Mock(return_value={
-        "total_messages": 0,
-        "session_duration": 0
-    })
-    
+    agent.get_conversation_stats = Mock(
+        return_value={"total_messages": 0, "session_duration": 0}
+    )
+
     return agent
 
 
@@ -290,7 +276,7 @@ def mock_jarvis_agent(
 def sample_conversation_data():
     """
     Create sample conversation data for testing.
-    
+
     Returns:
         Dict[str, Any]: Sample conversation data
     """
@@ -305,7 +291,7 @@ def sample_conversation_data():
                 "assistant_response": "Hi there! How can I help you?",
                 "intent": "greeting",
                 "entities": [],
-                "tools_used": []
+                "tools_used": [],
             },
             {
                 "turn_id": "turn_2",
@@ -314,14 +300,14 @@ def sample_conversation_data():
                 "assistant_response": "I'd be happy to help with weather information.",
                 "intent": "weather_query",
                 "entities": [{"type": "query_type", "value": "weather"}],
-                "tools_used": ["weather_tool"]
-            }
+                "tools_used": ["weather_tool"],
+            },
         ],
         "metadata": {
             "created_at": "2024-01-01T10:00:00Z",
             "last_updated": "2024-01-01T10:01:00Z",
-            "total_turns": 2
-        }
+            "total_turns": 2,
+        },
     }
 
 
@@ -329,7 +315,7 @@ def sample_conversation_data():
 def sample_tool_metadata():
     """
     Create sample tool metadata for testing.
-    
+
     Returns:
         Dict[str, Any]: Sample tool metadata
     """
@@ -339,21 +325,10 @@ def sample_tool_metadata():
         "version": "1.0.0",
         "category": "testing",
         "parameters": {
-            "input": {
-                "type": "string",
-                "description": "Test input parameter"
-            }
+            "input": {"type": "string", "description": "Test input parameter"}
         },
-        "returns": {
-            "type": "string",
-            "description": "Test output"
-        },
-        "examples": [
-            {
-                "input": {"input": "test"},
-                "output": "test result"
-            }
-        ]
+        "returns": {"type": "string", "description": "Test output"},
+        "examples": [{"input": {"input": "test"}, "output": "test result"}],
     }
 
 
@@ -361,7 +336,7 @@ def sample_tool_metadata():
 def sample_server_configs():
     """
     Create sample server configurations for testing.
-    
+
     Returns:
         List[SimpleMCPServerConfig]: List of sample server configurations
     """
@@ -369,18 +344,16 @@ def sample_server_configs():
         SimpleMCPServerConfig(
             name="weather_server",
             command=["python", "-m", "weather_server"],
-            env={"API_KEY": "test_key"}
+            env={"API_KEY": "test_key"},
         ),
         SimpleMCPServerConfig(
             name="calendar_server",
             command=["node", "calendar_server.js"],
-            env={"NODE_ENV": "test"}
+            env={"NODE_ENV": "test"},
         ),
         SimpleMCPServerConfig(
-            name="file_server",
-            command=["python", "-m", "file_server"],
-            env={}
-        )
+            name="file_server", command=["python", "-m", "file_server"], env={}
+        ),
     ]
 
 
@@ -388,7 +361,7 @@ def sample_server_configs():
 def reset_singletons():
     """
     Reset singleton instances between tests.
-    
+
     This fixture automatically runs before each test to ensure
     that singleton instances don't carry state between tests.
     """
@@ -401,10 +374,10 @@ def reset_singletons():
 def capture_logs(caplog):
     """
     Capture and provide access to log messages during tests.
-    
+
     Args:
         caplog: Pytest's built-in log capture fixture
-        
+
     Returns:
         caplog: The log capture fixture
     """
@@ -415,13 +388,13 @@ class AsyncContextManager:
     """
     Helper class for creating async context managers in tests.
     """
-    
+
     def __init__(self, return_value=None):
         self.return_value = return_value
-    
+
     async def __aenter__(self):
         return self.return_value
-    
+
     async def __aaenter__(self):
         pass
 
@@ -430,7 +403,7 @@ class AsyncContextManager:
 def async_context_manager():
     """
     Create an async context manager for testing.
-    
+
     Returns:
         AsyncContextManager: Helper for async context management
     """
@@ -441,7 +414,7 @@ def async_context_manager():
 def assert_config_equal(config1: JarvisConfig, config2: JarvisConfig):
     """
     Assert that two JarvisConfig instances are equal.
-    
+
     Args:
         config1: First configuration
         config2: Second configuration
@@ -457,27 +430,27 @@ def assert_config_equal(config1: JarvisConfig, config2: JarvisConfig):
 def create_test_file(path: str, content: str) -> None:
     """
     Create a test file with the given content.
-    
+
     Args:
         path: File path
         content: File content
     """
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, 'w') as f:
+    with open(path, "w") as f:
         f.write(content)
 
 
 def read_test_file(path: str) -> str:
     """
     Read content from a test file.
-    
+
     Args:
         path: File path
-        
+
     Returns:
         str: File content
     """
-    with open(path, 'r') as f:
+    with open(path, "r") as f:
         return f.read()
 
 
@@ -485,28 +458,22 @@ def read_test_file(path: str) -> str:
 def pytest_configure(config):
     """
     Configure pytest with custom markers and settings.
-    
+
     Args:
         config: Pytest configuration object
     """
     config.addinivalue_line(
         "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
     )
-    config.addinivalue_line(
-        "markers", "integration: marks tests as integration tests"
-    )
-    config.addinivalue_line(
-        "markers", "unit: marks tests as unit tests"
-    )
-    config.addinivalue_line(
-        "markers", "asyncio: marks tests as async tests"
-    )
+    config.addinivalue_line("markers", "integration: marks tests as integration tests")
+    config.addinivalue_line("markers", "unit: marks tests as unit tests")
+    config.addinivalue_line("markers", "asyncio: marks tests as async tests")
 
 
 def pytest_collection_modifyitems(config, items):
     """
     Modify test collection to add markers automatically.
-    
+
     Args:
         config: Pytest configuration object
         items: List of test items
@@ -515,11 +482,11 @@ def pytest_collection_modifyitems(config, items):
         # Add asyncio marker to async tests
         if asyncio.iscoroutinefunction(item.function):
             item.add_marker(pytest.mark.asyncio)
-        
+
         # Add unit marker to unit tests
         if "test_" in item.name and "integration" not in item.name:
             item.add_marker(pytest.mark.unit)
-        
+
         # Add integration marker to integration tests
         if "integration" in item.name:
             item.add_marker(pytest.mark.integration)

@@ -5,32 +5,39 @@ from typing import Callable, Dict, Any, Union
 from langchain_core.messages import BaseMessage, HumanMessage
 from src.core.ark.state import MultiAgentState
 
+
 @dataclass
 class AgentSpec:
     """
     Specification for a Worker Agent in the Supervisor system.
     """
+
     name: str
     description: str
     node: Callable[[MultiAgentState], Dict[str, Any]]
 
-def create_agent_node(agent_name: str, agent_func: Callable[[MultiAgentState], Union[Dict, str, BaseMessage]]):
+
+def create_agent_node(
+    agent_name: str,
+    agent_func: Callable[[MultiAgentState], Union[Dict, str, BaseMessage]],
+):
     """
     Helper to wrap a simple function into a Protocol-Compliant Node.
     Ensures the output is correctly formatted as a message tagged with the agent's name.
     """
+
     async def agent_node(state: MultiAgentState) -> Dict[str, Any]:
         result = agent_func(state)
         if inspect.isawaitable(result):
             result = await result
-        
+
         # Normalize result to dict
         if isinstance(result, str):
             content = result
             data = {}
         elif isinstance(result, BaseMessage):
             content = result.content
-            data = {} # Message attributes could be data, but let's keep it simple
+            data = {}  # Message attributes could be data, but let's keep it simple
         elif isinstance(result, dict):
             # Check if it's already a state update
             if "messages" in result:
@@ -58,10 +65,11 @@ def create_agent_node(agent_name: str, agent_func: Callable[[MultiAgentState], U
 
         # Create the message
         message = HumanMessage(content=content, name=agent_name)
-        
+
         return {
             "messages": [message],
             "sender": agent_name,
-            "structured_data": data # This overwrites. For merging, we'd need a reducer.
+            "structured_data": data,  # This overwrites. For merging, we'd need a reducer.
         }
+
     return agent_node

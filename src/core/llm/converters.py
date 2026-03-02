@@ -4,17 +4,18 @@ from langchain_core.messages import (
     SystemMessage,
     HumanMessage,
     AIMessage,
-    ToolMessage
+    ToolMessage,
 )
 from src.core.llm.types import LLMMessage
+
 
 def convert_langchain_to_llm_messages(messages: List[BaseMessage]) -> List[LLMMessage]:
     """
     Convert LangChain messages to internal LLMMessage format.
-    
+
     Args:
         messages: List of LangChain BaseMessage objects
-        
+
     Returns:
         List of LLMMessage objects
     """
@@ -23,11 +24,11 @@ def convert_langchain_to_llm_messages(messages: List[BaseMessage]) -> List[LLMMe
         role = "user"
         content = m.content
         metadata = {}
-        
+
         # Copy additional_kwargs to metadata
         if hasattr(m, "additional_kwargs") and m.additional_kwargs:
             metadata.update(m.additional_kwargs)
-            
+
         if isinstance(m, SystemMessage):
             role = "system"
         elif isinstance(m, AIMessage):
@@ -48,11 +49,11 @@ def convert_langchain_to_llm_messages(messages: List[BaseMessage]) -> List[LLMMe
                 metadata["tool_name"] = m.name
             if m.tool_call_id:
                 metadata["tool_call_id"] = m.tool_call_id
-        
+
         # Handle generic messages with specific types or names
         if m.name:
             metadata["name"] = m.name
-            
+
         out.append(LLMMessage(role=role, content=str(content), metadata=metadata))
-            
+
     return out

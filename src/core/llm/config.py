@@ -17,20 +17,21 @@ from .types import LLMProvider, LLMConfig
 
 logger = logging.getLogger(__name__)
 
+
 class LLMConfigManager:
     """Manager for LLM configuration."""
-    
+
     def __init__(self):
         """Initialize LLM configuration manager."""
         self._config: Optional[LLMConfig] = None
-    
+
     def load_config(self, config_source: Optional[Dict[str, Any]] = None) -> LLMConfig:
         """
         Load LLM configuration from various sources.
-        
+
         Args:
             config_source: Optional configuration dictionary
-            
+
         Returns:
             LLMConfig instance
         """
@@ -39,45 +40,45 @@ class LLMConfigManager:
         else:
             # Try to load from environment variables
             self._config = LLMConfig.from_env()
-        
+
         return self._config
-    
+
     def get_config(self) -> Optional[LLMConfig]:
         """Get current LLM configuration."""
         return self._config
-    
+
     def update_config(self, **kwargs) -> None:
         """Update LLM configuration."""
         if self._config is None:
             self._config = LLMConfig.from_env()
-        
+
         for key, value in kwargs.items():
             if hasattr(self._config, key):
                 setattr(self._config, key, value)
-    
+
     def is_configured(self) -> bool:
         """Check if LLM is properly configured."""
         if self._config is None:
             return False
-        
+
         # For OpenAI provider, API key is required
         if self._config.provider == LLMProvider.OPENAI:
             return self._config.api_key is not None
-        
+
         # Mock provider removed
         return True
-    
+
     def get_provider_info(self) -> Dict[str, Any]:
         """Get information about the current provider."""
         if self._config is None:
             return {"provider": "none", "configured": False}
-        
+
         return {
             "provider": self._config.provider.value,
             "model": self._config.model,
             "configured": self.is_configured(),
             "max_tokens": self._config.max_tokens,
-            "temperature": self._config.temperature
+            "temperature": self._config.temperature,
         }
 
 
@@ -99,36 +100,38 @@ def is_llm_configured() -> bool:
     """Check if LLM is globally configured."""
     return llm_config_manager.is_configured()
 
+
 def convert_to_client_config(yaml_config: Any) -> LLMConfig:
     """
     Convert the loaded YAML configuration into the Client LLMConfig format.
-    
+
     Args:
         yaml_config: YamlLLMConfig object from src.core.config.loader
-        
+
     Returns:
         LLMConfig: Client configuration object
     """
     # 1. Determine active provider
     # Default to global default, can be overridden by env
     provider_name = yaml_config.global_config.default_provider
-    
+
     if provider_name not in yaml_config.providers:
         raise ValueError(f"Provider '{provider_name}' not found in configuration")
-        
+
     provider_cfg = yaml_config.providers[provider_name]
-    
+
     if not provider_cfg.enabled:
         raise ValueError(f"Provider '{provider_name}' is disabled in configuration")
 
     # 2. Determine model
     model_name = provider_cfg.default_model
-    
+
     model_cfg = provider_cfg.models.get(model_name)
     if not model_cfg:
         # Fallback if specific model config not found, use defaults
         # Create a default ModelConfig-like object or use defaults
         from ..config.loader import ModelConfig
+
         model_cfg = ModelConfig()
 
     # 3. Construct Client LLMConfig
@@ -138,7 +141,7 @@ def convert_to_client_config(yaml_config: Any) -> LLMConfig:
     except ValueError:
         # Fallback or custom string
         provider_type = provider_cfg.type
-        
+
     client_config = LLMConfig(
         provider=provider_type,
         model=model_name,
@@ -147,7 +150,7 @@ def convert_to_client_config(yaml_config: Any) -> LLMConfig:
         temperature=model_cfg.temperature,
         max_tokens=model_cfg.max_tokens,
         timeout=provider_cfg.timeout.total if provider_cfg.timeout else 30.0,
-        provider_name=provider_name
+        provider_name=provider_name,
     )
-    
+
     return client_config

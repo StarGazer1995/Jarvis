@@ -15,24 +15,27 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
 class PythonInterpreter:
     """
     Executes Python code.
     Supports:
     1. 'docker': Runs in a Docker container (local or remote).
     2. 'e2b': Placeholder for E2B cloud sandbox integration.
-    
+
     Local execution is explicitly disabled.
     """
 
-    def __init__(self, 
-                 safe_globals: Optional[Dict[str, Any]] = None,
-                 execution_mode: str = "docker",
-                 docker_config: Optional[Dict[str, str]] = None,
-                 sandbox_config: Optional[Dict[str, str]] = None):
+    def __init__(
+        self,
+        safe_globals: Optional[Dict[str, Any]] = None,
+        execution_mode: str = "docker",
+        docker_config: Optional[Dict[str, str]] = None,
+        sandbox_config: Optional[Dict[str, str]] = None,
+    ):
         """
         Initialize the interpreter.
-        
+
         Args:
             safe_globals: Ignored.
             execution_mode: 'docker' or 'e2b'. Defaults to 'docker'.
@@ -48,27 +51,33 @@ class PythonInterpreter:
 
         if self.execution_mode == "docker":
             if not docker:
-                logger.error("Docker SDK not found but execution_mode is 'docker'. Execution will fail.")
+                logger.error(
+                    "Docker SDK not found but execution_mode is 'docker'. Execution will fail."
+                )
             else:
                 try:
                     base_url = self.docker_config.get("base_url")
                     if base_url:
-                         self.docker_client = docker.DockerClient(base_url=base_url)
+                        self.docker_client = docker.DockerClient(base_url=base_url)
                     else:
                         self.docker_client = docker.from_env()
-                    
+
                     # Verify connection
                     self.docker_client.ping()
                 except Exception as e:
-                    logger.error(f"Failed to connect to Docker: {e}. Execution will fail.")
+                    logger.error(
+                        f"Failed to connect to Docker: {e}. Execution will fail."
+                    )
                     self.docker_client = None
-        
+
         elif self.execution_mode == "e2b":
             # Placeholder for E2B initialization
             if not self.sandbox_config.get("api_key"):
                 logger.warning("E2B API key not provided.")
         else:
-            raise ValueError(f"Unsupported execution mode '{self.execution_mode}'. Only 'docker' and 'e2b' are supported.")
+            raise ValueError(
+                f"Unsupported execution mode '{self.execution_mode}'. Only 'docker' and 'e2b' are supported."
+            )
 
     def execute(self, code: str) -> str:
         """
@@ -78,10 +87,10 @@ class PythonInterpreter:
             if not self.docker_client:
                 return "Execution Error: Docker client is not initialized or failed to connect."
             return self._execute_docker(code)
-        
+
         elif self.execution_mode == "e2b":
             return self._execute_e2b(code)
-            
+
         else:
             return f"Execution Error: Unsupported execution mode '{self.execution_mode}' or local execution is disabled."
 
@@ -98,11 +107,11 @@ class PythonInterpreter:
                 stdout=True,
                 stderr=True,
                 mem_limit="512m",
-                nano_cpus=500000000, # 0.5 CPU
-                network_disabled=False
+                nano_cpus=500000000,  # 0.5 CPU
+                network_disabled=False,
             )
-            
-            output = container.decode('utf-8')
+
+            output = container.decode("utf-8")
             return output.strip() or "(No output)"
 
         except docker.errors.ContainerError as e:

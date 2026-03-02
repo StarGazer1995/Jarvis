@@ -23,6 +23,7 @@ from src.capabilities.interpreter import PythonInterpreter
 
 logger = logging.getLogger(__name__)
 
+
 class DeepResearchTools:
     """
     Tools for Deep Research Agent.
@@ -33,14 +34,18 @@ class DeepResearchTools:
         Initialize the tools.
         """
         self.tavily_api_key = os.getenv("TAVILY_API_KEY")
-        self.tavily_client = TavilyClient(api_key=self.tavily_api_key) if (self.tavily_api_key and TavilyClient) else None
-        
+        self.tavily_client = (
+            TavilyClient(api_key=self.tavily_api_key)
+            if (self.tavily_api_key and TavilyClient)
+            else None
+        )
+
         self.prompt_manager = PromptManager()
         self.llm_manager = llm_manager
         if not self.llm_manager:
             self.llm_manager = LLMManager(load_llm_config())
             # Note: We assume LLM manager is initialized by the agent or we initialize it lazily
-        
+
         self.interpreter = PythonInterpreter()
 
     async def search(self, query: List[str]) -> str:
@@ -54,23 +59,20 @@ class DeepResearchTools:
         for q in query:
             try:
                 response = self.tavily_client.search(
-                    query=q,
-                    search_depth="advanced",
-                    max_results=5,
-                    include_answer=True
+                    query=q, search_depth="advanced", max_results=5, include_answer=True
                 )
-                
+
                 query_result = f"Query: {q}\n"
                 if response.get("answer"):
                     query_result += f"Quick Answer: {response['answer']}\n"
-                
+
                 for res in response.get("results", []):
                     query_result += f"Title: {res['title']}\nURL: {res['url']}\nSnippet: {res['content']}\n"
-                
+
                 results.append(query_result)
             except Exception as e:
                 results.append(f"Error searching for '{q}': {str(e)}")
-        
+
         return "\n=======\n".join(results)
 
     async def visit(self, url: List[str], goal: str) -> str:
@@ -90,7 +92,7 @@ class DeepResearchTools:
                 results.append(f"URL: {u}\n{summary}")
             except Exception as e:
                 results.append(f"URL: {u}\nError: {str(e)}")
-        
+
         return "\n=======\n".join(results)
 
     async def _fetch_page_content(self, url: str) -> str:
@@ -111,10 +113,12 @@ class DeepResearchTools:
             try:
                 response = self.tavily_client.extract(urls=[url])
                 if response.get("results"):
-                    return response["results"][0].get("raw_content") or response["results"][0].get("content")
+                    return response["results"][0].get("raw_content") or response[
+                        "results"
+                    ][0].get("content")
             except Exception as e:
                 logger.warning(f"Tavily extract failed for {url}: {e}")
-        
+
         return "Error: Could not fetch page content."
 
     async def _extract_info(self, content: str, goal: str) -> str:
@@ -126,9 +130,11 @@ class DeepResearchTools:
         if len(content) > max_chars:
             content = content[:max_chars] + "...(truncated)"
 
-        prompt_messages = self.prompt_manager.render_template("deep_research_extractor", webpage_content=content, goal=goal)
+        prompt_messages = self.prompt_manager.render_template(
+            "deep_research_extractor", webpage_content=content, goal=goal
+        )
         messages = convert_langchain_to_llm_messages(prompt_messages)
-        
+
         try:
             response = await self.llm_manager.generate_response(messages)
             return response.content
@@ -148,10 +154,16 @@ class DeepResearchTools:
         """
         # For now, reuse search with academic domains
         if not self.tavily_client:
-             return "Error: Tavily API key not configured."
-             
-        knowledge_domains = ["scholar.google.com", "arxiv.org", "semanticscholar.org", "acm.org", "ieee.org"]
-        
+            return "Error: Tavily API key not configured."
+
+        knowledge_domains = [
+            "scholar.google.com",
+            "arxiv.org",
+            "semanticscholar.org",
+            "acm.org",
+            "ieee.org",
+        ]
+
         results = []
         for q in query:
             try:
@@ -159,7 +171,7 @@ class DeepResearchTools:
                     query=q,
                     search_depth="advanced",
                     max_results=5,
-                    include_domains=knowledge_domains
+                    include_domains=knowledge_domains,
                 )
                 # ... format results same as search ...
                 query_result = f"Query: {q}\n"
@@ -168,7 +180,7 @@ class DeepResearchTools:
                 results.append(query_result)
             except Exception as e:
                 results.append(f"Error searching scholar for '{q}': {str(e)}")
-        
+
         return "\n=======\n".join(results)
 
     async def parse_file(self, files: List[str]) -> str:
@@ -180,14 +192,15 @@ class DeepResearchTools:
             if not os.path.exists(filename):
                 results.append(f"File {filename} not found.")
                 continue
-            
+
             try:
                 content = ""
                 ext = os.path.splitext(filename)[1].lower()
-                
-                if ext == '.pdf':
+
+                if ext == ".pdf":
                     try:
                         from pypdf import PdfReader
+
                         reader = PdfReader(filename)
                         for page in reader.pages:
                             content += page.extract_text() + "\n"
@@ -195,10 +208,11 @@ class DeepResearchTools:
                         content = "Error: pypdf not installed."
                     except Exception as e:
                         content = f"Error reading PDF: {e}"
-                        
-                elif ext == '.docx':
+
+                elif ext == ".docx":
                     try:
                         import docx
+
                         doc = docx.Document(filename)
                         for para in doc.paragraphs:
                             content += para.text + "\n"
@@ -206,18 +220,20 @@ class DeepResearchTools:
                         content = "Error: python-docx not installed."
                     except Exception as e:
                         content = f"Error reading DOCX: {e}"
-                        
+
                 else:
                     # Fallback to text
-                    with open(filename, 'r', encoding='utf-8', errors='ignore') as f:
+                    with open(filename, "r", encoding="utf-8", errors="ignore") as f:
                         content = f.read()
-                
+
                 if not content.startswith("Error"):
-                    results.append(f"File: {filename}\nContent:\n{content[:10000]}...(truncated)")
+                    results.append(
+                        f"File: {filename}\nContent:\n{content[:10000]}...(truncated)"
+                    )
                 else:
                     results.append(f"File: {filename}\n{content}")
-                    
+
             except Exception as e:
                 results.append(f"Error processing file {filename}: {str(e)}")
-        
+
         return "\n=======\n".join(results)

@@ -15,5 +15,5 @@ __all__ = [
     "ARKMCPClient",
     "ConversationContext",
     "ARKToolRegistry",
-    "ARKSecurityManager"
+    "ARKSecurityManager",
 ]

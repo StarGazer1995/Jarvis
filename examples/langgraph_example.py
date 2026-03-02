@@ -18,15 +18,19 @@ sys.path.append(os.getcwd())
 
 from src.core.ark.engine import ARKEngine, Task, TaskStatus
 from src.core.config.loader import load_llm_config as load_yaml_config
-from src.core.config.loader import LLMConfig as YamlLLMConfig, ProviderConfig, ModelConfig
+from src.core.config.loader import (
+    LLMConfig as YamlLLMConfig,
+    ProviderConfig,
+    ModelConfig,
+)
 from src.core.llm.types import LLMConfig as ClientLLMConfig, LLMProvider
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("example.langgraph")
+
 
 def convert_to_client_config(yaml_config: YamlLLMConfig) -> ClientLLMConfig:
     """
@@ -35,19 +39,19 @@ def convert_to_client_config(yaml_config: YamlLLMConfig) -> ClientLLMConfig:
     # 1. Determine active provider
     provider_name = yaml_config.global_config.default_provider
     logger.info(f"Selected Provider: {provider_name}")
-    
+
     if provider_name not in yaml_config.providers:
         raise ValueError(f"Provider '{provider_name}' not found in configuration")
-        
+
     provider_cfg: ProviderConfig = yaml_config.providers[provider_name]
-    
+
     if not provider_cfg.enabled:
         raise ValueError(f"Provider '{provider_name}' is disabled in configuration")
 
     # 2. Determine model
     model_name = provider_cfg.default_model
     logger.info(f"Selected Model: {model_name}")
-    
+
     model_cfg: ModelConfig = provider_cfg.models.get(model_name)
     if not model_cfg:
         logger.warning(f"Model config for '{model_name}' not found, using defaults")
@@ -58,7 +62,7 @@ def convert_to_client_config(yaml_config: YamlLLMConfig) -> ClientLLMConfig:
         provider_type = LLMProvider(provider_cfg.type)
     except ValueError:
         provider_type = provider_cfg.type
-        
+
     client_config = ClientLLMConfig(
         provider=provider_type,
         model=model_name,
@@ -72,27 +76,30 @@ def convert_to_client_config(yaml_config: YamlLLMConfig) -> ClientLLMConfig:
         extra_params={
             "top_p": model_cfg.top_p,
             "frequency_penalty": model_cfg.frequency_penalty,
-            "presence_penalty": model_cfg.presence_penalty
+            "presence_penalty": model_cfg.presence_penalty,
         },
-        provider_name=provider_name  # Important for correct error messages
+        provider_name=provider_name,  # Important for correct error messages
     )
-    
+
     return client_config
+
 
 async def main():
     logger.info("Starting LangGraph ARK Example (Real Agent)...")
-    
+
     try:
         # Load configuration (Default to production to use nvidia_nim as per recent fixes)
         # We respect JARVIS_ENV if set, otherwise default to production
         env = os.getenv("JARVIS_ENV", "production")
         logger.info(f"Loading configuration for environment: {env}")
-        
+
         yaml_config = load_yaml_config(environment=env)
         client_config = convert_to_client_config(yaml_config)
-        
-        logger.info(f"Config loaded for: {client_config.provider_name} ({client_config.model})")
-        
+
+        logger.info(
+            f"Config loaded for: {client_config.provider_name} ({client_config.model})"
+        )
+
     except Exception as e:
         logger.error(f"Failed to load configuration: {e}")
         return
@@ -101,15 +108,15 @@ async def main():
     # Note: ARKEngine init might log errors for other missing providers in default config,
     # but as long as we inject our valid client_config, it should work for the main task.
     engine = ARKEngine()
-    
+
     # Configure the LLM Manager with our loaded config
     # We must update the _default_config so that engine.initialize() uses OUR config,
     # not the default one loaded by BaseAgent.
     engine.llm_manager._default_config = client_config
-    
+
     # Also add it explicitly (optional, but good for clarity)
     await engine.llm_manager.add_client("default", client_config)
-    
+
     # Manually register the 'manage_tasks' tool so the LLM knows about it
     # ARKEngine usually discovers tools from MCP, but for this standalone example,
     # we inject the tool definition manually.
@@ -123,12 +130,12 @@ async def main():
                 "description": {"type": "string"},
                 "id": {"type": "string"},
                 "status": {"type": "string"},
-                "result": {"type": "string"}
+                "result": {"type": "string"},
             },
-            "required": ["action"]
-        }
+            "required": ["action"],
+        },
     }
-    
+
     # Initialize Engine (Tools, Graph)
     # We must initialize FIRST to create the ToolsNode
     if not await engine.initialize():
@@ -138,7 +145,7 @@ async def main():
     # ---------------------------------------------------------
     # NEW: Register a local 'buy_item' tool to complete the task
     # ---------------------------------------------------------
-    
+
     # 1. Define the actual python function
     def buy_item(item_name: str, quantity: int = 1):
         """Simulate buying an item."""
@@ -147,10 +154,12 @@ async def main():
 
     # 2. Register the function logic in the Engine's ToolsNode
     # Note: We rely on the fact that we modified ARKEngine to expose tools_node
-    if hasattr(engine, 'tools_node'):
+    if hasattr(engine, "tools_node"):
         engine.tools_node.register_tool("buy_item", buy_item)
     else:
-        logger.warning("Could not register local tool function: tools_node not found on engine")
+        logger.warning(
+            "Could not register local tool function: tools_node not found on engine"
+        )
 
     # 4. Implement and register manage_tasks local tool
     # REMOVED: We now rely on the native manage_tasks handler in ToolsNode
@@ -164,13 +173,20 @@ async def main():
         "input_schema": {
             "type": "object",
             "properties": {
-                "item_name": {"type": "string", "description": "The name of the item to buy"},
-                "quantity": {"type": "integer", "description": "Number of items to buy", "default": 1}
+                "item_name": {
+                    "type": "string",
+                    "description": "The name of the item to buy",
+                },
+                "quantity": {
+                    "type": "integer",
+                    "description": "Number of items to buy",
+                    "default": 1,
+                },
             },
-            "required": ["item_name"]
-        }
+            "required": ["item_name"],
+        },
     }
-    
+
     # Re-register manage_tasks because initialize() wiped it
     engine.available_tools["manage_tasks"] = {
         "name": "manage_tasks",
@@ -182,12 +198,12 @@ async def main():
                 "description": {"type": "string"},
                 "id": {"type": "string"},
                 "status": {"type": "string"},
-                "result": {"type": "string"}
+                "result": {"type": "string"},
             },
-            "required": ["action"]
-        }
+            "required": ["action"],
+        },
     }
-    
+
     logger.info("Enabled native tool: manage_tasks")
     logger.info("Registered local tool: buy_item")
 
@@ -204,24 +220,25 @@ async def main():
     user_input = "Please add a task to buy 5 cartons of milk, execute it using the 'buy_item' tool, and finally mark the task as completed. IMPORTANT: You must explicitly call manage_tasks with action='complete' and wait for the confirmation message before giving your final answer."
     print(f"\nUser: {user_input}")
     print("-" * 50)
-    
+
     response = await engine.process_input(user_input)
-    
+
     print("-" * 50)
     print(f"Agent: {response}")
-    
+
     # Verify State
     print("\n--- Engine Status ---")
     status = engine.get_engine_status()
     todos = status["todo_list"]
     print(f"Todos: {todos}")
-    
+
     if len(todos) > 0:
         print(f"\nTask Status: {todos[-1]['description']} - {todos[-1]['status']}")
     else:
         print("\nNo tasks were added (Agent might have just replied textually).")
 
     await engine.shutdown()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

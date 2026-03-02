@@ -8,8 +8,10 @@ from typing import Dict, Any, Optional, Union
 from dataclasses import dataclass, field
 from enum import Enum
 
+
 class LLMProvider(Enum):
     """支持的LLM提供商"""
+
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     AZURE_OPENAI = "azure_openai"
@@ -20,6 +22,7 @@ class LLMProvider(Enum):
 @dataclass
 class LLMMessage:
     """LLM消息格式"""
+
     role: str  # "system", "user", "assistant"
     content: str
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -28,6 +31,7 @@ class LLMMessage:
 @dataclass
 class TokenUsage:
     """Token usage statistics"""
+
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
@@ -36,6 +40,7 @@ class TokenUsage:
 @dataclass
 class LLMResponse:
     """LLM响应格式"""
+
     content: str
     usage: Union[Dict[str, int], TokenUsage] = field(default_factory=dict)
     model: str = ""
@@ -46,6 +51,7 @@ class LLMResponse:
 @dataclass
 class LLMConfig:
     """LLM配置"""
+
     provider: Union[LLMProvider, str]
     model: str
     api_key: Optional[str] = None
@@ -57,7 +63,7 @@ class LLMConfig:
     stream: bool = False
     extra_params: Dict[str, Any] = field(default_factory=dict)
     provider_name: Optional[str] = None  # 用于显示的用户友好提供商名称
-    
+
     # 兼容性字段
     retry_attempts: int = 3
 
@@ -67,9 +73,9 @@ class LLMConfig:
             self.retry = {"max_attempts": self.retry_attempts}
 
     @classmethod
-    def from_dict(cls, config_dict: Dict[str, Any]) -> 'LLMConfig':
+    def from_dict(cls, config_dict: Dict[str, Any]) -> "LLMConfig":
         """Create LLMConfig from dictionary."""
-        provider_str = config_dict.get('provider', 'openai')
+        provider_str = config_dict.get("provider", "openai")
         try:
             provider = LLMProvider(provider_str)
         except ValueError:
@@ -78,26 +84,27 @@ class LLMConfig:
                 provider = LLMProvider(provider_str.lower())
             except ValueError:
                 # Default to OPENAI if unknown (Mock is deprecated)
-                provider = LLMProvider.OPENAI 
-            
+                provider = LLMProvider.OPENAI
+
         return cls(
             provider=provider,
-            api_key=config_dict.get('api_key'),
-            model=config_dict.get('model', 'gpt-3.5-turbo'),
-            base_url=config_dict.get('base_url'),
-            max_tokens=config_dict.get('max_tokens', 1000),
-            temperature=config_dict.get('temperature', 0.7),
-            timeout=config_dict.get('timeout', 30),
-            retry_attempts=config_dict.get('retry_attempts', 3),
-            stream=config_dict.get('stream', False),
-            extra_params=config_dict.get('extra_params', {})
+            api_key=config_dict.get("api_key"),
+            model=config_dict.get("model", "gpt-3.5-turbo"),
+            base_url=config_dict.get("base_url"),
+            max_tokens=config_dict.get("max_tokens", 1000),
+            temperature=config_dict.get("temperature", 0.7),
+            timeout=config_dict.get("timeout", 30),
+            retry_attempts=config_dict.get("retry_attempts", 3),
+            stream=config_dict.get("stream", False),
+            extra_params=config_dict.get("extra_params", {}),
         )
-    
+
     @classmethod
-    def from_env(cls) -> 'LLMConfig':
+    def from_env(cls) -> "LLMConfig":
         """Create LLMConfig from environment variables."""
         import os
-        provider_str = os.getenv('LLM_PROVIDER', 'openai')
+
+        provider_str = os.getenv("LLM_PROVIDER", "openai")
         try:
             provider = LLMProvider(provider_str)
         except ValueError:
@@ -106,31 +113,35 @@ class LLMConfig:
             except ValueError:
                 # Default to OPENAI if unknown (Mock is deprecated)
                 provider = LLMProvider.OPENAI
-            
+
         return cls(
             provider=provider,
-            api_key=os.getenv('OPENAI_API_KEY'),
-            model=os.getenv('LLM_MODEL', 'gpt-3.5-turbo'),
-            base_url=os.getenv('LLM_BASE_URL'),
-            max_tokens=int(os.getenv('LLM_MAX_TOKENS', '1000')),
-            temperature=float(os.getenv('LLM_TEMPERATURE', '0.7')),
-            timeout=int(os.getenv('LLM_TIMEOUT', '30')),
-            retry_attempts=int(os.getenv('LLM_RETRY_ATTEMPTS', '3')),
-            stream=os.getenv('LLM_STREAM', 'false').lower() == 'true'
+            api_key=os.getenv("OPENAI_API_KEY"),
+            model=os.getenv("LLM_MODEL", "gpt-3.5-turbo"),
+            base_url=os.getenv("LLM_BASE_URL"),
+            max_tokens=int(os.getenv("LLM_MAX_TOKENS", "1000")),
+            temperature=float(os.getenv("LLM_TEMPERATURE", "0.7")),
+            timeout=int(os.getenv("LLM_TIMEOUT", "30")),
+            retry_attempts=int(os.getenv("LLM_RETRY_ATTEMPTS", "3")),
+            stream=os.getenv("LLM_STREAM", "false").lower() == "true",
         )
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert LLMConfig to dictionary."""
-        provider_val = self.provider.value if isinstance(self.provider, LLMProvider) else str(self.provider)
+        provider_val = (
+            self.provider.value
+            if isinstance(self.provider, LLMProvider)
+            else str(self.provider)
+        )
         return {
-            'provider': provider_val,
-            'api_key': self.api_key,
-            'model': self.model,
-            'base_url': self.base_url,
-            'max_tokens': self.max_tokens,
-            'temperature': self.temperature,
-            'timeout': self.timeout,
-            'retry_attempts': self.retry_attempts,
-            'stream': self.stream,
-            'extra_params': self.extra_params
+            "provider": provider_val,
+            "api_key": self.api_key,
+            "model": self.model,
+            "base_url": self.base_url,
+            "max_tokens": self.max_tokens,
+            "temperature": self.temperature,
+            "timeout": self.timeout,
+            "retry_attempts": self.retry_attempts,
+            "stream": self.stream,
+            "extra_params": self.extra_params,
         }

@@ -5,6 +5,7 @@ import os
 from src.core.config_loader import ConfigLoader
 from src.core.exceptions import ConfigurationError
 
+
 def test_yaml():
     invalid_yaml = """
     global:
@@ -21,6 +22,7 @@ def test_yaml():
     except yaml.YAMLError as e:
         print(f"YAML load failed as expected: {e}")
 
+
 def test_loader_invalid():
     invalid_yaml = """
     global:
@@ -31,10 +33,10 @@ def test_loader_invalid():
         enabled: true
         invalid: [unclosed list
     """
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write(invalid_yaml)
         temp_path = f.name
-    
+
     try:
         loader = ConfigLoader(temp_path)
         loader.load_config()
@@ -45,6 +47,7 @@ def test_loader_invalid():
         print(f"Loader failed with unexpected error: {type(e)} {e}")
     finally:
         os.unlink(temp_path)
+
 
 if __name__ == "__main__":
     test_yaml()
