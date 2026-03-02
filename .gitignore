@@ -166,3 +166,4 @@ cache/
 reports/
 .vscode/
 .trae/
+chainlit.db
