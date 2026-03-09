@@ -1,0 +1,54 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: jarvis
+      POSTGRES_PASSWORD: jarvis
+      POSTGRES_DB: jarvis
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jarvis -d jarvis"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      CHAINLIT_AUTH_SECRET: changeme_random_string
+      CHAINLIT_ADMIN_PASSWORD: admin
+      LITE_DB_URL: sqlite+aiosqlite:///data/chainlit.db
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./:/app
+      - app_data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: uv run chainlit run src/web/app.py -h 0.0.0.0 -p 8000
+
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      LITE_DB_URL: sqlite+aiosqlite:///data/test.db
+      CHAINLIT_AUTH_SECRET: changeme_random_string
+      CHAINLIT_ADMIN_PASSWORD: admin
+    volumes:
+      - ./:/app
+      - app_data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: uv run pytest -v tests
+
+volumes:
+  postgres_data:
+  app_data:

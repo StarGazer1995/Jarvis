@@ -4,6 +4,7 @@ import asyncio
 from dotenv import load_dotenv
 import chainlit as cl
 import logging
+from chainlit.input_widget import TextInput
 
 # Load environment variables from .env file
 load_dotenv()
@@ -11,14 +12,53 @@ load_dotenv()
 # Add project root to path to ensure imports work
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from src.web.data_layer import get_data_layer
+from src.web.data_layer import get_data_layer, get_database_url
 from src.web.auth import auth_callback
 from src.web.agent_factory import create_agent
 from src.web.history_manager import restore_agent_history, cleanup_system_messages
 from src.web.utils import clean_llm_response
+from src.web.settings_repository import UserSettingsRepository, TOKEN_FIELDS
 
 # Configure logger
 logger = logging.getLogger(__name__)
+_settings_repository = None
+
+
+def _get_user_id() -> str:
+    user = cl.user_session.get("user")
+    if not user:
+        return "anonymous"
+    return getattr(user, "id", None) or getattr(user, "identifier", "anonymous")
+
+
+def _extract_user_settings(raw_settings: dict | None) -> dict:
+    settings = raw_settings or {}
+    return {field: settings.get(field, "") for field in TOKEN_FIELDS}
+
+
+def _merge_user_settings(current: dict | None, updates: dict | None) -> dict:
+    merged = _extract_user_settings(current)
+    for field in TOKEN_FIELDS:
+        value = (updates or {}).get(field, "")
+        if isinstance(value, str) and value.strip():
+            merged[field] = value
+    return merged
+
+
+def _get_settings_repository() -> UserSettingsRepository | None:
+    global _settings_repository
+    if _settings_repository is not None:
+        return _settings_repository
+
+    database_url = get_database_url() or "sqlite+aiosqlite:///./.chainlit/chainlit.db"
+    try:
+        repository = UserSettingsRepository(database_url)
+        repository.init_table()
+        _settings_repository = repository
+        return _settings_repository
+    except Exception as exc:
+        logger.warning(f"Failed to initialize settings repository: {exc}")
+        return None
 
 
 # Configure Chainlit authentication
@@ -103,9 +143,12 @@ async def on_chat_resume(thread):
     """
     env = os.getenv("JARVIS_ENV", "production")
 
-    # Initialize Agent using factory
-    # Assume default Jarvis agent for resume for now as metadata storage is a TODO
-    agent = await create_agent("jarvis", env)
+    repository = _get_settings_repository()
+    user_settings = {}
+    if repository:
+        user_settings = repository.load_settings(_get_user_id())
+
+    agent = await create_agent("jarvis", env, user_settings=user_settings)
 
     if not agent:
         await cl.Message(content="❌ Failed to restore Jarvis Agent session.").send()
@@ -139,6 +182,7 @@ async def on_chat_resume(thread):
     # Store agent in user session
     cl.user_session.set("agent", agent)
     cl.user_session.set("agent_type", "jarvis")
+    cl.user_session.set("user_settings", user_settings)
 
 
 @cl.on_chat_start
@@ -148,8 +192,13 @@ async def start():
     env = os.getenv("JARVIS_ENV", "production")
 
     agent_type = "deep_research" if chat_profile == "Deep Research" else "jarvis"
+    repository = _get_settings_repository()
+    user_id = _get_user_id()
+    user_settings = {}
+    if repository:
+        user_settings = repository.load_settings(user_id)
 
-    agent = await create_agent(agent_type, env)
+    agent = await create_agent(agent_type, env, user_settings=user_settings)
 
     if not agent:
         await cl.Message(
@@ -159,6 +208,36 @@ async def start():
 
     cl.user_session.set("agent", agent)
     cl.user_session.set("agent_type", agent_type)
+    cl.user_session.set("user_settings", user_settings)
+
+    await cl.ChatSettings(
+        [
+            TextInput(
+                id="openai_api_key",
+                label="OpenAI API Key",
+                initial="",
+                placeholder="已保存则留空保持不变，输入新值可覆盖",
+            ),
+            TextInput(
+                id="tavily_api_key",
+                label="Tavily API Key",
+                initial="",
+                placeholder="已保存则留空保持不变，输入新值可覆盖",
+            ),
+            TextInput(
+                id="confluence_page_token",
+                label="Confluence Page Token",
+                initial="",
+                placeholder="已保存则留空保持不变，输入新值可覆盖",
+            ),
+            TextInput(
+                id="beacon_model_token",
+                label="Beacon Model Token",
+                initial="",
+                placeholder="已保存则留空保持不变，输入新值可覆盖",
+            ),
+        ]
+    ).send()
 
     if agent_type == "deep_research":
         await cl.Message(
@@ -279,3 +358,16 @@ async def stop():
                 await agent.stop()
             else:
                 agent.stop()
+
+
+@cl.on_settings_update
+async def on_settings_update(settings):
+    current_settings = cl.user_session.get("user_settings") or {}
+    sanitized_settings = _merge_user_settings(current_settings, settings)
+    cl.user_session.set("user_settings", sanitized_settings)
+    repository = _get_settings_repository()
+    if repository:
+        repository.save_settings(_get_user_id(), sanitized_settings)
+        await cl.Message(content="✅ Settings saved.", parent_id=None).send()
+    else:
+        await cl.Message(content="⚠️ Settings not persisted.", parent_id=None).send()

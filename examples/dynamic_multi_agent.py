@@ -9,23 +9,26 @@ import asyncio
 import logging
 import os
 import sys
-from typing import Dict, Any
+from typing import Any
 
 # Ensure project root is in path
 sys.path.append(os.getcwd())
 
-from src.core.config.loader import load_llm_config as load_yaml_config
-from src.core.config.loader import LLMConfig as YamlLLMConfig, ModelConfig
-from src.core.llm.types import LLMConfig as ClientLLMConfig, LLMProvider, LLMMessage
-from src.core.llm.client import LLMManager
 from langchain_core.messages import HumanMessage
 from src.core.ark.supervisor import (
-    create_dynamic_supervisor_graph,
     AgentSpec,
-    create_agent_node,
-    MultiAgentState,
     DynamicAgentRegistry,
+    MultiAgentState,
+    create_agent_node,
+    create_dynamic_supervisor_graph,
 )
+
+from src.core.config.loader import LLMConfig as YamlLLMConfig
+from src.core.config.loader import ModelConfig
+from src.core.config.loader import load_llm_config as load_yaml_config
+from src.core.llm.client import LLMManager
+from src.core.llm.types import LLMConfig as ClientLLMConfig
+from src.core.llm.types import LLMMessage, LLMProvider
 
 # Configure logging
 logging.basicConfig(
@@ -69,7 +72,8 @@ async def main():
         llm_manager = LLMManager(client_config)
         await llm_manager.initialize_default_client()
         logger.info(
-            f"LLM Manager initialized with {client_config.provider_name}/{client_config.model}"
+            f"LLM Manager initialized with "
+            f"{client_config.provider_name}/{client_config.model}"
         )
     except Exception as e:
         logger.error(f"Failed to load config: {e}")
@@ -83,12 +87,15 @@ async def main():
                 return m.content
         return messages[0].content if messages else ""
 
-    async def researcher_logic(state: MultiAgentState) -> Dict[str, Any]:
+    async def researcher_logic(state: MultiAgentState) -> dict[str, Any]:
         task = get_user_task(state["messages"])
         logger.info(f"[Researcher] Researching: {task}")
 
         # Use LLM to simulate research results
-        prompt = f"Please research and provide key information about: {task}. Focus on new features and technical details. Keep it concise."
+        prompt = (
+            f"Please research and provide key information about: {task}. "
+            "Focus on new features and technical details. Keep it concise."
+        )
         response = await llm_manager.generate_response(
             [LLMMessage(role="user", content=prompt)]
         )
@@ -96,7 +103,7 @@ async def main():
 
         return {"content": content, "data": {"research_summary": content}}
 
-    async def writer_logic(state: MultiAgentState) -> Dict[str, Any]:
+    async def writer_logic(state: MultiAgentState) -> dict[str, Any]:
         task = get_user_task(state["messages"])
         logger.info("[Writer] Writing draft based on research...")
 
@@ -114,7 +121,7 @@ async def main():
 
         return {"content": response.content, "data": {"draft": response.content}}
 
-    async def reviewer_logic(state: MultiAgentState) -> Dict[str, Any]:
+    async def reviewer_logic(state: MultiAgentState) -> dict[str, Any]:
         logger.info("[Reviewer] Reviewing draft...")
 
         # Get the last message which should be the draft from Writer
@@ -123,8 +130,11 @@ async def main():
 
         prompt = (
             f"Review the following draft for quality, accuracy, and tone:\n\n{draft}\n\n"
-            "If it's good, start with 'APPROVED'. If improvements are needed, start with 'REVISION NEEDED' and list suggestions."
+            "If it's good, start with 'APPROVED'. "
+            "If improvements are needed, start with 'REVISION NEEDED' "
+            "and list suggestions."
         )
+
         response = await llm_manager.generate_response(
             [LLMMessage(role="user", content=prompt)]
         )
@@ -171,18 +181,23 @@ async def main():
                 logger.info(f"👮 [Supervisor] Next -> {value['next']}")
 
                 # SIMULATE DYNAMIC ADDITION:
-                # If the supervisor decides 'Writer', let's add the 'Reviewer' agent dynamically!
+                # If the supervisor decides 'Writer',
+                # let's add the 'Reviewer' agent dynamically!
                 if value["next"] == "Writer" and step_count == 0:
                     logger.info(">>> DYNAMICALLY ADDING 'Reviewer' AGENT! <<<")
                     registry.register_agent(
                         AgentSpec(
                             name="Reviewer",
-                            description="Reviews the written content for quality. Use AFTER Writer.",
+                            description=(
+                                "Reviews the written content for quality. "
+                                "Use AFTER Writer."
+                            ),
                             node=reviewer_node,
                         )
                     )
-                    # Note: Since the Supervisor has already decided 'Writer', the NEXT time it runs
-                    # (after Writer finishes), it will see 'Reviewer' in the list.
+                    # Note: Since the Supervisor has already decided 'Writer',
+                    # the NEXT time it runs (after Writer finishes),
+                    # it will see 'Reviewer' in the list.
                     step_count += 1
             elif key == "universal_worker":
                 msgs = value.get("messages", [])

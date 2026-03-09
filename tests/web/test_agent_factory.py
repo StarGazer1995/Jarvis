@@ -1,4 +1,5 @@
 import pytest
+import os
 from unittest.mock import patch, MagicMock, AsyncMock
 from src.web.agent_factory import create_agent, get_llm_config
 import src.web.agent_factory
@@ -60,3 +61,34 @@ def test_get_llm_config_cache(mock_load_llm_config, mock_convert_config):
 
     # load should be called only once due to cache
     mock_load_llm_config.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_create_agent_uses_user_settings_for_api_key():
+    with (
+        patch("src.web.agent_factory.JarvisAgent") as MockAgent,
+        patch("src.web.agent_factory.get_llm_config") as mock_get_config,
+    ):
+        mock_instance = MockAgent.return_value
+        mock_instance.initialize = AsyncMock(return_value=True)
+        mock_instance.start = AsyncMock()
+
+        config = MagicMock()
+        config.api_key = "system-key"
+        mock_get_config.return_value = config
+
+        await create_agent(
+            "jarvis",
+            user_settings={
+                "openai_api_key": "user-key",
+                "tavily_api_key": "tavily-key",
+                "confluence_page_token": "confluence-token",
+                "beacon_model_token": "beacon-token",
+            },
+        )
+
+        effective = mock_instance.ark_engine.llm_manager._default_config
+        assert effective.api_key == "user-key"
+        assert os.environ["TAVILY_API_KEY"] == "tavily-key"
+        assert os.environ["CONFLUENCE_PAGE_TOKEN"] == "confluence-token"
+        assert os.environ["BEACON_MODEL_TOKEN"] == "beacon-token"

@@ -9,6 +9,10 @@ logger = logging.getLogger(__name__)
 _data_layer_instance = None
 
 
+def get_database_url() -> str | None:
+    return os.environ.get("LITE_DB_URL") or os.environ.get("DATABASE_URL")
+
+
 def get_data_layer():
     """
     Initializes and returns the SQLAlchemyDataLayer (Singleton).
@@ -23,11 +27,11 @@ def get_data_layer():
     if _data_layer_instance is not None:
         return _data_layer_instance
 
-    database_url = os.environ.get("LITE_DB_URL")
+    database_url = get_database_url()
 
     if not database_url:
         logger.warning(
-            "LITE_DB_URL not found in environment variables. Data persistence will be disabled."
+            "Database URL not found in environment variables. Data persistence will be disabled."
         )
         return None
 

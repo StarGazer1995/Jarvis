@@ -34,6 +34,13 @@ def test_get_data_layer_no_env(reset_singleton):
         assert dl is None
 
 
+def test_get_data_layer_with_database_url(mock_sqlalchemy_layer, reset_singleton):
+    with patch.dict("os.environ", {"DATABASE_URL": "sqlite:///test.db"}, clear=True):
+        dl = get_data_layer()
+        assert dl is not None
+        mock_sqlalchemy_layer.assert_called_once()
+
+
 def test_get_data_layer_exception(mock_sqlalchemy_layer, reset_singleton):
     mock_sqlalchemy_layer.side_effect = Exception("DB Error")
     with patch.dict("os.environ", {"LITE_DB_URL": "sqlite:///test.db"}):
