@@ -1,7 +1,5 @@
 import pytest
-import json
 from src.core.llm.parsers import JSONOutputParser, AgentResponse
-from pydantic import ValidationError
 
 
 def test_json_output_parser_simple():

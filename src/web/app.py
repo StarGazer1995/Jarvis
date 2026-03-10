@@ -265,7 +265,7 @@ async def start():
 @cl.on_message
 async def main(message: cl.Message):
     """Handle incoming user messages."""
-    session_id = cl.user_session.get("id")
+    cl.user_session.get("id")
     agent = cl.user_session.get("agent")
     agent_type = cl.user_session.get("agent_type")
 

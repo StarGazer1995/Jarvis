@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import Mock, patch, AsyncMock, MagicMock
+from unittest.mock import patch, AsyncMock, MagicMock
 from src.core.context.manager import ConversationContext, ConversationTurn
 from src.core.config.loader import LLMConfig, ProviderConfig, GlobalConfig
 

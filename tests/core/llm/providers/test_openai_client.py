@@ -2,11 +2,6 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from src.core.llm.providers.openai_client import OpenAILLMClient
 from src.core.llm.client import LLMConfig, LLMMessage, LLMResponse, LLMProvider
-from src.core.llm.utils.error_handler import (
-    LLMConfigurationError,
-    LLMAuthenticationError,
-    LLMAPIError,
-)
 
 
 @pytest.fixture

@@ -21,13 +21,12 @@ import json
 import tempfile
 import time
 from pathlib import Path
-from typing import Dict, List, Any
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from core.context_manager import ConversationTurn, ConversationContext
-from core.intent_engine import IntentType, Entity, IntentResult
+from core.intent_engine import IntentType, Entity
 
 
 async def demonstrate_conversation_turns():

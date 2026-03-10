@@ -3,7 +3,6 @@ Tests for LLM integration in ARK engine.
 """
 
 import pytest
-import asyncio
 from src.core.llm.config import LLMConfig, LLMProvider
 from src.core.prompt.manager import PromptManager
 

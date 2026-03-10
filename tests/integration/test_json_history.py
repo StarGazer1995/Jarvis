@@ -1,8 +1,8 @@
 import pytest
 import asyncio
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, patch
 from src.core.ark.engine import ARKEngine
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import AIMessage
 
 
 @pytest.mark.asyncio
@@ -12,9 +12,9 @@ async def test_json_history_format():
     for Assistant messages, ensuring compliance with JSON-based system prompts.
     """
     with (
-        patch("src.core.ark.engine.LLMManager") as MockLLMManager,
-        patch("src.core.ark.engine.ARKMCPClient") as MockMCPClient,
-        patch("src.core.ark.graph.StateGraph") as MockStateGraph,
+        patch("src.core.ark.engine.LLMManager"),
+        patch("src.core.ark.engine.ARKMCPClient"),
+        patch("src.core.ark.graph.StateGraph"),
     ):
         # Setup Mock Engine
         engine = ARKEngine()

@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from src.web.data_layer import get_data_layer
 import src.web.data_layer
 

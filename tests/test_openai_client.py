@@ -5,18 +5,14 @@ OpenAI客户端单元测试
 """
 
 import pytest
-import asyncio
 import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
-from typing import List
 
 from src.core.llm.client import LLMConfig, LLMProvider, LLMMessage
 from src.core.llm.providers.openai_client import OpenAILLMClient
 from src.core.llm.utils.error_handler import (
     LLMConfigurationError,
-    LLMAuthenticationError,
-    LLMAPIError,
 )
 
 

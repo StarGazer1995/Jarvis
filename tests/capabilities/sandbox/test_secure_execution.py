@@ -12,7 +12,6 @@ from src.core.security.manager import (
     SecurityContext,
     ValidationRequest,
     PermissionType,
-    SecurityLevel,
     ValidationResult,
 )
 
@@ -193,7 +192,6 @@ class TestSandboxExecution:
 if __name__ == "__main__":
     # Allow running this script directly
     import asyncio
-    import sys
 
     async def run_demo():
         print("Running Sandbox Mode Demo...")

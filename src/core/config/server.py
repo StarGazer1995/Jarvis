@@ -11,7 +11,7 @@ import json
 import os
 import time
 from datetime import datetime
-from typing import Dict, List, Any, Optional, Union, Set, Callable
+from typing import Dict, List, Any, Optional, Set, Callable
 from dataclasses import dataclass, field, asdict
 from enum import Enum
 from pathlib import Path

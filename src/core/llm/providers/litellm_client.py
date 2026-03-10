@@ -4,17 +4,13 @@ LiteLLM客户端实现
 提供基于LiteLLM的多提供商支持。
 """
 
-import logging
 import time
-from typing import List, Dict, Any, AsyncGenerator
+from typing import List, AsyncGenerator
 
 from ..client import BaseLLMClient, LLMMessage, LLMResponse
 from ..types import LLMConfig
 from ..utils.error_handler import (
-    LLMError,
     LLMAPIError,
-    LLMAuthenticationError,
-    LLMTimeoutError,
     LLMConfigurationError,
     log_llm_error,
 )
@@ -108,7 +104,7 @@ class LiteLLMClient(BaseLLMClient):
 
             response = await litellm.acompletion(**params)
 
-            duration = time.time() - start_time
+            time.time() - start_time
             self._request_count += 1
 
             # 转换响应

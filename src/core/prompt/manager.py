@@ -6,18 +6,14 @@
 
 import logging
 import json
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 from langchain_core.prompts import (
     ChatPromptTemplate,
     SystemMessagePromptTemplate,
-    HumanMessagePromptTemplate,
-    MessagesPlaceholder,
 )
-from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage
-
-from ..llm.client import LLMMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 
 
 class PromptManager:

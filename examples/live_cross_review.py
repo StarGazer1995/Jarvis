@@ -21,7 +21,6 @@ from src.jarvis_agent import JarvisAgent, JarvisConfig
 from src.core.config.loader import load_llm_config as load_yaml_config
 from src.core.config.loader import (
     LLMConfig as YamlLLMConfig,
-    ProviderConfig,
     ModelConfig,
 )
 from src.core.llm.types import LLMConfig as ClientLLMConfig, LLMProvider

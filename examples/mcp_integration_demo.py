@@ -25,8 +25,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from core.mcp_client import ARKMCPClient
-from core.server_config import ARKServerConfigManager, ConfigType, SimpleMCPServerConfig
-from core.tool_registry import ARKToolRegistry, ToolCategory, ToolStatus
+from core.server_config import ARKServerConfigManager, SimpleMCPServerConfig
+from core.tool_registry import ARKToolRegistry, ToolCategory
 from core.security_manager import ARKSecurityManager, PermissionType
 
 
@@ -246,7 +246,7 @@ async def demonstrate_tool_execution_with_security():
     print("✅ Security Manager initialized")
 
     # Create MCP client
-    mcp_client = ARKMCPClient()
+    ARKMCPClient()
 
     # Simulate tool execution scenarios
     from core.security_manager import SecurityContext, ValidationRequest

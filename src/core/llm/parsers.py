@@ -8,7 +8,7 @@ and ensuring strict schema validation.
 import json
 import logging
 import re
-from typing import Any, Dict, Optional, Union, List, Type
+from typing import Any, Dict, Optional, Union, Type
 from abc import ABC, abstractmethod
 from pydantic import BaseModel, ValidationError
 

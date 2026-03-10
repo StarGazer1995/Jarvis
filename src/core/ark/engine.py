@@ -7,8 +7,6 @@ and decision-making capabilities.
 """
 
 import logging
-import asyncio
-import json
 from typing import Dict, List, Any, Optional, Callable
 from dataclasses import dataclass
 from enum import Enum
@@ -35,6 +33,16 @@ from .nodes.tools import ToolsNode
 # Aliases for backward compatibility
 ARKState = AgentState
 ReActStep = AgentStep
+__all__ = [
+    "ARKEngine",
+    "Task",
+    "TaskStatus",
+    "ARKState",
+    "ReActStep",
+    "LLMManager",
+    "load_llm_config",
+    "PromptManager",
+]
 
 
 class TaskStatus(Enum):
@@ -392,7 +400,7 @@ class ARKEngine(ReActAgent):
 
         # Export conversation if needed
         try:
-            conversation_export = self.context_manager.export_conversation()
+            self.context_manager.export_conversation()
             self.ark_logger.debug("ARK: Conversation exported for archival")
         except Exception as e:
             self.ark_logger.warning(f"ARK: Error exporting conversation: {e}")

@@ -1,6 +1,4 @@
-import pytest
 from unittest.mock import patch
-import src.web.auth
 from src.web.auth import auth_callback
 
 

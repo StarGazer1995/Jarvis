@@ -3,18 +3,16 @@ ARK引擎的MCP客户端实现
 使用官方modelcontextprotocol SDK提供标准化的MCP客户端功能
 """
 
-import asyncio
 import logging
 import json
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Union
-from dataclasses import dataclass, field
+from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 from contextlib import AsyncExitStack
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-from mcp.types import Tool, CallToolRequest, CallToolResult
+from mcp.types import Tool, CallToolRequest
 
 from ..config.server import SimpleMCPServerConfig, ServerStatus
 

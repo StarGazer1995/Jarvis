@@ -8,8 +8,7 @@ import os
 import pytest
 import tempfile
 import yaml
-from pathlib import Path
-from unittest.mock import patch, mock_open
+from unittest.mock import patch
 from typing import Dict, Any
 
 from src.core.config.loader import (

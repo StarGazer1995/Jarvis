@@ -3,7 +3,7 @@ Base Agent Class
 """
 
 import logging
-from typing import Dict, Any, Optional, List, Callable
+from typing import Dict, Any, Optional, Callable
 from abc import ABC, abstractmethod
 
 from .types import AgentState

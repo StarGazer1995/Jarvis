@@ -11,7 +11,7 @@ import json
 import yaml
 import asyncio
 import unittest.mock
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
+from unittest.mock import patch
 from pathlib import Path
 from datetime import datetime
 
@@ -19,7 +19,6 @@ from src.core.config.server import (
     ServerType,
     ServerStatus,
     AuthType,
-    ConfigType,
     MCPServerConfig,
     SimpleMCPServerConfig,
     ServerCredentials,

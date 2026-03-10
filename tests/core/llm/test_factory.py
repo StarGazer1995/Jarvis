@@ -7,8 +7,8 @@ LLM工厂测试模块
 import pytest
 import tempfile
 import yaml
-from unittest.mock import Mock, patch, MagicMock
-from typing import Dict, Any, Optional
+from unittest.mock import Mock, patch
+from typing import Dict, Any
 
 from src.core.llm.factory import (
     LLMProviderRegistry,
@@ -19,12 +19,10 @@ from src.core.llm.factory import (
 )
 from src.core.config.loader import (
     LLMConfig,
-    GlobalConfig,
     ProviderConfig,
-    FeatureConfig,
 )
-from src.core.llm.client import BaseLLMClient, LLMProvider, LLMConfig as ClientLLMConfig
-from src.core.common.exceptions import ConfigurationError, LLMError
+from src.core.llm.client import BaseLLMClient, LLMConfig as ClientLLMConfig
+from src.core.common.exceptions import ConfigurationError
 
 
 class MockLLMClient(BaseLLMClient):
@@ -402,7 +400,7 @@ class TestLLMProviderFactory:
 
         # 创建一些客户端
         client1 = factory.get_provider("mock")
-        client2 = factory.get_provider("another_mock")
+        factory.get_provider("another_mock")
 
         # 关闭工厂
         await factory.close()

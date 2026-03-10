@@ -4,12 +4,11 @@ import time
 import requests
 import sys
 import os
+import importlib.util
 from playwright.sync_api import Page, expect
 
 # Skip if chainlit is not installed or if running in environment where UI testing is hard
-try:
-    import chainlit
-except ImportError:
+if importlib.util.find_spec("chainlit") is None:
     pytest.skip("Chainlit not installed", allow_module_level=True)
 
 

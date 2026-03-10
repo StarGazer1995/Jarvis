@@ -15,7 +15,6 @@ Jarvis AI代理完整演示脚本
 """
 
 import sys
-import os
 import asyncio
 import logging
 import json
@@ -28,7 +27,6 @@ sys.path.insert(0, str(project_root))
 
 # 导入模块
 from src.jarvis_agent import JarvisAgent, JarvisConfig
-from src.core.config.server import SimpleMCPServerConfig
 
 
 def setup_logging():

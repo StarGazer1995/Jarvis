@@ -12,7 +12,6 @@ import shutil
 import os
 from pathlib import Path
 from unittest.mock import Mock, AsyncMock
-from typing import Dict, Any, Optional
 
 from src.jarvis_agent import JarvisConfig, JarvisAgent
 from src.core.config.server import SimpleMCPServerConfig

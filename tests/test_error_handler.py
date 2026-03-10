@@ -4,8 +4,6 @@
 测试LLM错误处理的各种异常类型和处理机制。
 """
 
-import pytest
-import logging
 from unittest.mock import patch, MagicMock
 
 from src.core.llm.utils.error_handler import (

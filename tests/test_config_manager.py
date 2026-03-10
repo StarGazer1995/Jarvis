@@ -237,7 +237,7 @@ openai:
                     ) as mock_cwd:
                         mock_cwd.return_value = Path(tmpdir)
 
-                        manager = ConfigManager()
+                        ConfigManager()
 
                         # 验证load_dotenv被调用
                         mock_load.assert_called()

@@ -1,6 +1,6 @@
 import pytest
 import asyncio
-from unittest.mock import Mock, call
+from unittest.mock import Mock
 from src.core.llm.stream_handler import StreamTokenHandler
 
 

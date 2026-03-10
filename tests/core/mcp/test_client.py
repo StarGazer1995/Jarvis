@@ -9,7 +9,6 @@ import pytest
 import asyncio
 import json
 from unittest.mock import Mock, patch, AsyncMock
-from typing import Dict, Any
 
 from src.core.mcp.client import ARKMCPClient
 from src.core.config.server import SimpleMCPServerConfig, ServerStatus
@@ -668,7 +667,6 @@ class TestARKMCPClientErrorHandling:
     @pytest.mark.asyncio
     async def test_initialize_from_invalid_json_config(self, client, tmp_path):
         """Test initializing from invalid JSON config file."""
-        import json
 
         # Create a temporary config file with invalid JSON
         config_file = tmp_path / "invalid_config.json"

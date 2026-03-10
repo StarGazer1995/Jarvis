@@ -5,7 +5,6 @@ This module provides tools for real-time web research using Tavily.
 """
 
 import os
-import json
 from typing import Dict, Any, Optional
 from tavily import TavilyClient
 

@@ -4,18 +4,12 @@ OpenAI LLM客户端实现
 提供真实的OpenAI API集成，支持完整的功能和错误处理。
 """
 
-import asyncio
-import logging
 import time
-from typing import List, Dict, Any, Optional, AsyncGenerator
+from typing import List, Dict, Any, AsyncGenerator
 
 from ..client import BaseLLMClient, LLMMessage, LLMResponse
 from ..types import LLMConfig
 from ..utils.error_handler import (
-    LLMError,
-    LLMAPIError,
-    LLMAuthenticationError,
-    LLMTimeoutError,
     LLMConfigurationError,
     handle_openai_error,
     log_llm_error,
@@ -139,7 +133,7 @@ class OpenAILLMClient(BaseLLMClient):
             # 发送一个简单的测试请求
             test_messages = [{"role": "user", "content": "Hello"}]
 
-            response = await self._client.chat.completions.create(
+            await self._client.chat.completions.create(
                 model=self.config.model,
                 messages=test_messages,
                 max_tokens=1,
@@ -254,7 +248,6 @@ class OpenAILLMClient(BaseLLMClient):
             stream = await self._client.chat.completions.create(**request_params)
 
             # 处理流式响应
-            in_reasoning = False
             async for chunk in stream:
                 if not chunk.choices:
                     continue

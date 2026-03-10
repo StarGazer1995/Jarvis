@@ -9,14 +9,12 @@ import pytest
 import tempfile
 import yaml
 import asyncio
-from pathlib import Path
-from unittest.mock import patch, Mock
+from unittest.mock import patch
 from typing import Dict, Any
 
 from src.core.config.loader import load_llm_config, ConfigLoader, Environment
 from src.core.llm.factory import (
     LLMProviderFactory,
-    LLMProviderRegistry,
     create_llm_client,
 )
 from src.core.llm.client import (
@@ -25,7 +23,7 @@ from src.core.llm.client import (
     LLMResponse,
     LLMConfig as ClientLLMConfig,
 )
-from src.core.common.exceptions import ConfigurationError, LLMError
+from src.core.common.exceptions import ConfigurationError
 
 
 class IntegrationMockClient(BaseLLMClient):

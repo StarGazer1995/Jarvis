@@ -4,11 +4,9 @@
 收集和报告LLM性能指标。
 """
 
-import time
 import logging
-from typing import Dict, Any, Optional
-from dataclasses import dataclass, field
-from contextlib import contextmanager
+from typing import Dict, Any
+from dataclasses import dataclass
 
 
 @dataclass

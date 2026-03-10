@@ -1,7 +1,6 @@
 import pytest
 from unittest.mock import MagicMock
 from src.core.agent.react import ReActAgent
-from src.core.llm.client import LLMMessage
 
 
 @pytest.mark.asyncio

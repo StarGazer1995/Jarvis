@@ -12,7 +12,6 @@ import asyncio
 import logging
 import os
 import sys
-import json
 from typing import Dict, Any
 
 # Ensure project root is in path
@@ -21,7 +20,6 @@ sys.path.append(os.getcwd())
 from src.core.config.loader import load_llm_config as load_yaml_config
 from src.core.config.loader import (
     LLMConfig as YamlLLMConfig,
-    ProviderConfig,
     ModelConfig,
 )
 from src.core.llm.types import LLMConfig as ClientLLMConfig, LLMProvider, LLMMessage
@@ -103,7 +101,6 @@ async def main():
         logger.info(f"[Researcher] Received task: {task}")
 
         # Simulate Research (or use WebResearcher if API key present)
-        results = []
         if os.getenv("TAVILY_API_KEY"):
             logger.info("[Researcher] Using Tavily for real search...")
             researcher = WebResearcher()
@@ -113,7 +110,6 @@ async def main():
             # But WebResearcher.search is a bound method returning a string usually.
             # For this demo, let's just mock if complex.
             # Let's try to simple mock for reliability of the demo unless we are sure.
-            search_result = f"Real search result for '{task}' would go here."
             sources = ["https://python.org", "https://docs.python.org/3.13/"]
             content = researcher.search(task, domains=sources)
         else:

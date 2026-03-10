@@ -7,9 +7,8 @@ a generator-reviewer cycle.
 
 import os
 import logging
-import re
 from datetime import datetime
-from typing import Callable, Any, Optional, Union
+from typing import Callable, Any, Optional
 import inspect
 
 logger = logging.getLogger(__name__)

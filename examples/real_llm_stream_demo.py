@@ -95,7 +95,7 @@ async def main():
 
     try:
         # The engine will stream output via callbacks and return the final complete string
-        final_response = await engine.process_input(user_query, callbacks=callbacks)
+        await engine.process_input(user_query, callbacks=callbacks)
         print("\n\n[Stream Completed]")
 
     except Exception as e:

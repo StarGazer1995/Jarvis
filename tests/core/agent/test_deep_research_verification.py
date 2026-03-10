@@ -3,10 +3,8 @@ Verify Deep Research Implementation
 """
 
 import pytest
-import asyncio
 from unittest.mock import MagicMock, patch, AsyncMock
 from src.core.agent.deep_research import DeepResearchAgent
-from src.core.llm.client import LLMResponse, LLMMessage
 
 
 @pytest.fixture
@@ -73,7 +71,7 @@ async def test_file_parser_routing():
     # We need to mock pypdf.PdfReader and docx.Document
     with (
         patch("src.capabilities.deep_research_tools.os.path.exists", return_value=True),
-        patch("builtins.open", MagicMock()) as mock_open,
+        patch("builtins.open", MagicMock()),
         patch.dict("sys.modules", {"pypdf": MagicMock(), "docx": MagicMock()}),
     ):
         # Setup mocks

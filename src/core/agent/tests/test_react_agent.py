@@ -3,7 +3,6 @@ Tests for the generic ReAct Agent
 """
 
 import unittest
-import asyncio
 from unittest.mock import MagicMock, AsyncMock
 
 from src.core.agent.react import ReActAgent

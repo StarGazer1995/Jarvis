@@ -20,7 +20,7 @@ from tenacity import (
     after_log,
 )
 
-from .error_handler import LLMError, LLMAPIError, LLMRateLimitError, LLMTimeoutError
+from .error_handler import LLMAPIError, LLMRateLimitError, LLMTimeoutError
 
 
 class RetryHandler:

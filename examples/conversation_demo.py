@@ -7,7 +7,6 @@ Jarvis对话演示脚本
 """
 
 import sys
-import os
 import asyncio
 import logging
 from pathlib import Path

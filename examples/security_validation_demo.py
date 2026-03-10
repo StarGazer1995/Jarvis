@@ -19,9 +19,7 @@ import logging
 import argparse
 import sys
 import time
-import json
 from pathlib import Path
-from typing import List, Dict, Any, Optional
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -29,11 +27,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from core.security_manager import (
     SecurityLevel,
     PermissionType,
-    ValidationResult,
     SecurityPolicy,
     SecurityContext,
     ValidationRequest,
-    ValidationResponse,
     RateLimiter,
     InputValidator,
     AuditLogger,

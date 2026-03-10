@@ -1,5 +1,4 @@
 from typing import TypedDict, List, Dict, Any, Annotated
-import operator
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 

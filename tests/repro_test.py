@@ -1,5 +1,4 @@
 import yaml
-import pytest
 import tempfile
 import os
 from src.core.config_loader import ConfigLoader

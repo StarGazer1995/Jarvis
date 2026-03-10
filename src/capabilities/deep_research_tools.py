@@ -4,10 +4,8 @@ Implementation of tools required for the Deep Research agent.
 """
 
 import os
-import json
-import asyncio
 import logging
-from typing import List, Dict, Any, Optional, Union
+from typing import List, Optional
 import requests
 
 try:
@@ -15,7 +13,7 @@ try:
 except ImportError:
     TavilyClient = None
 
-from src.core.llm.client import LLMManager, LLMMessage
+from src.core.llm.client import LLMManager
 from src.core.llm.converters import convert_langchain_to_llm_messages
 from src.core.llm.config import load_llm_config
 from src.core.prompt.manager import PromptManager

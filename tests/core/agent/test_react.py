@@ -1,9 +1,7 @@
 import pytest
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 from src.core.agent.react import ReActAgent
-from src.core.agent.types import AgentState, AgentStep
-from src.core.llm.client import LLMResponse, LLMMessage
+from src.core.agent.types import AgentState
 
 
 class TestReActAgent:

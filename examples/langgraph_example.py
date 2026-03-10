@@ -11,12 +11,11 @@ import asyncio
 import logging
 import os
 import sys
-from typing import Any, Dict
 
 # Ensure project root is in path
 sys.path.append(os.getcwd())
 
-from src.core.ark.engine import ARKEngine, Task, TaskStatus
+from src.core.ark.engine import ARKEngine
 from src.core.config.loader import load_llm_config as load_yaml_config
 from src.core.config.loader import (
     LLMConfig as YamlLLMConfig,

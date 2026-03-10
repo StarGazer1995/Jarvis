@@ -1,6 +1,5 @@
 import unittest
-import asyncio
-from unittest.mock import MagicMock, AsyncMock, patch, ANY
+from unittest.mock import MagicMock, AsyncMock, patch
 from langchain_core.messages import HumanMessage, AIMessage
 
 from src.core.ark.engine import ARKEngine, ARKState, TaskStatus, Task

@@ -2,10 +2,8 @@
 ReAct Agent Implementation
 """
 
-import json
-import re
 import logging
-from typing import List, Dict, Any, Optional, Union, Callable
+from typing import List, Dict, Any, Optional, Callable
 
 from .base import BaseAgent
 from .types import AgentState, AgentStep

@@ -1,6 +1,6 @@
 import pytest
 import asyncio
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, patch
 from src.core.ark.engine import ARKEngine
 from langchain_core.messages import HumanMessage, AIMessage
 
@@ -13,9 +13,9 @@ async def test_multi_turn_conversation_flow():
     """
     # Mock LLM Manager to avoid real API calls
     with (
-        patch("src.core.ark.engine.LLMManager") as MockLLMManager,
-        patch("src.core.ark.engine.ARKMCPClient") as MockMCPClient,
-        patch("src.core.ark.graph.StateGraph") as MockStateGraph,
+        patch("src.core.ark.engine.LLMManager"),
+        patch("src.core.ark.engine.ARKMCPClient"),
+        patch("src.core.ark.graph.StateGraph"),
     ):
         # Setup Mock Engine
         engine = ARKEngine()
@@ -81,7 +81,7 @@ async def test_multi_turn_conversation_flow():
         # In Turn 2, input messages will be [Turn1, Current].
         # So "My name is John" will be in history.
 
-        response2 = await engine.process_input("What is my name?")
+        await engine.process_input("What is my name?")
         # Our mock side_effect checks if "My name is John" is in history_text.
         # It should be there because engine injects it.
 
@@ -112,7 +112,7 @@ async def test_multi_turn_conversation_flow():
         assert "reset" in response3.lower() or "conversation" in response3.lower()
 
         # Turn 4: Ask name again
-        response4 = await engine.process_input("What is my name?")
+        await engine.process_input("What is my name?")
 
         # Check call args for the fourth call
         call_args = mock_graph.ainvoke.call_args_list[3]

@@ -1,8 +1,6 @@
-import pytest
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock
 from src.core.ark.nodes.master import MasterNode
 from src.core.llm.client import LLMManager
-from src.core.ark.state import JarvisState
 
 
 class TestMasterNode:

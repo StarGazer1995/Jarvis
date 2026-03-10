@@ -5,7 +5,6 @@ This module contains comprehensive tests for the JarvisAgent class and its confi
 """
 
 import pytest
-import asyncio
 from unittest.mock import Mock, patch, AsyncMock
 import dataclasses
 
@@ -254,7 +253,6 @@ class TestJarvisAgent:
     @pytest.mark.asyncio
     async def test_get_conversation_export(self, agent):
         """Test conversation export."""
-        mock_history = [{"role": "user", "content": "Hello"}]
         with patch.object(
             agent.ark_engine.context_manager,
             "export_conversation",

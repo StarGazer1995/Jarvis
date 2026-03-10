@@ -1,6 +1,6 @@
 import pytest
 import os
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 from src.capabilities.web_research import WebResearcher
 
 

@@ -45,7 +45,7 @@ with patch.dict(
     },
 ):
     import src.web.app as app_module
-    from src.web.app import start, on_chat_resume, main, stop, on_settings_update
+    from src.web.app import start, on_chat_resume, main, on_settings_update
 
 
 @pytest.mark.asyncio

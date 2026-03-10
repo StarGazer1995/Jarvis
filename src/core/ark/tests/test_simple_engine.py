@@ -1,7 +1,5 @@
 import unittest
-import asyncio
-from unittest.mock import MagicMock, AsyncMock, patch
-import json
+from unittest.mock import MagicMock, AsyncMock
 
 # Import from the new simple engine module
 from src.core.ark.simple_engine import SimpleARKEngine, TaskStatus

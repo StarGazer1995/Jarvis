@@ -47,7 +47,7 @@ def test_docker_execution_error(mock_docker_client):
     # Mock container error
     # We need to mock docker.errors.ContainerError
     # Since we mocked the whole docker module, we need to setup the exception
-    container_error = Exception("Container Error")
+    Exception("Container Error")
     # Actually, in the code we catch docker.errors.ContainerError
     # We need to make sure the mocked docker module has this exception class
 

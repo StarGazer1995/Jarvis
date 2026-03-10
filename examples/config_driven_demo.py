@@ -15,7 +15,7 @@ import sys
 import asyncio
 import argparse
 import logging
-from typing import List, Dict, Any, Optional
+from typing import Optional
 from pathlib import Path
 
 # 添加项目根目录到Python路径
@@ -24,8 +24,7 @@ sys.path.insert(0, str(project_root))
 
 from src.core.llm_factory import LLMProviderFactory, create_llm_client
 from src.core.config_loader import load_llm_config
-from src.core.llm_client import LLMMessage, LLMProvider
-from src.core.exceptions import LLMError, ConfigurationError
+from src.core.llm_client import LLMMessage
 
 
 def setup_logging(level: str = "INFO") -> None:
@@ -289,9 +288,7 @@ async def demo_error_handling(config_path: Optional[str] = None) -> None:
     # 测试不存在的提供商
     print_subsection("测试不存在的提供商")
     try:
-        client = create_llm_client(
-            provider_name="nonexistent_provider", config_path=config_path
-        )
+        create_llm_client(provider_name="nonexistent_provider", config_path=config_path)
         print("❌ 应该抛出异常但没有")
     except Exception as e:
         print(f"✅ 正确捕获异常: {e}")
@@ -299,7 +296,7 @@ async def demo_error_handling(config_path: Optional[str] = None) -> None:
     # 测试无效的配置文件
     print_subsection("测试无效的配置文件")
     try:
-        client = create_llm_client(config_path="nonexistent_config.yaml")
+        create_llm_client(config_path="nonexistent_config.yaml")
         print("❌ 应该抛出异常但没有")
     except Exception as e:
         print(f"✅ 正确捕获异常: {e}")
@@ -318,7 +315,7 @@ async def demo_error_handling(config_path: Optional[str] = None) -> None:
         if disabled_providers:
             provider_name = disabled_providers[0]
             print(f"🔍 测试禁用的提供商: {provider_name}")
-            client = factory.get_provider(provider_name)
+            factory.get_provider(provider_name)
             print("❌ 应该抛出异常但没有")
         else:
             print("ℹ️  没有禁用的提供商可供测试")

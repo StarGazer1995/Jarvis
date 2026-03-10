@@ -5,7 +5,6 @@ import os
 # Add project root to path
 sys.path.append(os.getcwd())
 
-from unittest.mock import MagicMock
 from src.core.agent.react import ReActAgent, AgentState
 
 
