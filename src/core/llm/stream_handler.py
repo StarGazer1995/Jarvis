@@ -26,6 +26,44 @@ class StreamTokenHandler:
         self.callbacks = callbacks or {}
         self.logger = logging.getLogger("llm.stream_handler")
 
+    @staticmethod
+    def _simple_unescape(text: str) -> str:
+        return text.replace("\\n", "\n").replace('\\"', '"').replace("\\\\", "\\")
+
+    @staticmethod
+    def _find_unescaped_quote(buffer: str) -> int:
+        search_start = 0
+        while True:
+            quote_idx = buffer.find('"', search_start)
+            if quote_idx == -1:
+                return -1
+            backslashes = 0
+            i = quote_idx - 1
+            while i >= 0 and buffer[i] == "\\":
+                backslashes += 1
+                i -= 1
+            if backslashes % 2 == 0:
+                return quote_idx
+            search_start = quote_idx + 1
+
+    @staticmethod
+    def _safe_chunk_len(buffer: str, reserve: int = 10) -> int:
+        safe_len = len(buffer) - reserve
+        while safe_len > 0 and buffer[safe_len - 1] == "\\":
+            safe_len -= 1
+        return safe_len
+
+    def _emit_callback(self, callback_name: str, content: str | None = None) -> None:
+        if callback_name not in self.callbacks:
+            return
+        try:
+            if content is None:
+                self.callbacks[callback_name]()
+            else:
+                self.callbacks[callback_name](self._simple_unescape(content))
+        except Exception as e:
+            self.logger.error(f"Error in {callback_name}: {e}")
+
     async def process_stream(self, stream_generator: AsyncGenerator[str, None]) -> str:
         """
         Process the stream generator, accumulating the full response.
@@ -50,10 +88,6 @@ class StreamTokenHandler:
         # 4: Done / Object mode
         state = 0
 
-        def simple_unescape(text: str) -> str:
-            """Simple unescape for display purposes."""
-            return text.replace("\\n", "\n").replace('\\"', '"').replace("\\\\", "\\")
-
         async for chunk in stream_generator:
             full_response += chunk
             buffer += chunk
@@ -62,72 +96,25 @@ class StreamTokenHandler:
             if state == 0:
                 match = re.search(r'"thought"\s*:\s*"', buffer)
                 if match:
-                    if "on_thought_start" in self.callbacks:
-                        try:
-                            self.callbacks["on_thought_start"]()
-                        except Exception as e:
-                            self.logger.error(f"Error in on_thought_start: {e}")
-
+                    self._emit_callback("on_thought_start")
                     buffer = buffer[match.end() :]
                     state = 1
 
             # State 1: In Thought string
             if state == 1:
-                # Find unescaped quote
-                idx = -1
-                search_start = 0
-                while True:
-                    quote_idx = buffer.find('"', search_start)
-                    if quote_idx == -1:
-                        break
-
-                    # Check backslashes
-                    backslashes = 0
-                    i = quote_idx - 1
-                    while i >= 0 and buffer[i] == "\\":
-                        backslashes += 1
-                        i -= 1
-
-                    if backslashes % 2 == 0:
-                        idx = quote_idx
-                        break
-                    else:
-                        search_start = quote_idx + 1
-
+                idx = self._find_unescaped_quote(buffer)
                 if idx != -1:
-                    # Found end of thought
                     content = buffer[:idx]
-                    if content and "on_thought_token" in self.callbacks:
-                        try:
-                            self.callbacks["on_thought_token"](simple_unescape(content))
-                        except Exception as e:
-                            self.logger.error(f"Error in on_thought_token: {e}")
-
-                    if "on_thought_end" in self.callbacks:
-                        try:
-                            self.callbacks["on_thought_end"]()
-                        except Exception as e:
-                            self.logger.error(f"Error in on_thought_end: {e}")
-
+                    if content:
+                        self._emit_callback("on_thought_token", content)
+                    self._emit_callback("on_thought_end")
                     buffer = buffer[idx + 1 :]
                     state = 2
                 else:
-                    # Emit safe part
-                    safe_len = len(buffer) - 10  # Keep a buffer for escape sequences
-
-                    # Ensure we don't split an escape sequence
-                    while safe_len > 0 and buffer[safe_len - 1] == "\\":
-                        safe_len -= 1
-
+                    safe_len = self._safe_chunk_len(buffer)
                     if safe_len > 0:
                         content = buffer[:safe_len]
-                        if "on_thought_token" in self.callbacks:
-                            try:
-                                self.callbacks["on_thought_token"](
-                                    simple_unescape(content)
-                                )
-                            except Exception as e:
-                                self.logger.error(f"Error in on_thought_token: {e}")
+                        self._emit_callback("on_thought_token", content)
                         buffer = buffer[safe_len:]
 
             # State 2: Look for "content": "
@@ -145,48 +132,18 @@ class StreamTokenHandler:
 
             # State 3: In Content string (Answer)
             if state == 3:
-                # Find unescaped quote
-                idx = -1
-                search_start = 0
-                while True:
-                    quote_idx = buffer.find('"', search_start)
-                    if quote_idx == -1:
-                        break
-
-                    backslashes = 0
-                    i = quote_idx - 1
-                    while i >= 0 and buffer[i] == "\\":
-                        backslashes += 1
-                        i -= 1
-
-                    if backslashes % 2 == 0:
-                        idx = quote_idx
-                        break
-                    else:
-                        search_start = quote_idx + 1
-
+                idx = self._find_unescaped_quote(buffer)
                 if idx != -1:
                     content = buffer[:idx]
-                    if content and "on_token" in self.callbacks:
-                        try:
-                            self.callbacks["on_token"](simple_unescape(content))
-                        except Exception as e:
-                            self.logger.error(f"Error in on_token: {e}")
-
+                    if content:
+                        self._emit_callback("on_token", content)
                     buffer = buffer[idx + 1 :]
                     state = 4
                 else:
-                    safe_len = len(buffer) - 10
-                    while safe_len > 0 and buffer[safe_len - 1] == "\\":
-                        safe_len -= 1
-
+                    safe_len = self._safe_chunk_len(buffer)
                     if safe_len > 0:
                         content = buffer[:safe_len]
-                        if "on_token" in self.callbacks:
-                            try:
-                                self.callbacks["on_token"](simple_unescape(content))
-                            except Exception as e:
-                                self.logger.error(f"Error in on_token: {e}")
+                        self._emit_callback("on_token", content)
                         buffer = buffer[safe_len:]
 
         return full_response

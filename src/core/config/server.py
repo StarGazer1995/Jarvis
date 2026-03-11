@@ -10,6 +10,7 @@ import asyncio
 import json
 import os
 import time
+import threading
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Set, Callable
 from dataclasses import dataclass, field, asdict
@@ -68,6 +69,21 @@ class ConfigType(Enum):
     TESTING = "testing"
     STAGING = "staging"
     PRODUCTION = "production"
+
+
+class ConfigOperationCode(Enum):
+    INVALID_CONFIG = "INVALID_CONFIG"
+    DUPLICATE_CONFIG = "DUPLICATE_CONFIG"
+    NOT_FOUND = "NOT_FOUND"
+    PERSIST_FAILED = "PERSIST_FAILED"
+    UPDATE_FAILED = "UPDATE_FAILED"
+    REMOVE_FAILED = "REMOVE_FAILED"
+
+
+class ConfigOperationPhase(Enum):
+    VALIDATE = "validate"
+    PERSIST = "persist"
+    CACHE_UPDATE = "cache_update"
 
 
 @dataclass
@@ -280,13 +296,13 @@ class MCPServerConfig:
     # Runtime data
     metrics: ServerMetrics = field(default_factory=ServerMetrics)
     created_at: datetime = field(default_factory=datetime.now)
-    updated_at: float = field(default_factory=time.time)
+    updated_at: datetime = field(default_factory=datetime.now)
     last_updated: Optional[datetime] = None
 
     # Private fields
     _url: Optional[str] = field(default=None, init=False)
 
-    def to_dict(self, include_sensitive: bool = True) -> Dict[str, Any]:
+    def to_dict(self, include_sensitive: bool = False) -> Dict[str, Any]:
         """
         Convert server config to dictionary.
 
@@ -311,9 +327,7 @@ class MCPServerConfig:
             if self.security_level
             else None,
             "config_type": self.config_type.value,
-            "api_key": self.api_key
-            if include_sensitive
-            else ("***" if self.api_key else None),
+            "api_key": self.api_key if include_sensitive else None,
             "headers": self.headers,
             "description": self.description,
             "version": self.version,
@@ -328,7 +342,9 @@ class MCPServerConfig:
             "last_updated": self.last_updated.isoformat()
             if self.last_updated
             else (
-                datetime.fromtimestamp(self.updated_at).isoformat()
+                self.updated_at.isoformat()
+                if isinstance(self.updated_at, datetime)
+                else datetime.fromtimestamp(self.updated_at).isoformat()
                 if isinstance(self.updated_at, (int, float))
                 else self.updated_at
             ),
@@ -363,6 +379,19 @@ class MCPServerConfig:
                 last_updated = datetime.fromisoformat(last_updated)
             except ValueError:
                 last_updated = None
+        elif isinstance(last_updated, (int, float)):
+            last_updated = datetime.fromtimestamp(last_updated)
+
+        updated_at = data.get("updated_at")
+        if isinstance(updated_at, str):
+            try:
+                updated_at = datetime.fromisoformat(updated_at)
+            except ValueError:
+                updated_at = datetime.now()
+        elif isinstance(updated_at, (int, float)):
+            updated_at = datetime.fromtimestamp(updated_at)
+        elif updated_at is None:
+            updated_at = datetime.now()
 
         # Parse security level
         security_level = data.get("security_level")
@@ -393,6 +422,7 @@ class MCPServerConfig:
             auto_restart=data.get("auto_restart", True),
             metadata=data.get("metadata", {}),
             created_at=created_at,
+            updated_at=updated_at,
             last_updated=last_updated,
         )
 
@@ -477,7 +507,7 @@ class MCPServerConfig:
     def update_status(self, status: ServerStatus) -> None:
         """Update server status and timestamp."""
         self.status = status
-        self.updated_at = time.time()
+        self.updated_at = datetime.now()
 
     def __repr__(self) -> str:
         """String representation of the server configuration."""
@@ -545,7 +575,16 @@ class MCPServerConfig:
         # Update the last_updated timestamp
         self.last_updated = datetime.now()
         # Update timestamp
-        self.updated_at = time.time()
+        self.updated_at = datetime.now()
+
+
+@dataclass
+class ConfigOperationResult:
+    success: bool
+    code: Optional[str] = None
+    phase: Optional[str] = None
+    message: Optional[str] = None
+    server_name: Optional[str] = None
 
 
 class ServerConfigProvider(ABC):
@@ -618,95 +657,54 @@ class FileConfigProvider(ServerConfigProvider):
 
         self.logger = logging.getLogger("jarvis.server_config.file")
 
+    def _read_file_data(self, file_path: Path) -> Any:
+        with open(file_path, "r") as f:
+            if file_path.suffix == ".json":
+                return json.load(f)
+            return yaml.safe_load(f)
+
+    def _parse_data_to_configs(self, data: Any) -> List[MCPServerConfig]:
+        if isinstance(data, dict) and "servers" in data:
+            return [MCPServerConfig.from_dict(item) for item in data["servers"]]
+        if isinstance(data, list):
+            return [MCPServerConfig.from_dict(item) for item in data]
+        return [MCPServerConfig.from_dict(data)]
+
+    def _load_from_file(self, file_path: Path, configs: List[MCPServerConfig]) -> None:
+        try:
+            data = self._read_file_data(file_path)
+            configs.extend(self._parse_data_to_configs(data))
+        except Exception as e:
+            self.logger.error(f"Failed to load config from {file_path}: {e}")
+
+    def _serialize_configs(self, configs: List[MCPServerConfig]) -> dict[str, Any]:
+        config_data = [cfg.to_dict(include_sensitive=False) for cfg in configs]
+        return {"servers": config_data}
+
+    def _write_to_file(self, file_path: Path, data: Any) -> None:
+        with open(file_path, "w") as f:
+            if file_path.suffix == ".json":
+                json.dump(data, f, indent=2)
+            else:
+                yaml.dump(data, f, default_flow_style=False)
+
+    def _write_single_file_configs(self, configs: List[MCPServerConfig]) -> None:
+        data = self._serialize_configs(configs)
+        self._write_to_file(self.file_path, data)
+
     async def load_configs(self) -> List[MCPServerConfig]:
         """Load configurations from files."""
         configs = []
 
         try:
             if self.single_file_mode:
-                # Load from single file
                 if self.file_path.exists():
-                    try:
-                        with open(self.file_path, "r") as f:
-                            if self.file_path.suffix == ".json":
-                                data = json.load(f)
-                            else:  # yaml
-                                data = yaml.safe_load(f)
-
-                        # Handle both single config and list of configs
-                        if isinstance(data, dict) and "servers" in data:
-                            # Data has 'servers' wrapper
-                            for item in data["servers"]:
-                                config = MCPServerConfig.from_dict(item)
-                                configs.append(config)
-                        elif isinstance(data, list):
-                            # Data is directly a list of configs
-                            for item in data:
-                                config = MCPServerConfig.from_dict(item)
-                                configs.append(config)
-                        else:
-                            # Data is a single config
-                            config = MCPServerConfig.from_dict(data)
-                            configs.append(config)
-
-                    except Exception as e:
-                        self.logger.error(
-                            f"Failed to load config from {self.file_path}: {e}"
-                        )
+                    self._load_from_file(self.file_path, configs)
             else:
-                # Load from directory
                 for config_file in self.config_dir.glob("*.json"):
-                    try:
-                        with open(config_file, "r") as f:
-                            data = json.load(f)
-
-                        # Handle both single config and list of configs, including 'servers' wrapper
-                        if isinstance(data, dict) and "servers" in data:
-                            # Data has 'servers' wrapper
-                            for item in data["servers"]:
-                                config = MCPServerConfig.from_dict(item)
-                                configs.append(config)
-                        elif isinstance(data, list):
-                            # Data is directly a list of configs
-                            for item in data:
-                                config = MCPServerConfig.from_dict(item)
-                                configs.append(config)
-                        else:
-                            # Data is a single config
-                            config = MCPServerConfig.from_dict(data)
-                            configs.append(config)
-
-                    except Exception as e:
-                        self.logger.error(
-                            f"Failed to load config from {config_file}: {e}"
-                        )
-
-                # Also try YAML files
+                    self._load_from_file(config_file, configs)
                 for config_file in self.config_dir.glob("*.yaml"):
-                    try:
-                        with open(config_file, "r") as f:
-                            data = yaml.safe_load(f)
-
-                        # Handle both single config and list of configs, including 'servers' wrapper
-                        if isinstance(data, dict) and "servers" in data:
-                            # Data has 'servers' wrapper
-                            for item in data["servers"]:
-                                config = MCPServerConfig.from_dict(item)
-                                configs.append(config)
-                        elif isinstance(data, list):
-                            # Data is directly a list of configs
-                            for item in data:
-                                config = MCPServerConfig.from_dict(item)
-                                configs.append(config)
-                        else:
-                            # Data is a single config
-                            config = MCPServerConfig.from_dict(data)
-                            configs.append(config)
-
-                    except Exception as e:
-                        self.logger.error(
-                            f"Failed to load config from {config_file}: {e}"
-                        )
+                    self._load_from_file(config_file, configs)
 
             self.logger.info(f"Loaded {len(configs)} server configurations")
 
@@ -719,13 +717,8 @@ class FileConfigProvider(ServerConfigProvider):
         """Save configuration to file."""
         try:
             if self.single_file_mode:
-                # Ensure parent directory exists
                 self.config_dir.mkdir(parents=True, exist_ok=True)
-
-                # Load existing configs, update/add the new one, and save all
                 existing_configs = await self.load_configs()
-
-                # Update or add the config
                 updated = False
                 for i, existing_config in enumerate(existing_configs):
                     if existing_config.name == config.name:
@@ -736,26 +729,13 @@ class FileConfigProvider(ServerConfigProvider):
                 if not updated:
                     existing_configs.append(config)
 
-                # Save all configs to the single file with 'servers' wrapper
-                config_data = [
-                    cfg.to_dict(include_sensitive=True) for cfg in existing_configs
-                ]
-                data = {"servers": config_data}
-
-                with open(self.file_path, "w") as f:
-                    if self.file_path.suffix == ".json":
-                        json.dump(data, f, indent=2)
-                    else:  # yaml
-                        yaml.dump(data, f, default_flow_style=False)
+                self._write_single_file_configs(existing_configs)
             else:
-                # Ensure directory exists
                 self.config_dir.mkdir(parents=True, exist_ok=True)
-
-                # Save to individual file in directory
                 config_file = self.config_dir / f"{config.name}.json"
-
-                with open(config_file, "w") as f:
-                    json.dump(config.to_dict(include_sensitive=True), f, indent=2)
+                self._write_to_file(
+                    config_file, config.to_dict(include_sensitive=False)
+                )
 
             self.logger.info(f"Saved configuration for server: {config.name}")
             return True
@@ -768,28 +748,15 @@ class FileConfigProvider(ServerConfigProvider):
         """Save multiple configurations to file(s)."""
         try:
             if self.single_file_mode:
-                # Ensure parent directory exists
                 self.config_dir.mkdir(parents=True, exist_ok=True)
-
-                # Save all configs to the single file with 'servers' wrapper
-                config_data = [cfg.to_dict(include_sensitive=True) for cfg in configs]
-                data = {"servers": config_data}
-
-                with open(self.file_path, "w") as f:
-                    if self.file_path.suffix == ".json":
-                        json.dump(data, f, indent=2)
-                    else:  # yaml
-                        yaml.dump(data, f, default_flow_style=False)
+                self._write_single_file_configs(configs)
             else:
-                # Ensure directory exists
                 self.config_dir.mkdir(parents=True, exist_ok=True)
-
-                # Save each config to individual file in directory
                 for config in configs:
                     config_file = self.config_dir / f"{config.name}.json"
-
-                    with open(config_file, "w") as f:
-                        json.dump(config.to_dict(include_sensitive=True), f, indent=2)
+                    self._write_to_file(
+                        config_file, config.to_dict(include_sensitive=False)
+                    )
 
             self.logger.info(f"Saved {len(configs)} configurations")
             return True
@@ -802,35 +769,19 @@ class FileConfigProvider(ServerConfigProvider):
         """Delete configuration file."""
         try:
             if self.single_file_mode:
-                # Load existing configs, remove the specified one, and save the rest
                 existing_configs = await self.load_configs()
-
-                # Find and remove the config
                 original_count = len(existing_configs)
                 existing_configs = [
                     cfg for cfg in existing_configs if cfg.name != server_name
                 ]
 
                 if len(existing_configs) == original_count:
-                    # Config not found
                     return False
 
-                # Save remaining configs to the single file with 'servers' wrapper
-                config_data = [
-                    cfg.to_dict(include_sensitive=True) for cfg in existing_configs
-                ]
-                data = {"servers": config_data}
-
-                with open(self.file_path, "w") as f:
-                    if self.file_path.suffix == ".json":
-                        json.dump(data, f, indent=2)
-                    else:  # yaml
-                        yaml.dump(data, f, default_flow_style=False)
-
+                self._write_single_file_configs(existing_configs)
                 self.logger.info(f"Deleted configuration for server: {server_name}")
                 return True
             else:
-                # Delete individual file in directory
                 config_file = self.config_dir / f"{server_name}.json"
                 if config_file.exists():
                     config_file.unlink()
@@ -986,6 +937,85 @@ class ARKServerConfigManager:
         # Background tasks
         self._health_check_task: Optional[asyncio.Task] = None
         self._running = False
+        self._last_operation_result = ConfigOperationResult(success=True)
+
+    def _set_success_result(
+        self, server_name: Optional[str] = None
+    ) -> ConfigOperationResult:
+        result = ConfigOperationResult(success=True, server_name=server_name)
+        self._last_operation_result = result
+        return result
+
+    def _set_failure_result(
+        self,
+        code: ConfigOperationCode | str,
+        phase: ConfigOperationPhase | str,
+        message: str,
+        server_name: Optional[str] = None,
+    ) -> ConfigOperationResult:
+        normalized_code = code.value if isinstance(code, ConfigOperationCode) else code
+        normalized_phase = (
+            phase.value if isinstance(phase, ConfigOperationPhase) else phase
+        )
+        result = ConfigOperationResult(
+            success=False,
+            code=normalized_code,
+            phase=normalized_phase,
+            message=message,
+            server_name=server_name,
+        )
+        self._last_operation_result = result
+        return result
+
+    def get_last_operation_result(self) -> ConfigOperationResult:
+        return self._last_operation_result
+
+    def _run_provider_coro_sync(self, coro: Any) -> Any:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
+        if not loop.is_running():
+            return loop.run_until_complete(coro)
+        result: dict[str, Any] = {}
+        error: dict[str, Exception] = {}
+
+        def runner() -> None:
+            try:
+                result["value"] = asyncio.run(coro)
+            except Exception as exc:
+                error["value"] = exc
+
+        thread = threading.Thread(target=runner, daemon=True)
+        thread.start()
+        thread.join()
+        if "value" in error:
+            raise error["value"]
+        return result.get("value")
+
+    def _persist_save_config_sync(self, config: MCPServerConfig) -> bool:
+        save_method = getattr(self.config_provider, "save_config", None)
+        if not callable(save_method):
+            self.logger.error("Config provider does not support save_config")
+            return False
+        try:
+            return bool(self._run_provider_coro_sync(save_method(config)))
+        except Exception as e:
+            self.logger.error(f"Failed to persist configuration {config.name}: {e}")
+            return False
+
+    def _persist_delete_config_sync(self, server_name: str) -> bool:
+        delete_method = getattr(self.config_provider, "delete_config", None)
+        if not callable(delete_method):
+            self.logger.error("Config provider does not support delete_config")
+            return False
+        try:
+            return bool(self._run_provider_coro_sync(delete_method(server_name)))
+        except Exception as e:
+            self.logger.error(
+                f"Failed to persist configuration delete {server_name}: {e}"
+            )
+            return False
 
     async def start(self) -> None:
         """Start the configuration manager."""
@@ -1041,6 +1071,9 @@ class ARKServerConfigManager:
             return 0
 
     def add_config(self, config: MCPServerConfig) -> bool:
+        return self.add_config_with_result(config).success
+
+    def add_config_with_result(self, config: MCPServerConfig) -> ConfigOperationResult:
         """
         Add a new server configuration.
 
@@ -1054,14 +1087,33 @@ class ARKServerConfigManager:
         if not config.is_valid():
             _, errors = config.validate()
             self.logger.error(f"Invalid configuration for {config.name}: {errors}")
-            return False
+            return self._set_failure_result(
+                code=ConfigOperationCode.INVALID_CONFIG,
+                phase=ConfigOperationPhase.VALIDATE,
+                message=f"Invalid configuration: {errors}",
+                server_name=config.name,
+            )
 
         # Check for duplicates
         if config.name in self.configs:
             self.logger.warning(f"Configuration already exists: {config.name}")
-            return False
+            return self._set_failure_result(
+                code=ConfigOperationCode.DUPLICATE_CONFIG,
+                phase=ConfigOperationPhase.VALIDATE,
+                message="Configuration already exists",
+                server_name=config.name,
+            )
 
-        # Add to memory storage (always succeed for in-memory operations)
+        config.last_updated = datetime.now()
+        config.updated_at = datetime.now()
+        if not self._persist_save_config_sync(config):
+            return self._set_failure_result(
+                code=ConfigOperationCode.PERSIST_FAILED,
+                phase=ConfigOperationPhase.PERSIST,
+                message="Failed to persist configuration",
+                server_name=config.name,
+            )
+
         self.configs[config.name] = config
         self.logger.info(f"Added configuration: {config.name}")
 
@@ -1072,19 +1124,14 @@ class ARKServerConfigManager:
             except Exception as e:
                 self.logger.warning(f"Config added callback failed: {e}")
 
-        # Try to save to provider (optional, don't fail if it doesn't work)
-        try:
-            # Note: We don't await here since this method is now synchronous
-            # Provider saving is handled separately in async methods
-            pass
-        except Exception as e:
-            self.logger.warning(
-                f"Failed to save configuration {config.name} to provider: {e}"
-            )
-
-        return True
+        return self._set_success_result(config.name)
 
     def update_config(self, server_name_or_config, **kwargs) -> bool:
+        return self.update_config_with_result(server_name_or_config, **kwargs).success
+
+    def update_config_with_result(
+        self, server_name_or_config, **kwargs
+    ) -> ConfigOperationResult:
         """
         Update an existing server configuration.
 
@@ -1100,7 +1147,12 @@ class ARKServerConfigManager:
             server_name = server_name_or_config
             if server_name not in self.configs:
                 self.logger.error(f"Configuration not found: {server_name}")
-                return False
+                return self._set_failure_result(
+                    code=ConfigOperationCode.NOT_FOUND,
+                    phase=ConfigOperationPhase.VALIDATE,
+                    message="Configuration not found",
+                    server_name=server_name,
+                )
 
             # Create a copy of the existing config for modification
             import copy
@@ -1119,18 +1171,34 @@ class ARKServerConfigManager:
         if not config.is_valid():
             _, errors = config.validate()
             self.logger.error(f"Invalid configuration for {config.name}: {errors}")
-            return False
+            return self._set_failure_result(
+                code=ConfigOperationCode.INVALID_CONFIG,
+                phase=ConfigOperationPhase.VALIDATE,
+                message=f"Invalid configuration: {errors}",
+                server_name=config.name,
+            )
 
         # Check if exists
         if config.name not in self.configs:
             self.logger.error(f"Configuration not found: {config.name}")
-            return False
+            return self._set_failure_result(
+                code=ConfigOperationCode.NOT_FOUND,
+                phase=ConfigOperationPhase.VALIDATE,
+                message="Configuration not found",
+                server_name=config.name,
+            )
 
         try:
-            # Update timestamp
-            config.last_updated = time.time()
+            config.last_updated = datetime.now()
+            config.updated_at = datetime.now()
+            if not self._persist_save_config_sync(config):
+                return self._set_failure_result(
+                    code=ConfigOperationCode.PERSIST_FAILED,
+                    phase=ConfigOperationPhase.PERSIST,
+                    message="Failed to persist configuration",
+                    server_name=config.name,
+                )
 
-            # Update in memory first
             old_config = self.configs[config.name]
             self.configs[config.name] = config
             self.logger.info(f"Updated configuration: {config.name}")
@@ -1142,21 +1210,16 @@ class ARKServerConfigManager:
                 except Exception as e:
                     self.logger.warning(f"Config updated callback failed: {e}")
 
-            # Try to save to provider (optional, don't fail if it doesn't work)
-            try:
-                # Note: Not awaiting since this is now a sync method
-                pass  # self.config_provider.save_config(config)
-            except Exception as e:
-                self.logger.warning(
-                    f"Failed to save configuration {config.name} to provider: {e}"
-                )
-
-            return True
+            return self._set_success_result(config.name)
 
         except Exception as e:
             self.logger.error(f"Failed to update configuration {config.name}: {e}")
-
-        return False
+            return self._set_failure_result(
+                code=ConfigOperationCode.UPDATE_FAILED,
+                phase=ConfigOperationPhase.CACHE_UPDATE,
+                message=str(e),
+                server_name=config.name,
+            )
 
     def validate_config(self, config: MCPServerConfig) -> tuple[bool, List[str]]:
         """
@@ -1178,6 +1241,9 @@ class ARKServerConfigManager:
             return False, [f"Validation failed: {str(e)}"]
 
     def remove_config(self, server_name: str) -> bool:
+        return self.remove_config_with_result(server_name).success
+
+    def remove_config_with_result(self, server_name: str) -> ConfigOperationResult:
         """
         Remove a server configuration.
 
@@ -1189,10 +1255,22 @@ class ARKServerConfigManager:
         """
         if server_name not in self.configs:
             self.logger.warning(f"Configuration not found: {server_name}")
-            return False
+            return self._set_failure_result(
+                code=ConfigOperationCode.NOT_FOUND,
+                phase=ConfigOperationPhase.VALIDATE,
+                message="Configuration not found",
+                server_name=server_name,
+            )
 
         try:
-            # Remove from memory storage (always succeed for in-memory operations)
+            if not self._persist_delete_config_sync(server_name):
+                return self._set_failure_result(
+                    code=ConfigOperationCode.PERSIST_FAILED,
+                    phase=ConfigOperationPhase.PERSIST,
+                    message="Failed to delete configuration from provider",
+                    server_name=server_name,
+                )
+
             config = self.configs.pop(server_name)
             self.logger.info(f"Removed configuration: {server_name}")
 
@@ -1203,21 +1281,16 @@ class ARKServerConfigManager:
                 except Exception as e:
                     self.logger.warning(f"Config removed callback failed: {e}")
 
-            # Try to delete from provider (optional, don't fail if it doesn't work)
-            try:
-                # Note: Not awaiting since this is now a sync method
-                # Provider deletion is handled separately in async methods
-                pass
-            except Exception as e:
-                self.logger.warning(
-                    f"Failed to delete configuration {server_name} from provider: {e}"
-                )
-
-            return True
+            return self._set_success_result(server_name)
 
         except Exception as e:
             self.logger.error(f"Failed to remove configuration {server_name}: {e}")
-            return False
+            return self._set_failure_result(
+                code=ConfigOperationCode.REMOVE_FAILED,
+                phase=ConfigOperationPhase.CACHE_UPDATE,
+                message=str(e),
+                server_name=server_name,
+            )
 
     def add_provider(self, provider: ServerConfigProvider) -> None:
         """

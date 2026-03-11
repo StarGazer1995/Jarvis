@@ -130,6 +130,10 @@ class LLMConfig:
     environment: Environment = Environment.DEVELOPMENT
 
 
+def _project_root() -> Path:
+    return Path(__file__).parent.parent.parent.parent
+
+
 class ConfigLoader:
     """配置加载器"""
 
@@ -142,8 +146,7 @@ class ConfigLoader:
         """
         if config_path is None:
             # 默认配置文件路径
-            project_root = Path(__file__).parent.parent.parent.parent
-            config_path = project_root / "config" / "llm_config.yaml"
+            config_path = _project_root() / "config" / "llm_config.yaml"
 
         self.config_path = Path(config_path)
         self._config_cache: Optional[Dict[str, Any]] = None
@@ -499,16 +502,7 @@ def get_config_path(config_name: str = "llm_config.yaml") -> Path:
     Returns:
         Path: 配置文件路径
     """
-    # 获取项目根目录
-    current_file = Path(__file__)
-    project_root = (
-        current_file.parent.parent.parent.parent
-    )  # 从src/core/config/loader.py回到项目根目录
-
-    # 配置文件路径
-    config_path = project_root / "config" / config_name
-
-    return config_path
+    return _project_root() / "config" / config_name
 
 
 def load_llm_config(

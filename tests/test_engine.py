@@ -76,7 +76,7 @@ class TestARKEngine(unittest.IsolatedAsyncioTestCase):
 
         # Check tool discovery
         self.mock_mcp_client.discover_tools.assert_called()
-        self.assertIn("tool1", self.engine.available_tools)
+        self.assertIn("server1:tool1", self.engine.available_tools)
 
         # Check LangGraph initialization
         self.mock_create_graph.assert_called_once()
@@ -244,9 +244,9 @@ class TestARKEngine(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(
             success
         )  # Should still succeed even if one server fails discovery
-        self.assertIn("t1", self.engine.available_tools)
+        self.assertIn("s1:t1", self.engine.available_tools)
         # Usage stats should be initialized for t1
-        self.assertIn("t1", self.engine.tool_usage_stats)
+        self.assertIn("s1:t1", self.engine.tool_usage_stats)
 
     async def test_initialize_super_fail(self):
         """Test initialization failure when super().initialize() fails."""

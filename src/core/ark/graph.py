@@ -1,13 +1,30 @@
-from typing import List
-from langgraph.graph import StateGraph, END
 from langchain_core.messages import AIMessage
+from langgraph.graph import END, StateGraph
 
-from .state import JarvisState, MultiAgentState
-from .nodes.master import MasterNode
-from .nodes.tools import ToolsNode
 from ..llm.client import LLMManager
 from ..mcp.client import ARKMCPClient
+from .nodes.master import MasterNode
+from .nodes.tools import ToolsNode
+from .state import JarvisState, MultiAgentState
 from .utils import AgentSpec
+
+
+def _get_last_ai_tool_calls(messages: list) -> list | None:
+    if not messages:
+        return None
+    last_message = messages[-1]
+    if not isinstance(last_message, AIMessage):
+        return None
+    tool_calls = getattr(last_message, "tool_calls", None)
+    return tool_calls or None
+
+
+def _get_first_tool_name(messages: list) -> str | None:
+    tool_calls = _get_last_ai_tool_calls(messages)
+    if not tool_calls:
+        return None
+    first = tool_calls[0]
+    return first.get("name")
 
 
 def create_ark_graph(
@@ -21,7 +38,8 @@ def create_ark_graph(
     Args:
         llm_manager: The LLM Manager
         mcp_client: The MCP Client
-        tools_node_instance: Optional pre-initialized ToolsNode. If None, one will be created.
+        tools_node_instance: Optional pre-initialized ToolsNode.
+            If None, one will be created.
     """
     workflow = StateGraph(JarvisState)
 
@@ -37,21 +55,9 @@ def create_ark_graph(
     workflow.set_entry_point("master")
 
     def should_continue(state: JarvisState):
-        messages = state["messages"]
-        if not messages:
-            return END
-
-        last_message = messages[-1]
-
-        # If the last message is an AIMessage and has tool_calls, go to tools
-        if (
-            isinstance(last_message, AIMessage)
-            and hasattr(last_message, "tool_calls")
-            and last_message.tool_calls
-        ):
+        if _get_last_ai_tool_calls(state["messages"]):
             return "tools"
 
-        # Otherwise, end
         return END
 
     workflow.add_conditional_edges(
@@ -65,7 +71,7 @@ def create_ark_graph(
     return workflow.compile()
 
 
-def create_supervisor_graph(llm_manager: LLMManager, agents: List[AgentSpec]):
+def create_supervisor_graph(llm_manager: LLMManager, agents: list[AgentSpec]):
     """
     Builds the Supervisor StateGraph using MasterNode as the Orchestrator.
     This replaces the legacy SupervisorNode.
@@ -89,30 +95,12 @@ def create_supervisor_graph(llm_manager: LLMManager, agents: List[AgentSpec]):
 
     # Routing Logic
     def route_supervisor(state: MultiAgentState):
-        messages = state["messages"]
-        if not messages:
+        action_name = _get_first_tool_name(state["messages"])
+        if not action_name:
             return END
-
-        last_message = messages[-1]
-
-        # Check for tool calls (actions)
-        if (
-            isinstance(last_message, AIMessage)
-            and hasattr(last_message, "tool_calls")
-            and last_message.tool_calls
-        ):
-            tool_call = last_message.tool_calls[0]
-            action_name = tool_call["name"]
-
-            # If action matches an agent name, route to it
-            for agent in agents:
-                if agent.name == action_name:
-                    return agent.name
-
-            # If action is 'FINISH' (though MasterNode usually does Final Answer)
-            # Or if it's unknown.
-            return END
-
+        for agent in agents:
+            if agent.name == action_name:
+                return agent.name
         return END
 
     # Build conditional map

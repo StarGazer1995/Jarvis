@@ -1,27 +1,50 @@
-import sys
-import os
 import asyncio
-from dotenv import load_dotenv
-import chainlit as cl
 import logging
+import os
+
+import chainlit as cl
 from chainlit.input_widget import TextInput
+from dotenv import load_dotenv
+
+from src.web.agent_factory import create_agent
+from src.web.auth import auth_callback
+from src.web.data_layer import get_data_layer, get_database_url
+from src.web.history_manager import cleanup_system_messages, restore_agent_history
+from src.web.settings_repository import (
+    TOKEN_FIELDS,
+    UserSettingsRepository,
+    empty_settings,
+    normalize_settings,
+)
+from src.web.utils import clean_llm_response
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Add project root to path to ensure imports work
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
-
-from src.web.data_layer import get_data_layer, get_database_url
-from src.web.auth import auth_callback
-from src.web.agent_factory import create_agent
-from src.web.history_manager import restore_agent_history, cleanup_system_messages
-from src.web.utils import clean_llm_response
-from src.web.settings_repository import UserSettingsRepository, TOKEN_FIELDS
-
 # Configure logger
 logger = logging.getLogger(__name__)
 _settings_repository = None
+_token_labels = {
+    "openai_api_key": "OpenAI API Key",
+    "tavily_api_key": "Tavily API Key",
+    "confluence_page_token": "Confluence Page Token",
+    "beacon_model_token": "Beacon Model Token",
+}
+_token_placeholder = "已保存则留空保持不变，输入新值可覆盖"
+_ui_error_messages = {
+    "AGENT_RESTORE_FAILED": "恢复会话失败，请检查配置或日志。",
+    "AGENT_INIT_FAILED": "初始化失败，请检查配置或日志。",
+    "AGENT_NOT_READY": "当前会话未初始化，请重启后重试。",
+    "SETTINGS_SAVE_FAILED": "设置保存失败。",
+    "SETTINGS_NOT_PERSISTED": "设置未持久化保存。",
+}
+
+
+def _ui_error(code: str, detail: str | None = None) -> str:
+    base = _ui_error_messages.get(code, "发生未知错误。")
+    if detail:
+        return f"❌ [{code}] {base} {detail}"
+    return f"❌ [{code}] {base}"
 
 
 def _get_user_id() -> str:
@@ -31,18 +54,38 @@ def _get_user_id() -> str:
     return getattr(user, "id", None) or getattr(user, "identifier", "anonymous")
 
 
-def _extract_user_settings(raw_settings: dict | None) -> dict:
-    settings = raw_settings or {}
-    return {field: settings.get(field, "") for field in TOKEN_FIELDS}
-
-
 def _merge_user_settings(current: dict | None, updates: dict | None) -> dict:
-    merged = _extract_user_settings(current)
+    merged = normalize_settings(current)
     for field in TOKEN_FIELDS:
         value = (updates or {}).get(field, "")
         if isinstance(value, str) and value.strip():
             merged[field] = value
     return merged
+
+
+def _load_user_settings() -> dict:
+    repository = _get_settings_repository()
+    if not repository:
+        return empty_settings()
+    return repository.load_settings(_get_user_id())
+
+
+def _build_settings_inputs() -> list[TextInput]:
+    return [
+        TextInput(
+            id=field,
+            label=_token_labels[field],
+            initial="",
+            placeholder=_token_placeholder,
+        )
+        for field in TOKEN_FIELDS
+    ]
+
+
+def _set_agent_session(agent, agent_type: str, user_settings: dict) -> None:
+    cl.user_session.set("agent", agent)
+    cl.user_session.set("agent_type", agent_type)
+    cl.user_session.set("user_settings", user_settings)
 
 
 def _get_settings_repository() -> UserSettingsRepository | None:
@@ -142,16 +185,12 @@ async def on_chat_resume(thread):
     Called when a user resumes a chat session from the history.
     """
     env = os.getenv("JARVIS_ENV", "production")
-
-    repository = _get_settings_repository()
-    user_settings = {}
-    if repository:
-        user_settings = repository.load_settings(_get_user_id())
+    user_settings = _load_user_settings()
 
     agent = await create_agent("jarvis", env, user_settings=user_settings)
 
     if not agent:
-        await cl.Message(content="❌ Failed to restore Jarvis Agent session.").send()
+        await cl.Message(content=_ui_error("AGENT_RESTORE_FAILED")).send()
         return
 
     # Restore conversation history
@@ -165,7 +204,10 @@ async def on_chat_resume(thread):
         await cleanup_system_messages(thread_id)
 
         await cl.Message(
-            content=f"🔄 **Context Restored**: Loaded {restored_count} messages from history.",
+            content=(
+                "🔄 **Context Restored**: "
+                f"Loaded {restored_count} messages from history."
+            ),
             author="System",
             parent_id=None,
         ).send()
@@ -174,15 +216,17 @@ async def on_chat_resume(thread):
     if hasattr(agent, "ark_engine") and hasattr(agent.ark_engine, "llm_enabled"):
         if not agent.ark_engine.llm_enabled:
             await cl.Message(
-                content="⚠️ **Warning**: LLM initialization failed (likely due to API rate limits). The agent may not be able to respond.",
+                content=(
+                    "⚠️ **Warning**: LLM initialization failed "
+                    "(likely due to API rate limits). "
+                    "The agent may not be able to respond."
+                ),
                 author="System",
                 parent_id=None,
             ).send()
 
     # Store agent in user session
-    cl.user_session.set("agent", agent)
-    cl.user_session.set("agent_type", "jarvis")
-    cl.user_session.set("user_settings", user_settings)
+    _set_agent_session(agent, "jarvis", user_settings)
 
 
 @cl.on_chat_start
@@ -192,56 +236,21 @@ async def start():
     env = os.getenv("JARVIS_ENV", "production")
 
     agent_type = "deep_research" if chat_profile == "Deep Research" else "jarvis"
-    repository = _get_settings_repository()
-    user_id = _get_user_id()
-    user_settings = {}
-    if repository:
-        user_settings = repository.load_settings(user_id)
+    user_settings = _load_user_settings()
 
     agent = await create_agent(agent_type, env, user_settings=user_settings)
 
     if not agent:
-        await cl.Message(
-            content="❌ Failed to initialize Agent. Please check the logs."
-        ).send()
+        await cl.Message(content=_ui_error("AGENT_INIT_FAILED")).send()
         return
 
-    cl.user_session.set("agent", agent)
-    cl.user_session.set("agent_type", agent_type)
-    cl.user_session.set("user_settings", user_settings)
+    _set_agent_session(agent, agent_type, user_settings)
 
-    await cl.ChatSettings(
-        [
-            TextInput(
-                id="openai_api_key",
-                label="OpenAI API Key",
-                initial="",
-                placeholder="已保存则留空保持不变，输入新值可覆盖",
-            ),
-            TextInput(
-                id="tavily_api_key",
-                label="Tavily API Key",
-                initial="",
-                placeholder="已保存则留空保持不变，输入新值可覆盖",
-            ),
-            TextInput(
-                id="confluence_page_token",
-                label="Confluence Page Token",
-                initial="",
-                placeholder="已保存则留空保持不变，输入新值可覆盖",
-            ),
-            TextInput(
-                id="beacon_model_token",
-                label="Beacon Model Token",
-                initial="",
-                placeholder="已保存则留空保持不变，输入新值可覆盖",
-            ),
-        ]
-    ).send()
+    await cl.ChatSettings(_build_settings_inputs()).send()
 
     if agent_type == "deep_research":
         await cl.Message(
-            content=f"🧠 **Deep Research Agent** initialized. Ask me anything!"
+            content="🧠 **Deep Research Agent** initialized. Ask me anything!"
         ).send()
     else:
         # Send welcome message
@@ -265,14 +274,11 @@ async def start():
 @cl.on_message
 async def main(message: cl.Message):
     """Handle incoming user messages."""
-    cl.user_session.get("id")
     agent = cl.user_session.get("agent")
     agent_type = cl.user_session.get("agent_type")
 
     if not agent:
-        await cl.Message(
-            content="❌ Agent not initialized. Please restart the session."
-        ).send()
+        await cl.Message(content=_ui_error("AGENT_NOT_READY")).send()
         return
 
     handler = StreamHandler()
@@ -309,7 +315,7 @@ async def main(message: cl.Message):
                 handler.final_message.content = cleaned_response
                 await handler.final_message.update()
 
-    # Post-message processing: Check if we need to rename the thread and associate with user
+    # Post-message processing: rename thread and associate with user
     # This ensures only non-empty, renamed threads are saved to history
     try:
         context_manager = (
@@ -341,7 +347,10 @@ async def main(message: cl.Message):
                         thread_id=cl.context.session.thread_id, user_id=user.id
                     )
                     logger.info(
-                        f"Thread {cl.context.session.thread_id} renamed to '{title}' and associated with user {user.id}"
+                        "Thread %s renamed to '%s' and associated with user %s",
+                        cl.context.session.thread_id,
+                        title,
+                        user.id,
                     )
 
     except Exception as e:
@@ -367,7 +376,17 @@ async def on_settings_update(settings):
     cl.user_session.set("user_settings", sanitized_settings)
     repository = _get_settings_repository()
     if repository:
-        repository.save_settings(_get_user_id(), sanitized_settings)
-        await cl.Message(content="✅ Settings saved.", parent_id=None).send()
+        try:
+            repository.save_settings(_get_user_id(), sanitized_settings)
+            await cl.Message(content="✅ Settings saved.", parent_id=None).send()
+        except Exception as exc:
+            logger.warning(f"Failed to save user settings: {exc}")
+            await cl.Message(
+                content=_ui_error("SETTINGS_SAVE_FAILED", str(exc)),
+                parent_id=None,
+            ).send()
     else:
-        await cl.Message(content="⚠️ Settings not persisted.", parent_id=None).send()
+        await cl.Message(
+            content=_ui_error("SETTINGS_NOT_PERSISTED"),
+            parent_id=None,
+        ).send()

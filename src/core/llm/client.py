@@ -169,6 +169,15 @@ class LLMClientFactory:
     """LLM客户端工厂"""
 
     @staticmethod
+    def _create_litellm_client(config: LLMConfig) -> BaseLLMClient:
+        try:
+            from .providers.litellm_client import LiteLLMClient
+
+            return LiteLLMClient(config)
+        except ImportError:
+            raise ImportError("LiteLLMClient不可用，请确保已安装依赖")
+
+    @staticmethod
     def create_client(config: LLMConfig) -> BaseLLMClient:
         """
         创建LLM客户端
@@ -185,20 +194,8 @@ class LLMClientFactory:
             if OpenAILLMClient is None:
                 raise ImportError("OpenAI客户端实现未找到，请安装依赖")
             client = OpenAILLMClient(config)
-        elif config.provider == LLMProvider.LITELLM:
-            try:
-                from .providers.litellm_client import LiteLLMClient
-
-                client = LiteLLMClient(config)
-            except ImportError:
-                raise ImportError("LiteLLMClient不可用，请确保已安装依赖")
-        elif config.provider == LLMProvider.ANTHROPIC:
-            try:
-                from .providers.litellm_client import LiteLLMClient
-
-                client = LiteLLMClient(config)
-            except ImportError:
-                raise ImportError("LiteLLMClient不可用，请确保已安装依赖")
+        elif config.provider in (LLMProvider.LITELLM, LLMProvider.ANTHROPIC):
+            client = LLMClientFactory._create_litellm_client(config)
         elif config.provider == LLMProvider.AZURE_OPENAI:
             # 可以在这里添加Azure OpenAI客户端
             raise NotImplementedError("Azure OpenAI客户端暂未实现")

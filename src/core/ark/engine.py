@@ -7,28 +7,27 @@ and decision-making capabilities.
 """
 
 import logging
-from typing import Dict, List, Any, Optional, Callable
-from dataclasses import dataclass
-from enum import Enum
+from collections.abc import Callable
+from typing import Any
 
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 
 # Import generic agent framework
 from ..agent.react import ReActAgent
 from ..agent.types import AgentState, AgentStep
-
-from ..mcp.client import ARKMCPClient
 from ..config.server import SimpleMCPServerConfig
 from ..context.manager import ConversationContext
 from ..llm.client import LLMManager
 from ..llm.config import load_llm_config
+from ..mcp.client import ARKMCPClient
 from ..prompt.manager import PromptManager
 
 # LangGraph imports
 from .graph import create_ark_graph
+from .mcp_lifecycle import close_mcp_client, connect_servers, discover_tools
 from .nodes.tools import ToolsNode
-
+from .tasks import Task, TaskStatus, tasks_from_dicts, tasks_to_dicts
 
 # Aliases for backward compatibility
 ARKState = AgentState
@@ -45,33 +44,6 @@ __all__ = [
 ]
 
 
-class TaskStatus(Enum):
-    """Status of a task in the todo list."""
-
-    PENDING = "pending"
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
-    FAILED = "failed"
-
-
-@dataclass
-class Task:
-    """Represents a unit of work to be done."""
-
-    id: str
-    description: str
-    status: TaskStatus = TaskStatus.PENDING
-    result: Optional[str] = None
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "id": self.id,
-            "description": self.description,
-            "status": self.status.value,
-            "result": self.result,
-        }
-
-
 class ARKEngine(ReActAgent):
     """
     Autonomous Reasoning Kernel (ARK) Engine
@@ -81,7 +53,7 @@ class ARKEngine(ReActAgent):
     and response generation.
     """
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, config: dict[str, Any] | None = None):
         """
         Initialize the ARK engine.
 
@@ -98,8 +70,8 @@ class ARKEngine(ReActAgent):
         )
 
         # ARK-specific attributes
-        self.tool_usage_stats: Dict[str, int] = {}
-        self.todo_list: List[Task] = []
+        self.tool_usage_stats: dict[str, int] = {}
+        self.todo_list: list[Task] = []
 
         # Configuration
         self.max_tool_chain_length = self.config.get("max_tool_chain_length", 5)
@@ -117,7 +89,7 @@ class ARKEngine(ReActAgent):
         )
 
     async def initialize(
-        self, mcp_servers: Optional[List[SimpleMCPServerConfig]] = None
+        self, mcp_servers: list[SimpleMCPServerConfig] | None = None
     ) -> bool:
         """
         Initialize ARK engine with MCP servers and capabilities.
@@ -129,18 +101,13 @@ class ARKEngine(ReActAgent):
         try:
             self.ark_logger.info("ARK: Starting initialization sequence")
 
-            # Initialize MCP client with servers
-            if mcp_servers:
-                for server_config in mcp_servers:
-                    success = await self.mcp_client.connect_to_server(server_config)
-                    if success:
-                        self.ark_logger.info(
-                            f"ARK: Connected to MCP server '{server_config.name}'"
-                        )
-                    else:
-                        self.ark_logger.warning(
-                            f"ARK: Failed to connect to MCP server '{server_config.name}'"
-                        )
+            await connect_servers(
+                self.mcp_client,
+                self.ark_logger,
+                mcp_servers,
+                "ARK: Connected to MCP server '{name}'",
+                "ARK: Failed to connect to MCP server '{name}'",
+            )
 
             # Discover available tools
             await self._discover_tools()
@@ -158,8 +125,9 @@ class ARKEngine(ReActAgent):
             self._initialize_performance_metrics()
 
             self.state = ARKState.READY
+            available_tool_count = len(self.available_tools)
             self.ark_logger.info(
-                f"ARK: Initialization complete - {len(self.available_tools)} tools available"
+                f"ARK: Initialization complete - {available_tool_count} tools available"
             )
             return True
 
@@ -173,7 +141,7 @@ class ARKEngine(ReActAgent):
             return False
 
     async def process_input(
-        self, user_input: str, callbacks: Optional[Dict[str, Callable]] = None, **kwargs
+        self, user_input: str, callbacks: dict[str, Callable] | None = None, **kwargs
     ) -> str:
         """Process user input using LangGraph."""
         if self.state != ARKState.READY:
@@ -185,14 +153,16 @@ class ARKEngine(ReActAgent):
 
         # 1. Prepare Initial State
         history_messages = self.context_manager.get_cleaned_history(max_messages=20)
+        session_id = self.context_manager.session_id
         self.ark_logger.info(
-            f"ARK: Retrieved {len(history_messages)} history messages for session {self.context_manager.session_id}"
+            f"ARK: Retrieved {len(history_messages)} history messages "
+            f"for session {session_id}"
         )
 
         initial_state = {
             "messages": history_messages + [HumanMessage(content=user_input)],
             "user_input": user_input,
-            "todo_list": [t.to_dict() for t in self.todo_list],
+            "todo_list": tasks_to_dicts(self.todo_list),
             "available_tools": self.available_tools,
             "scratchpad": {},
             "sender": "user",
@@ -212,24 +182,7 @@ class ARKEngine(ReActAgent):
 
             # 3. Update internal state (todo list)
             new_todo_list_dicts = final_state.get("todo_list", [])
-            # Reconstruct Task objects
-            self.todo_list = []
-            for t in new_todo_list_dicts:
-                # Handle status string to enum conversion safely
-                status_str = t.get("status", "pending")
-                try:
-                    status_enum = TaskStatus(status_str)
-                except ValueError:
-                    status_enum = TaskStatus.PENDING
-
-                self.todo_list.append(
-                    Task(
-                        id=t.get("id"),
-                        description=t.get("description"),
-                        status=status_enum,
-                        result=t.get("result"),
-                    )
-                )
+            self.todo_list = tasks_from_dicts(new_todo_list_dicts)
 
             # 4. Extract Final Response
             messages = final_state.get("messages", [])
@@ -256,7 +209,8 @@ class ARKEngine(ReActAgent):
                             raw_response = last_msg.additional_kwargs.get("raw_json")
 
                     self.ark_logger.info(
-                        f"ARK: Updating context for session {self.context_manager.session_id} with response len {len(response)}"
+                        f"ARK: Updating context for session {session_id} with "
+                        f"response len {len(response)}"
                     )
                     self.context_manager.add_exchange(
                         user_input=user_input,
@@ -296,34 +250,17 @@ class ARKEngine(ReActAgent):
 
     def _manage_tasks(self, action: str, **kwargs) -> str:
         """Legacy method. Task management is now in ToolsNode."""
-        # We might still need this if something calls _manage_tasks directly
-        # But for now we can leave it as is or delegate to new logic.
-        # Since ToolsNode handles it on the state copy, this instance method
-        # modifies self.todo_list directly.
-        # return super()._manage_tasks(action, **kwargs) # ReActAgent doesn't have _manage_tasks, wait.
-        # ARKEngine defined _manage_tasks. I should implement it here if I want to support direct calls.
-        # But since I overwrote the file, I need to put the logic back if I want to keep it.
-        # For now, I will skip implementing it as it's not used by LangGraph path.
         return "Legacy _manage_tasks called. Please use LangGraph flow."
 
     async def _discover_tools(self) -> None:
         """Discover and catalog available tools from MCP servers."""
         try:
-            self.available_tools = {}
-
-            # Discover tools from all connected servers
-            for server_name in self.mcp_client.sessions.keys():
-                try:
-                    server_tools = await self.mcp_client.discover_tools(server_name)
-                    for tool in server_tools:
-                        tool_name = tool.get(
-                            "name", f"unknown_tool_{len(self.available_tools)}"
-                        )
-                        self.available_tools[tool_name] = tool
-                except Exception as e:
-                    self.ark_logger.warning(
-                        f"ARK: Failed to discover tools from server '{server_name}': {e}"
-                    )
+            self.available_tools = await discover_tools(
+                self.mcp_client,
+                self.ark_logger,
+                "unknown_tool_{index}",
+                "ARK: Failed to discover tools from server '{server_name}': {error}",
+            )
 
             self.ark_logger.info(f"ARK: Discovered {len(self.available_tools)} tools")
 
@@ -354,7 +291,7 @@ class ARKEngine(ReActAgent):
 
         return datetime.now().isoformat()
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """Get basic engine status."""
         return {
             "state": self.state.value,
@@ -362,7 +299,7 @@ class ARKEngine(ReActAgent):
             "todo_count": len(self.todo_list),
         }
 
-    def get_engine_status(self) -> Dict[str, Any]:
+    def get_engine_status(self) -> dict[str, Any]:
         """Get current ARK engine status and metrics."""
         return {
             "state": self.state.value,
@@ -370,7 +307,7 @@ class ARKEngine(ReActAgent):
             "tool_usage_stats": self.tool_usage_stats,
             "performance_metrics": self.performance_metrics,
             "conversation_stats": self.context_manager.get_session_stats(),
-            "todo_list": [t.to_dict() for t in self.todo_list],
+            "todo_list": tasks_to_dicts(self.todo_list),
             "configuration": {
                 "max_tool_chain_length": self.max_tool_chain_length,
                 "confidence_threshold": self.confidence_threshold,
@@ -391,10 +328,7 @@ class ARKEngine(ReActAgent):
 
         # Close MCP client connections
         try:
-            if hasattr(self.mcp_client, "close"):
-                await self.mcp_client.close()
-            elif hasattr(self.mcp_client, "disconnect_all"):
-                await self.mcp_client.disconnect_all()
+            await close_mcp_client(self.mcp_client)
         except Exception as e:
             self.ark_logger.warning(f"ARK: Error during MCP client shutdown: {e}")
 

@@ -108,7 +108,7 @@ class TestMCPServerConfig:
 
         # Test with sensitive data excluded (default)
         config_dict_safe = config.to_dict(include_sensitive=False)
-        assert config_dict_safe["api_key"] == "***"
+        assert config_dict_safe["api_key"] is None
 
     def test_config_to_dict_without_api_key(self):
         """Test converting config to dict without API key."""
@@ -968,13 +968,41 @@ class TestARKServerConfigManagerAdvanced:
         try:
             # Mock time.time in the specific module to raise exception
             with unittest.mock.patch(
-                "src.core.config.server.time.time", side_effect=Exception("Time error")
-            ):
+                "src.core.config.server.datetime"
+            ) as mock_datetime:
+                mock_datetime.now.side_effect = Exception("Time error")
                 result = manager.update_config("test-server", command="new-command")
                 assert result is False
         finally:
             # Re-enable logging
             logging.disable(logging.NOTSET)
+
+    def test_add_config_with_result_persist_failure(self, manager):
+        config = MCPServerConfig(
+            name="persist-fail", server_type=ServerType.STDIO, command="test-command"
+        )
+        manager.config_provider.save_config.return_value = False
+
+        result = manager.add_config_with_result(config)
+        assert result.success is False
+        assert result.code == "PERSIST_FAILED"
+        assert result.phase == "persist"
+        assert "persist-fail" not in manager.configs
+
+    def test_update_config_with_result_not_found(self, manager):
+        result = manager.update_config_with_result(
+            "non-existent", command="new-command"
+        )
+        assert result.success is False
+        assert result.code == "NOT_FOUND"
+        assert result.phase == "validate"
+
+    def test_get_last_operation_result(self, manager):
+        result = manager.remove_config_with_result("non-existent")
+        assert result.success is False
+        last_result = manager.get_last_operation_result()
+        assert last_result.code == "NOT_FOUND"
+        assert last_result.phase == "validate"
 
     def test_validate_config(self, manager):
         """Test validate_config method."""

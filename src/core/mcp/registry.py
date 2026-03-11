@@ -88,6 +88,19 @@ class ToolMetadata:
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
 
+    @staticmethod
+    def _parse_datetime(value: Any) -> datetime:
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            try:
+                return datetime.fromisoformat(value)
+            except ValueError:
+                return datetime.now()
+        if isinstance(value, (int, float)):
+            return datetime.fromtimestamp(value)
+        return datetime.now()
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert tool metadata to dictionary."""
         return {
@@ -178,12 +191,8 @@ class ToolMetadata:
             error_count=data.get("error_count", 0),
             last_error=data.get("last_error"),
             average_execution_time=data.get("average_execution_time", 0.0),
-            created_at=datetime.fromisoformat(data.get("created_at"))
-            if isinstance(data.get("created_at"), str)
-            else datetime.fromtimestamp(data.get("created_at", time.time())),
-            updated_at=datetime.fromisoformat(data.get("updated_at"))
-            if isinstance(data.get("updated_at"), str)
-            else datetime.fromtimestamp(data.get("updated_at", time.time())),
+            created_at=cls._parse_datetime(data.get("created_at")),
+            updated_at=cls._parse_datetime(data.get("updated_at")),
         )
 
 
@@ -828,7 +837,7 @@ class ARKToolRegistry:
             tool.last_error = existing_tool.last_error
             tool.average_execution_time = existing_tool.average_execution_time
             tool.created_at = existing_tool.created_at
-            tool.updated_at = time.time()
+            tool.updated_at = datetime.now()
 
             self.tools[tool.name] = tool
             self.logger.debug(f"Updated tool: {tool.name}")
@@ -1010,7 +1019,7 @@ class ARKToolRegistry:
             tool.error_count += 1
             tool.last_error = error
 
-        tool.updated_at = time.time()
+        tool.updated_at = datetime.now()
 
         # Update execution_stats
         if tool_name not in self.execution_stats:

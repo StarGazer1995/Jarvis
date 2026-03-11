@@ -456,6 +456,30 @@ class AuditLogger:
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
 
+    def _redact(self, value: Any) -> Any:
+        sensitive_keys = {
+            "api_key",
+            "token",
+            "secret",
+            "password",
+            "authorization",
+            "auth",
+            "cookie",
+            "session_id",
+        }
+        if isinstance(value, dict):
+            redacted: Dict[str, Any] = {}
+            for k, v in value.items():
+                key_lower = str(k).lower()
+                if any(s in key_lower for s in sensitive_keys):
+                    redacted[k] = "***REDACTED***"
+                else:
+                    redacted[k] = self._redact(v)
+            return redacted
+        if isinstance(value, list):
+            return [self._redact(item) for item in value]
+        return value
+
     def log_validation_request(self, request: ValidationRequest) -> str:
         """
         Log a validation request.
@@ -471,10 +495,11 @@ class AuditLogger:
         log_data = {
             "audit_id": audit_id,
             "event_type": "validation_request",
-            "context": request.context.to_dict(),
+            "context": self._redact(request.context.to_dict()),
             "requested_permissions": [p.value for p in request.requested_permissions],
-            "target_resources": request.target_resources,
-            "metadata": request.metadata,
+            "target_resources": self._redact(request.target_resources),
+            "metadata": self._redact(request.metadata),
+            "redacted": True,
         }
 
         self.logger.info(f"Validation request: {json.dumps(log_data)}")
@@ -517,8 +542,9 @@ class AuditLogger:
             "audit_id": audit_id,
             "event_type": "security_violation",
             "violation_type": violation_type,
-            "context": context.to_dict(),
-            "details": details,
+            "context": self._redact(context.to_dict()),
+            "details": self._redact(details),
+            "redacted": True,
         }
 
         self.logger.warning(f"Security violation: {json.dumps(log_data)}")

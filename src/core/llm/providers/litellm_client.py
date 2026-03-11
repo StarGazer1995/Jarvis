@@ -36,6 +36,33 @@ class LiteLLMClient(BaseLLMClient):
         self._total_tokens = 0
         self._start_time = time.time()
 
+    @staticmethod
+    def _format_messages(messages: List[LLMMessage]) -> list[dict[str, str]]:
+        return [{"role": msg.role, "content": msg.content} for msg in messages]
+
+    def _build_params(
+        self, messages: List[LLMMessage], stream: bool, **kwargs
+    ) -> dict[str, object]:
+        params: dict[str, object] = {
+            "model": self.config.model,
+            "messages": self._format_messages(messages),
+            "api_key": self.config.api_key,
+            "base_url": self.config.base_url,
+            "temperature": kwargs.get("temperature", self.config.temperature),
+            "max_tokens": kwargs.get("max_tokens", self.config.max_tokens),
+            "stream": stream,
+        }
+        if self.config.timeout:
+            if isinstance(self.config.timeout, (int, float)):
+                params["timeout"] = float(self.config.timeout)
+            elif isinstance(self.config.timeout, dict):
+                params["timeout"] = self.config.timeout.get("total", 30.0)
+        params.update(self.config.extra_params)
+        for k, v in kwargs.items():
+            if k not in ["temperature", "max_tokens", "stream"]:
+                params[k] = v
+        return {k: v for k, v in params.items() if v is not None}
+
     async def initialize(self) -> bool:
         """
         初始化客户端
@@ -66,45 +93,12 @@ class LiteLLMClient(BaseLLMClient):
         try:
             import litellm
 
-            # 转换消息格式
-            formatted_messages = [
-                {"role": msg.role, "content": msg.content} for msg in messages
-            ]
+            params = self._build_params(messages, stream=False, **kwargs)
 
-            # 准备参数
-            params = {
-                "model": self.config.model,
-                "messages": formatted_messages,
-                "api_key": self.config.api_key,
-                "base_url": self.config.base_url,
-                "temperature": kwargs.get("temperature", self.config.temperature),
-                "max_tokens": kwargs.get("max_tokens", self.config.max_tokens),
-                "stream": False,
-            }
-
-            # 处理超时
-            if self.config.timeout:
-                # LiteLLM通常接受timeout参数
-                if isinstance(self.config.timeout, (int, float)):
-                    params["timeout"] = float(self.config.timeout)
-                elif isinstance(self.config.timeout, dict):
-                    params["timeout"] = self.config.timeout.get("total", 30.0)
-
-            # 添加额外参数
-            params.update(self.config.extra_params)
-            for k, v in kwargs.items():
-                if k not in ["temperature", "max_tokens", "stream"]:
-                    params[k] = v
-
-            # 移除None值的参数
-            params = {k: v for k, v in params.items() if v is not None}
-
-            start_time = time.time()
             self.logger.debug(f"发送LiteLLM请求: {params['model']}")
 
             response = await litellm.acompletion(**params)
 
-            time.time() - start_time
             self._request_count += 1
 
             # 转换响应
@@ -147,34 +141,7 @@ class LiteLLMClient(BaseLLMClient):
         try:
             import litellm
 
-            formatted_messages = [
-                {"role": msg.role, "content": msg.content} for msg in messages
-            ]
-
-            params = {
-                "model": self.config.model,
-                "messages": formatted_messages,
-                "api_key": self.config.api_key,
-                "base_url": self.config.base_url,
-                "temperature": kwargs.get("temperature", self.config.temperature),
-                "max_tokens": kwargs.get("max_tokens", self.config.max_tokens),
-                "stream": True,
-            }
-
-            # 处理超时
-            if self.config.timeout:
-                if isinstance(self.config.timeout, (int, float)):
-                    params["timeout"] = float(self.config.timeout)
-                elif isinstance(self.config.timeout, dict):
-                    params["timeout"] = self.config.timeout.get("total", 30.0)
-
-            # 添加额外参数
-            params.update(self.config.extra_params)
-            for k, v in kwargs.items():
-                if k not in ["temperature", "max_tokens", "stream"]:
-                    params[k] = v
-
-            params = {k: v for k, v in params.items() if v is not None}
+            params = self._build_params(messages, stream=True, **kwargs)
 
             self.logger.debug(f"发送LiteLLM流式请求: {params['model']}")
 

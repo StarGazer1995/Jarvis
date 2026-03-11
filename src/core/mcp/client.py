@@ -171,52 +171,21 @@ class ARKMCPClient:
             工具执行结果
         """
         try:
-            # 检查是否为内置工具
             if tool_name in self._builtin_tools:
                 return await self._call_builtin_tool(tool_name, arguments)
 
-            # 查找MCP工具
-            tool_key = None
-            tool = None
-
-            # 首先尝试直接匹配完整名称
-            if tool_name in self.available_tools:
-                tool_key = tool_name
-                tool = self.available_tools[tool_name]
-            else:
-                # 尝试匹配简单名称
-                for key, t in self.available_tools.items():
-                    t_name = (
-                        t.get("name")
-                        if isinstance(t, dict)
-                        else getattr(t, "name", None)
-                    )
-                    if t_name == tool_name:
-                        tool_key = key
-                        tool = t
-                        break
-
-            if not tool:
+            tool_key, tool = self._resolve_tool(tool_name)
+            if tool_key is None or tool is None:
                 raise ValueError(f"工具 '{tool_name}' 不存在")
 
-            # 获取服务器名称和会话
-            server_name = tool_key.split(":")[0]
-            session = self.sessions.get(server_name)
-
-            if not session:
-                raise ValueError(f"服务器 '{server_name}' 未连接")
-
-            # 调用工具
+            server_name = self._get_server_name(tool_key, tool)
             tool_real_name = tool.get("name") if isinstance(tool, dict) else tool.name
-
-            # 使用SDK的call_tool方法，直接传入名称和参数
-            result = await session.call_tool(tool_real_name, arguments)
-
-            # Convert content objects to dicts
-            content = [
-                c.model_dump() if hasattr(c, "model_dump") else c
-                for c in result.content
-            ]
+            raw_result = await self._execute_server_tool(
+                server_name, tool_real_name, arguments
+            )
+            content = raw_result.get("result")
+            if content is None:
+                content = []
 
             return {
                 "success": True,
@@ -504,26 +473,54 @@ class ARKMCPClient:
             执行结果，如果工具不存在或执行失败则返回None
         """
         try:
-            # 检查是否为内置工具
             if tool_name in self._builtin_tools:
                 return await self._call_builtin_tool(tool_name, arguments)
 
-            # 检查MCP工具是否存在
-            if tool_name not in self.available_tools:
+            tool_key, tool_info = self._resolve_tool(tool_name)
+            if tool_key is None or tool_info is None:
                 return None
 
-            # 获取工具信息
-            tool_info = self.available_tools[tool_name]
-            server_name = tool_info.get("server")
-
-            if not server_name:
-                return None
-
-            # 执行服务器工具
-            return await self._execute_server_tool(server_name, tool_name, arguments)
+            server_name = self._get_server_name(tool_key, tool_info)
+            tool_real_name = (
+                tool_info.get("name")
+                if isinstance(tool_info, dict)
+                else getattr(tool_info, "name", tool_name)
+            )
+            return await self._execute_server_tool(
+                server_name, tool_real_name, arguments
+            )
         except Exception as e:
             logging.error(f"执行工具 {tool_name} 失败: {e}")
             return None
+
+    def _resolve_tool(self, tool_name: str) -> tuple[str | None, Any]:
+        if tool_name in self.available_tools:
+            return tool_name, self.available_tools[tool_name]
+        for key, tool in self.available_tools.items():
+            candidate_name = (
+                tool.get("name")
+                if isinstance(tool, dict)
+                else getattr(tool, "name", None)
+            )
+            if candidate_name == tool_name:
+                return key, tool
+        return None, None
+
+    def _get_server_name(self, tool_key: str, tool_info: Any) -> str:
+        if isinstance(tool_info, dict) and tool_info.get("server"):
+            return str(tool_info["server"])
+        return tool_key.split(":")[0]
+
+    async def _call_session_tool(
+        self, session: ClientSession, tool_name: str, arguments: Dict[str, Any]
+    ) -> Any:
+        try:
+            return await session.call_tool(tool_name, arguments)
+        except TypeError:
+            request = CallToolRequest(
+                method="tools/call", params={"name": tool_name, "arguments": arguments}
+            )
+            return await session.call_tool(request)
 
     async def _execute_server_tool(
         self, server_name: str, tool_name: str, arguments: Dict[str, Any]
@@ -543,14 +540,20 @@ class ARKMCPClient:
             raise ValueError(f"服务器 {server_name} 未连接")
 
         session = self.sessions[server_name]
-        request = CallToolRequest(
-            method="tools/call", params={"name": tool_name, "arguments": arguments}
-        )
-        result = await session.call_tool(request)
+        result = await self._call_session_tool(session, tool_name, arguments)
+
+        content = getattr(result, "content", None)
+        normalized_content = None
+        if content is not None:
+            normalized_content = [
+                c.model_dump() if hasattr(c, "model_dump") else c for c in content
+            ]
 
         return {
             "success": not result.isError,
-            "result": result.content if hasattr(result, "content") else str(result),
+            "result": normalized_content
+            if normalized_content is not None
+            else str(result),
             "error": str(result) if result.isError else None,
         }
 

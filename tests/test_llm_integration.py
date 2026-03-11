@@ -37,6 +37,14 @@ class TestLLMConfig:
         assert config.max_tokens == 2000
         assert config.temperature == 0.5
 
+    def test_llm_config_from_dict_provider_case_insensitive(self):
+        config = LLMConfig.from_dict({"provider": "OPENAI", "model": "gpt-4"})
+        assert config.provider == LLMProvider.OPENAI
+
+    def test_llm_config_from_dict_provider_fallback(self):
+        config = LLMConfig.from_dict({"provider": "unknown-provider", "model": "gpt-4"})
+        assert config.provider == LLMProvider.OPENAI
+
     def test_llm_config_to_dict(self):
         """Test LLM configuration conversion to dictionary."""
         config = LLMConfig(

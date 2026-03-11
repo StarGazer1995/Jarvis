@@ -19,13 +19,13 @@ from ..config.loader import LLMConfig, ProviderConfig, load_llm_config
 from .client import BaseLLMClient
 from .providers.openai_client import OpenAILLMClient
 
+logger = logging.getLogger(__name__)
+
 try:
     from .providers.litellm_client import LiteLLMClient
 except ImportError:
     LiteLLMClient = None
     logger.warning("LiteLLMClient未导入，LiteLLM功能不可用")
-
-logger = logging.getLogger(__name__)
 
 
 class ProviderType(Enum):

@@ -1,5 +1,6 @@
 import sys
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
 # 1. Create a mock for chainlit module
@@ -45,7 +46,16 @@ with patch.dict(
     },
 ):
     import src.web.app as app_module
-    from src.web.app import start, on_chat_resume, main, on_settings_update
+    from src.web.app import main, on_chat_resume, on_settings_update, start
+
+
+def _mock_repository_settings(mock_repo_getter, settings=None):
+    mock_repository = MagicMock()
+    mock_repository.load_settings.return_value = (
+        settings if settings is not None else {}
+    )
+    mock_repo_getter.return_value = mock_repository
+    return mock_repository
 
 
 @pytest.mark.asyncio
@@ -58,9 +68,7 @@ async def test_start():
         mock_agent = MagicMock()
         mock_agent.start_conversation = AsyncMock(return_value="Welcome")
         mock_create.return_value = mock_agent
-        mock_repository = MagicMock()
-        mock_repository.load_settings.return_value = {}
-        mock_repo_getter.return_value = mock_repository
+        _mock_repository_settings(mock_repo_getter)
 
         # Mock session
         mock_cl.user_session.get.return_value = "Default"
@@ -84,9 +92,7 @@ async def test_on_chat_resume():
     ):
         mock_agent = MagicMock()
         mock_create.return_value = mock_agent
-        mock_repository = MagicMock()
-        mock_repository.load_settings.return_value = {}
-        mock_repo_getter.return_value = mock_repository
+        _mock_repository_settings(mock_repo_getter)
         mock_restore.return_value = 5  # 5 messages restored
 
         thread = MagicMock()

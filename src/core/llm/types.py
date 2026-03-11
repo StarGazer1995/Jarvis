@@ -72,19 +72,21 @@ class LLMConfig:
         if not self.retry and self.retry_attempts:
             self.retry = {"max_attempts": self.retry_attempts}
 
+    @staticmethod
+    def _parse_provider(provider_str: str) -> LLMProvider:
+        try:
+            return LLMProvider(provider_str)
+        except ValueError:
+            try:
+                return LLMProvider(provider_str.lower())
+            except ValueError:
+                return LLMProvider.OPENAI
+
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> "LLMConfig":
         """Create LLMConfig from dictionary."""
         provider_str = config_dict.get("provider", "openai")
-        try:
-            provider = LLMProvider(provider_str)
-        except ValueError:
-            # Try lowercase
-            try:
-                provider = LLMProvider(provider_str.lower())
-            except ValueError:
-                # Default to OPENAI if unknown (Mock is deprecated)
-                provider = LLMProvider.OPENAI
+        provider = cls._parse_provider(provider_str)
 
         return cls(
             provider=provider,
@@ -105,14 +107,7 @@ class LLMConfig:
         import os
 
         provider_str = os.getenv("LLM_PROVIDER", "openai")
-        try:
-            provider = LLMProvider(provider_str)
-        except ValueError:
-            try:
-                provider = LLMProvider(provider_str.lower())
-            except ValueError:
-                # Default to OPENAI if unknown (Mock is deprecated)
-                provider = LLMProvider.OPENAI
+        provider = cls._parse_provider(provider_str)
 
         return cls(
             provider=provider,

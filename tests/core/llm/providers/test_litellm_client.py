@@ -95,6 +95,7 @@ class TestLiteLLMClient:
             assert call_kwargs["model"] == "gpt-3.5-turbo"
             assert call_kwargs["messages"] == [{"role": "user", "content": "Hello"}]
             assert call_kwargs["stream"] is False
+            assert call_kwargs["timeout"] == 30.0
 
     @pytest.mark.asyncio
     async def test_stream_response(self, litellm_client):

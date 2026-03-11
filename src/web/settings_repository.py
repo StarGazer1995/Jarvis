@@ -1,8 +1,7 @@
 import sqlite3
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-
 
 TOKEN_FIELDS = (
     "openai_api_key",
@@ -10,6 +9,15 @@ TOKEN_FIELDS = (
     "confluence_page_token",
     "beacon_model_token",
 )
+
+
+def empty_settings() -> dict[str, str]:
+    return {field: "" for field in TOKEN_FIELDS}
+
+
+def normalize_settings(settings: dict[str, Any] | None) -> dict[str, str]:
+    source = settings or {}
+    return {field: str(source.get(field, "") or "") for field in TOKEN_FIELDS}
 
 
 def _resolve_sqlite_path(database_url: str) -> Path:
@@ -51,12 +59,16 @@ class UserSettingsRepository:
 
     def load_settings(self, user_id: str) -> dict[str, Any]:
         if not user_id:
-            return {field: "" for field in TOKEN_FIELDS}
+            return empty_settings()
 
         with self._connect() as connection:
             row = connection.execute(
                 """
-                SELECT openai_api_key, tavily_api_key, confluence_page_token, beacon_model_token
+                SELECT
+                    openai_api_key,
+                    tavily_api_key,
+                    confluence_page_token,
+                    beacon_model_token
                 FROM user_settings
                 WHERE user_id = ?
                 """,
@@ -64,20 +76,15 @@ class UserSettingsRepository:
             ).fetchone()
 
         if row is None:
-            return {field: "" for field in TOKEN_FIELDS}
+            return empty_settings()
 
-        return {
-            "openai_api_key": row["openai_api_key"] or "",
-            "tavily_api_key": row["tavily_api_key"] or "",
-            "confluence_page_token": row["confluence_page_token"] or "",
-            "beacon_model_token": row["beacon_model_token"] or "",
-        }
+        return normalize_settings(dict(row))
 
     def save_settings(self, user_id: str, settings: dict[str, Any]) -> None:
         if not user_id:
             return
 
-        payload = {field: settings.get(field, "") for field in TOKEN_FIELDS}
+        payload = normalize_settings(settings)
         updated_at = datetime.now(UTC).isoformat()
 
         with self._connect() as connection:

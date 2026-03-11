@@ -429,12 +429,16 @@ class TestAuditLogger:
 
     def test_log_validation_request(self, audit_logger, sample_request):
         """Test logging a validation request."""
+        sample_request.metadata = {"api_key": "secret_value"}
         with patch.object(audit_logger.logger, "info") as mock_info:
             audit_id = audit_logger.log_validation_request(sample_request)
 
             assert audit_id is not None
             assert len(audit_id) == 16  # SHA256 hash truncated to 16 chars
             mock_info.assert_called_once()
+            log_text = mock_info.call_args[0][0]
+            assert "secret_value" not in log_text
+            assert "***REDACTED***" in log_text
 
     def test_log_validation_response(self, audit_logger):
         """Test logging a validation response."""
