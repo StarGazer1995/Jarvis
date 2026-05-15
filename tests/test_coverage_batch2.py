@@ -530,3 +530,158 @@ class TestParsersMoreCoverage:
         parser = JSONOutputParser()
         result = parser.parse("```json\n{\"key\": \"value\"}\n```")
         assert result["key"] == "value"
+
+
+# ═══════════════════════════════════════════════════════════════
+# src/core/llm/factory.py 更多边界
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestFactoryRemainingCoverage:
+    """Factory 剩余边界测试"""
+
+    def test_get_provider_class_nonexistent(self):
+        from src.core.llm.factory import LLMProviderRegistry
+
+        registry = LLMProviderRegistry()
+        result = registry.get_provider_class("nonexistent")
+        assert result is None
+
+    def test_unregister_provider(self):
+        from src.core.llm.client import BaseLLMClient
+        from src.core.llm.factory import LLMProviderRegistry
+
+        class MockClient(BaseLLMClient):
+            async def initialize(self): return True
+            async def generate_response(self, m, **k): pass
+            async def stream_response(self, m, **k): yield ""
+
+        registry = LLMProviderRegistry()
+        registry.register_provider("test_client", MockClient)
+        assert registry.is_provider_registered("test_client") is True
+        registry.unregister_provider("test_client")
+        assert registry.is_provider_registered("test_client") is False
+
+
+# ═══════════════════════════════════════════════════════════════
+# src/core/ark/nodes/tools.py 边界
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestToolsNodeMethods:
+    """ToolsNode 方法测试"""
+
+    def test_tools_node_creation(self):
+        from unittest.mock import MagicMock
+        from src.core.ark.nodes.tools import ToolsNode
+
+        mcp = MagicMock()
+        node = ToolsNode(mcp_client=mcp)
+        assert node.max_concurrency == 10
+
+
+# ═══════════════════════════════════════════════════════════════
+# src/core/prompt/manager.py 边界
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestPromptManagerRemaining:
+    """PromptManager 更多测试"""
+
+    def test_prompt_manager_list_templates(self):
+        from src.core.prompt.manager import PromptManager
+
+        pm = PromptManager()
+        templates = pm.list_templates()
+        assert isinstance(templates, list)
+        assert len(templates) > 0
+
+    def test_prompt_manager_str(self):
+        from src.core.prompt.manager import PromptManager
+
+        pm = PromptManager()
+        s = str(pm)
+        assert "PromptManager" in s
+
+
+# ═══════════════════════════════════════════════════════════════
+# src/core/common/exceptions.py 剩余边界
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestExceptionsRemaining:
+    """Exception 剩余测试"""
+
+    def test_mcp_error(self):
+        from src.core.common.exceptions import MCPError
+
+        e = MCPError("MCP failed")
+        assert "MCP" in str(e)
+
+    def test_capability_error(self):
+        from src.core.common.exceptions import CapabilityError
+
+        e = CapabilityError("cap failed")
+        assert "cap" in str(e).lower()
+
+    def test_model_not_found(self):
+        from src.core.common.exceptions import ModelNotFoundError
+
+        e = ModelNotFoundError("model not found")
+        assert "model" in str(e).lower()
+
+    def test_retry_exhausted(self):
+        from src.core.common.exceptions import RetryExhaustedError
+
+        e = RetryExhaustedError("exhausted", last_error="timeout")
+        assert "exhausted" in str(e)
+
+    def test_validation_error(self):
+        from src.core.common.exceptions import ValidationError
+
+        e = ValidationError("invalid")
+        assert "invalid" in str(e)
+
+    def test_security_error(self):
+        from src.core.common.exceptions import SecurityError
+
+        e = SecurityError("security breach")
+        assert "security" in str(e).lower()
+
+
+# ═══════════════════════════════════════════════════════════════
+# src/core/security/manager.py 剩余边界
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestSecurityManagerRemaining:
+    """Security Manager 剩余测试"""
+
+    def test_add_policy(self):
+        from src.core.security.manager import ARKSecurityManager, SecurityLevel, SecurityPolicy
+
+        mgr = ARKSecurityManager()
+        policy = SecurityPolicy(
+            name="custom",
+            description="Custom",
+            security_level=SecurityLevel.LOW,
+            allowed_permissions=set(),
+        )
+        result = mgr.add_policy(policy)
+        assert result is True
+        assert mgr.get_policy("custom") is not None
+
+    def test_remove_policy(self):
+        from src.core.security.manager import ARKSecurityManager
+
+        mgr = ARKSecurityManager()
+        result = mgr.remove_policy("low")
+        assert result is True
+        assert mgr.get_policy("low") is None
+
+    def test_register_custom_validator(self):
+        from src.core.security.manager import ARKSecurityManager
+
+        mgr = ARKSecurityManager()
+        result = mgr.register_custom_validator("test", lambda x: True)
+        assert result is True
