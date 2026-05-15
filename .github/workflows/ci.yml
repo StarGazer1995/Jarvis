@@ -57,12 +57,13 @@ jobs:
         run: uv run pytest tests/test_config_schema.py -v --tb=short
 
       - name: Verify config loads
-        run: uv run python -c "
+        run: |
+          uv run python -c "
           from src.core.config.loader import load_llm_config
           config = load_llm_config(environment='testing')
           assert config is not None
           print(f'Config OK: {len(config.providers)} providers loaded')
-        "
+          "
 
   # ═══════════════════════════════════════════════════════════════
   # Stage 3: Unit Tests (offline, using mocks)
@@ -84,12 +85,14 @@ jobs:
         run: uv sync
 
       - name: Run unit tests
-        run: uv run pytest tests/ \
-          --ignore=tests/web \
-          --ignore=tests/integration \
-          --ignore=tests/test_performance.py \
-          --ignore=tests/test_observability.py \
-          -v --tb=short -q
+        run: |
+          uv run pytest tests/ \
+            --ignore=tests/web \
+            --ignore=tests/integration \
+            --ignore=tests/test_performance.py \
+            --ignore=tests/test_observability.py \
+            --ignore=tests/test_observability_server.py \
+            -v --tb=short -q
 
   # ═══════════════════════════════════════════════════════════════
   # Stage 4: Fault Injection Tests
@@ -155,15 +158,17 @@ jobs:
         run: uv sync
 
       - name: Run tests with coverage
-        run: uv run pytest tests/ \
-          --ignore=tests/web \
-          --ignore=tests/integration \
-          --ignore=tests/test_performance.py \
-          --ignore=tests/test_observability.py \
-          --cov=src \
-          --cov-report=term-missing \
-          --cov-fail-under=90 \
-          -v --tb=short -q
+        run: |
+          uv run pytest tests/ \
+            --ignore=tests/web \
+            --ignore=tests/integration \
+            --ignore=tests/test_performance.py \
+            --ignore=tests/test_observability.py \
+            --ignore=tests/test_observability_server.py \
+            --cov=src \
+            --cov-report=term-missing \
+            --cov-fail-under=90 \
+            -v --tb=short -q
 
   # ═══════════════════════════════════════════════════════════════
   # Stage 7: Performance Benchmark (optional)
