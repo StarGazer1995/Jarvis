@@ -159,13 +159,17 @@ class ParallelExecutor:
     def __init__(
         self,
         execute_fn: Callable[[str, dict[str, Any]], Any],
+        max_concurrency: int | None = None,
     ):
         """
         Args:
             execute_fn: Async callable ``(tool_name, arguments) -> result``.
                 This is typically ``ToolsNode._execute_tool_call()``.
+            max_concurrency: Maximum number of tool calls that may run at the
+                same time within a parallel batch. ``None`` means no limit.
         """
         self.execute_fn = execute_fn
+        self.max_concurrency = max_concurrency
 
     async def run(
         self,
@@ -216,7 +220,16 @@ class ParallelExecutor:
                     return tid, None, error_msg
 
             # Execute all tools in this batch concurrently
-            batch_tasks = [_execute_one(tid) for tid in batch]
+            if self.max_concurrency and self.max_concurrency > 0:
+                semaphore = asyncio.Semaphore(self.max_concurrency)
+
+                async def _execute_with_limit(tid: str) -> tuple:
+                    async with semaphore:
+                        return await _execute_one(tid)
+
+                batch_tasks = [_execute_with_limit(tid) for tid in batch]
+            else:
+                batch_tasks = [_execute_one(tid) for tid in batch]
             await asyncio.gather(*batch_tasks)
 
         return results

@@ -81,11 +81,10 @@ class ToolsNode:
         tool_calls_data = last_message.tool_calls
         updated_todo_list = [t.copy() for t in state.get("todo_list", [])]
 
-        # Convert to ToolCall objects, extracting dependency info from args
         tool_calls: list[ToolCall] = []
         for tc in tool_calls_data:
             name = tc["name"]
-            args = tc.get("args", {})
+            args = dict(tc.get("args", {}))
             tool_call_id = tc.get("id", f"{name}_{len(tool_calls)}")
 
             # Extract dependency info if present (e.g., from LLM that supports
@@ -104,6 +103,7 @@ class ToolsNode:
         # Execute using the ParallelExecutor
         executor = ParallelExecutor(
             execute_fn=lambda n, a: self._execute_tool_call(n, a, updated_todo_list),
+            max_concurrency=self.max_concurrency,
         )
 
         try:

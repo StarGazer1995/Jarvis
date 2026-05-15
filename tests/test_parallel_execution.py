@@ -523,3 +523,155 @@ class TestMasterNodeMultiTool:
         }
         tools = sample_response["content"]
         assert tools[1].get("depends_on") == ["web_search"]
+
+
+class TestParallelExecutorConcurrencyLimit:
+    """Test concurrency limiting behavior."""
+
+    @pytest.mark.asyncio
+    async def test_respects_max_concurrency_limit(self):
+        """Executor should cap concurrent tasks within a batch."""
+        active = 0
+        peak = 0
+
+        async def limited_tool(name: str, args: dict) -> str:
+            nonlocal active, peak
+            active += 1
+            peak = max(peak, active)
+            await asyncio.sleep(0.02)
+            active -= 1
+            return name
+
+        executor = ParallelExecutor(execute_fn=limited_tool, max_concurrency=2)
+        await executor.run(
+            [
+                ToolCall(name="a", arguments={}, id="a"),
+                ToolCall(name="b", arguments={}, id="b"),
+                ToolCall(name="c", arguments={}, id="c"),
+            ]
+        )
+
+        assert peak == 2
+
+
+class TestToolsNodeAdditionalPaths:
+    """Cover additional ToolsNode behaviors."""
+
+    @pytest.mark.asyncio
+    async def test_returns_sender_only_when_no_tool_calls_present(self):
+        """ToolsNode should no-op when the message has no tool calls."""
+        from langchain_core.messages import AIMessage
+
+        node = ToolsNode(mcp_client=AsyncMock())
+        state: JarvisState = {
+            "messages": [AIMessage(content="hello")],
+            "todo_list": [],
+            "available_tools": {},
+            "user_input": "test",
+            "scratchpad": {},
+            "sender": "master",
+        }
+
+        result = await node(state, config=None)
+        assert result == {"sender": "tools"}
+
+    @pytest.mark.asyncio
+    async def test_registers_and_executes_local_tools(self):
+        """ToolsNode should invoke registered local tools before MCP."""
+        from langchain_core.messages import AIMessage
+
+        mock_mcp = AsyncMock()
+        node = ToolsNode(mcp_client=mock_mcp)
+
+        async def local_tool(value: str) -> str:
+            return f"local:{value}"
+
+        node.register_tool("echo_local", local_tool)
+        state: JarvisState = {
+            "messages": [
+                AIMessage(
+                    content="run local tool",
+                    tool_calls=[
+                        {"name": "echo_local", "args": {"value": "ok"}, "id": "call_0"}
+                    ],
+                )
+            ],
+            "todo_list": [],
+            "available_tools": {},
+            "user_input": "test",
+            "scratchpad": {},
+            "sender": "master",
+        }
+
+        result = await node(state, config=None)
+        assert result["messages"][0].content == "local:ok"
+        mock_mcp.execute_tool.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_manage_tasks_tool_updates_todo_list(self):
+        """manage_tasks should update todo state through ToolsNode."""
+        from langchain_core.messages import AIMessage
+
+        node = ToolsNode(mcp_client=AsyncMock())
+        state: JarvisState = {
+            "messages": [
+                AIMessage(
+                    content="update tasks",
+                    tool_calls=[
+                        {
+                            "name": "manage_tasks",
+                            "args": {
+                                "action": "add",
+                                "description": "Do thing",
+                            },
+                            "id": "call_0",
+                        }
+                    ],
+                )
+            ],
+            "todo_list": [],
+            "available_tools": {},
+            "user_input": "test",
+            "scratchpad": {},
+            "sender": "master",
+        }
+
+        result = await node(state, config=None)
+        assert result["todo_list"][0]["description"] == "Do thing"
+
+    @pytest.mark.asyncio
+    async def test_sequential_fallback_returns_tool_errors(self):
+        """Sequential fallback should return stringified tool errors."""
+        from langchain_core.messages import AIMessage
+
+        mock_mcp = AsyncMock()
+        node = ToolsNode(mcp_client=mock_mcp)
+
+        async def broken_run(*args, **kwargs):
+            raise RuntimeError("parallel failed")
+
+        async def broken_execute(name: str, args: dict) -> str:
+            raise ValueError("tool failed")
+
+        mock_mcp.execute_tool = broken_execute
+        node._run_parallel = broken_run  # type: ignore[attr-defined]
+
+        state: JarvisState = {
+            "messages": [
+                AIMessage(
+                    content="run failing tool",
+                    tool_calls=[{"name": "boom", "args": {}, "id": "call_0"}],
+                )
+            ],
+            "todo_list": [],
+            "available_tools": {},
+            "user_input": "test",
+            "scratchpad": {},
+            "sender": "master",
+        }
+
+        result = await node._run_sequential(
+            [ToolCall(name="boom", arguments={}, id="call_0")],
+            [],
+        )
+        assert "Error executing tool boom" in result["call_0"]
