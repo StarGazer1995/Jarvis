@@ -175,7 +175,8 @@ providers:
     
     timeout:
       connect: 10.0
-      read: 300.0  # 本地模型可能需要更长时间
+      read: 300.0   # 本地模型可能需要更长时间
+      total: 600.0  # 总超时应大于 read_timeout
 
 # 环境特定配置
 environments:
