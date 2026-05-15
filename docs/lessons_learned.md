@@ -60,8 +60,39 @@ This document summarizes the key experiences, architectural decisions, and lesso
 4.  **Interface:** Integrated Chainlit for a modern Web UI.
 5.  **Refinement:** Major structural refactoring to clean up the codebase and improve maintainability.
 
-## 6. Recommendations for Future Development
+## 6. Harness Engineering Adoption
+
+### Why Harness Engineering?
+
+As the project grew from a single-agent demo to a multi-provider, multi-tool AI framework, we recognized that ad-hoc integration patterns would not scale. The **harness engineering** framework was adopted to provide a systematic approach to building reliable, observable, and testable AI systems.
+
+### Key Changes Introduced
+
+1.  **Systematized Test Harness:** While we already had strong test coverage, the harness framework formalized mock requirements (every external dependency must have a mock), added fault injection patterns, and established a coverage floor of ≥90%.
+2.  **MCP-First Integration Policy:** All new tool integrations must use the Model Context Protocol. This replaced earlier ad-hoc HTTP/gRPC direct calls and made tool integration standardized and swappable.
+3.  **Three-Tier Configuration Model:** Building on our existing YAML config system, we formalized the three-tier model (YAML defaults → environment variables → runtime overrides) with schema validation at load time.
+4.  **Observability Baseline:** Metrics collection and structured logging were elevated from "nice to have" to mandatory for all new features.
+
+### Lessons from the Transition
+
+*   **Mocks need maintenance, too.** As the system evolved, some mocks in `conftest.py` fell out of sync with their real counterparts. We now include mock interface checks in CI.
+*   **Fault injection tests catch real bugs.** Before adopting fault injection patterns, retry handlers were tested only for happy-path retries. Injecting timeouts and malformed responses revealed several edge cases where exceptions were swallowed or infinite retries occurred.
+*   **Documentation drives adoption.** The creation of `AGENTS.md` and `engineering-standards.md` gave contributors a single source of truth for how to build within the framework.
+
+### Current Status (May 2026)
+
+- [x] AGENTS.md created with project-wide agent instructions
+- [x] Engineering standards documented (six-pillar framework)
+- [x] Mock infrastructure established for all major components
+- [x] Fault injection testing implemented for LLM and MCP layers
+- [ ] Performance/load testing harness — planned
+- [ ] Distributed tracing integration — planned
+- [ ] Configuration hot-reload — under consideration
+
+## 7. Recommendations for Future Development
 
 *   **Continue Modularization:** As new features (e.g., RAG, multimodal) are added, ensure they follow the established pattern of dedicated sub-modules.
 *   **Maintain Test Discipline:** Never compromise on the testing standards; the current velocity is enabled by the high trust in the test suite.
 *   **Monitor Complexity:** The recent refactoring showed that we must be willing to pay down technical debt (renaming files, moving directories) regularly to keep the project healthy.
+*   **Extend Fault Injection Coverage:** Expand fault injection tests to cover the security layer, configuration loader, and web interface.
+*   **Add Performance Baselines:** Establish performance benchmarks for LLM call latency, tool execution time, and end-to-end conversation response time to detect regressions early.
