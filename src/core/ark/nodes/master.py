@@ -114,20 +114,19 @@ class MasterNode:
         content = parsed_response.get("content", "")
 
         # 5. Handle Tool Calls
+        call_id_base = f"call_{len(state['messages'])}"
+
         if response_type == "tool_call" and isinstance(content, dict):
+            # Single tool call (legacy format)
             tool_name = content.get("name")
             tool_args = content.get("arguments", {})
 
-            # Construct AIMessage with tool_calls
             lc_tool_call = {
                 "name": tool_name,
                 "args": tool_args,
-                "id": f"call_{len(state['messages'])}",
+                "id": f"{call_id_base}_0",
             }
 
-            # Keep thought in context but don't expose it as main content if possible
-            # But for ReAct, thought is usually prepended.
-            # Let's keep it consistent: thought is internal reasoning.
             return {
                 "messages": [
                     AIMessage(
@@ -138,23 +137,55 @@ class MasterNode:
                 ],
                 "sender": "master",
             }
-        else:
-            # Normal response (Answer)
-            # Only return the content to the user, keep thought in metadata
-            final_content = content if isinstance(content, str) else str(content)
 
-            # Log the thought for debugging/audit
-            logger.info(f"MasterNode Thought: {thought}")
+        elif response_type == "tool_calls" and isinstance(content, list):
+            # Multiple tool calls (parallel execution support)
+            # content is a list of {name, arguments, depends_on?}
+            lc_tool_calls = []
+            for idx, tool_item in enumerate(content):
+                if not isinstance(tool_item, dict):
+                    continue
+                tool_name = tool_item.get("name", "")
+                tool_args = tool_item.get("arguments", {})
+                depends_on = tool_item.get("depends_on", [])
 
-            return {
-                "messages": [
-                    AIMessage(
-                        content=final_content,
-                        additional_kwargs={"raw_json": raw_content, "thought": thought},
-                    )
-                ],
-                "sender": "master",
-            }
+                # Attach dependency info to the arguments so ToolsNode can use it
+                if depends_on:
+                    tool_args["_depends_on"] = depends_on
+
+                lc_tool_calls.append(
+                    {
+                        "name": tool_name,
+                        "args": tool_args,
+                        "id": f"{call_id_base}_{idx}",
+                    }
+                )
+
+            if lc_tool_calls:
+                return {
+                    "messages": [
+                        AIMessage(
+                            content=thought,
+                            tool_calls=lc_tool_calls,
+                            additional_kwargs={"raw_json": raw_content},
+                        )
+                    ],
+                    "sender": "master",
+                }
+
+        # Normal response (Answer)
+        final_content = content if isinstance(content, str) else str(content)
+        logger.info(f"MasterNode Thought: {thought}")
+
+        return {
+            "messages": [
+                AIMessage(
+                    content=final_content,
+                    additional_kwargs={"raw_json": raw_content, "thought": thought},
+                )
+            ],
+            "sender": "master",
+        }
 
     def _convert_messages(self, lc_messages: List[BaseMessage]) -> List[LLMMessage]:
         """Convert LangChain messages to internal LLMMessage format."""
