@@ -1,0 +1,57 @@
+name: Nightly
+
+on:
+  schedule:
+    # Run at 02:00 UTC every day
+    - cron: "0 2 * * *"
+  workflow_dispatch: # Allow manual trigger
+
+env:
+  PYTHON_VERSION: "3.10"
+  UV_VERSION: "0.6"
+
+jobs:
+  # ═══════════════════════════════════════════════════════════════
+  # Full test suite with all integrations (uses real env vars if set)
+  # ═══════════════════════════════════════════════════════════════
+  full-suite:
+    name: Full Test Suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run full test suite
+        run: uv run pytest tests/ --ignore=tests/web --ignore=tests/integration -v --tb=short -q
+
+      - name: Run observability tests
+        run: uv run pytest tests/test_observability.py -v --tb=short -q
+
+  # ═══════════════════════════════════════════════════════════════
+  # Benchmark comparison with stored baseline
+  # ═══════════════════════════════════════════════════════════════
+  benchmark-regression:
+    name: Benchmark Regression Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run benchmarks with comparison
+        run: uv run pytest tests/test_performance.py --benchmark-only --benchmark-autosave --benchmark-compare=0001 --benchmark-compare-fail=min:10%
