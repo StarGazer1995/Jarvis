@@ -536,7 +536,7 @@ providers:
 
     def test_configuration_inheritance_and_overrides(self, temp_config_file):
         """测试配置继承和覆盖"""
-        config = load_llm_config(temp_config_file)
+        config = load_llm_config(config_path=temp_config_file)
 
         # 验证全局配置
         global_retry = config.global_config.retry

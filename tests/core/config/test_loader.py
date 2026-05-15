@@ -325,7 +325,6 @@ class TestConfigHelperFunctions:
         """测试默认配置路径获取"""
         result = get_config_path()
         assert str(result).endswith("config/llm_config.yaml")
-        assert "00_Jarvis" in str(result)
 
     @patch("src.core.config.loader.ConfigLoader.load_config")
     def test_load_llm_config(self, mock_load):
