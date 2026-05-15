@@ -1,10 +1,12 @@
 # Building AI Agents: Architecture and Best Practices
 
-*Discussion Document - Updated: February 17, 2026*
+*Discussion Document - Updated: May 15, 2026*
 
 ## Overview
 
 This document captures key concepts, patterns, and architectural decisions for building effective AI agents, with specific reference to the Project Jarvis framework. The architecture centers around **Jarvis** (the AI agent interface) powered by **ARK** (the core MCP-enabled engine that provides all capabilities and tool integrations).
+
+> **Engineering Context:** This architecture is designed within the **harness engineering** framework. See [`engineering-standards.md`](engineering-standards.md) for the six-pillar standards (Test, Integration, Configuration, Security, Observability, Orchestration) that govern how these components are built, tested, and operated.
 
 ## Project Jarvis Architecture: Jarvis + ARK
 
