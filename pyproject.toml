@@ -37,6 +37,7 @@ dependencies = [
     "aiosqlite>=0.20.0",
     "asyncpg>=0.31.0",
     "pandas>=2.3.3",
+    "prometheus-client>=0.24.1",
 ]
 
 [project.optional-dependencies]

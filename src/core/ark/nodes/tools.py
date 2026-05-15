@@ -1,11 +1,12 @@
 import asyncio
 import logging
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
 
 from ...mcp.client import ARKMCPClient
+from ...execution.engine import ParallelExecutor, ToolCall
 from ..state import JarvisState
 from ..tasks import execute_manage_tasks
 
@@ -15,11 +16,22 @@ logger = logging.getLogger("ark.nodes.tools")
 class ToolsNode:
     """
     Node responsible for executing tool calls (both internal and MCP).
+
+    Supports parallel execution: independent tool calls within a single
+    LLM response are executed concurrently via ``asyncio.gather``.
+    Tool calls can declare dependencies via a ``depends_on`` field
+    in their arguments (parsed from extended tool_call metadata).
     """
 
-    def __init__(self, mcp_client: ARKMCPClient):
+    def __init__(self, mcp_client: ARKMCPClient, max_concurrency: int = 10):
+        """
+        Args:
+            mcp_client: The MCP client for executing remote tools.
+            max_concurrency: Maximum number of parallel tool executions.
+        """
         self.mcp_client = mcp_client
         self.local_tools: dict[str, Any] = {}
+        self.max_concurrency = max_concurrency
 
     def register_tool(self, name: str, func: Any):
         """Register a local tool function."""
@@ -31,9 +43,14 @@ class ToolsNode:
         return func(**args) if isinstance(args, dict) else func(args)
 
     async def _execute_tool_call(
-        self, name: str, args: Any, updated_todo_list: list[dict[str, Any]]
+        self,
+        name: str,
+        args: Any,
+        updated_todo_list: Optional[List[Dict[str, Any]]] = None,
     ) -> Any:
         if name == "manage_tasks":
+            if updated_todo_list is None:
+                updated_todo_list = []
             return execute_manage_tasks(
                 args,
                 updated_todo_list,
@@ -50,6 +67,10 @@ class ToolsNode:
     ) -> dict[str, Any]:
         """
         Execute tools requested in the last message.
+
+        Tool calls from the LLM are converted to ``ToolCall`` objects.
+        If multiple tool calls are present and have no dependencies between
+        them, they are executed in parallel.
         """
         last_message = state["messages"][-1]
 
@@ -57,31 +78,90 @@ class ToolsNode:
             logger.warning("ToolsNode called but no tool_calls found in last message.")
             return {"sender": "tools"}
 
-        tool_calls = last_message.tool_calls
-        results = []
-        # Copy list to ensure immutability if needed, though TypedDict is mutable
+        tool_calls_data = last_message.tool_calls
         updated_todo_list = [t.copy() for t in state.get("todo_list", [])]
 
-        for tool_call in tool_calls:
-            name = tool_call["name"]
-            args = tool_call["args"]
-            tool_call_id = tool_call["id"]
+        # Convert to ToolCall objects, extracting dependency info from args
+        tool_calls: List[ToolCall] = []
+        for tc in tool_calls_data:
+            name = tc["name"]
+            args = tc.get("args", {})
+            tool_call_id = tc.get("id", f"{name}_{len(tool_calls)}")
 
-            logger.info(f"Executing tool: {name}")
+            # Extract dependency info if present (e.g., from LLM that supports
+            # multi-tool responses with dependency annotations)
+            depends_on = self._extract_depends_on(args)
 
-            try:
-                result = await self._execute_tool_call(name, args, updated_todo_list)
+            tool_calls.append(
+                ToolCall(
+                    name=name,
+                    arguments=args,
+                    id=tool_call_id,
+                    depends_on=depends_on,
+                )
+            )
 
-            except Exception as e:
-                logger.error(f"Tool execution failed: {e}")
-                result = f"Error executing tool {name}: {str(e)}"
+        # Execute using the ParallelExecutor
+        executor = ParallelExecutor(
+            execute_fn=lambda n, a: self._execute_tool_call(n, a, updated_todo_list),
+        )
+
+        try:
+            exec_results = await executor.run(tool_calls)
+        except Exception as e:
+            logger.error(f"Parallel execution failed: {e}")
+            # Fall back to sequential execution on error
+            exec_results = await self._run_sequential(tool_calls, updated_todo_list)
+
+        # Convert results to ToolMessages in original order
+        results = []
+        for tc in tool_calls:
+            tid = tc.id
+            result = exec_results.get(
+                tid, f"Error: tool {tc.name} did not return a result"
+            )
+            if isinstance(result, tuple):
+                # ParallelExecutor returns (tid, result, error) but we store just results
+                pass
 
             results.append(
-                ToolMessage(tool_call_id=tool_call_id, name=name, content=str(result))
+                ToolMessage(
+                    tool_call_id=tc.id,
+                    name=tc.name,
+                    content=str(result),
+                )
             )
 
         return {
             "messages": results,
             "sender": "tools",
-            "todo_list": updated_todo_list,  # Update state with modified list
+            "todo_list": updated_todo_list,
         }
+
+    async def _run_sequential(
+        self,
+        tool_calls: List[ToolCall],
+        updated_todo_list: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Fallback: execute tool calls one at a time."""
+        results = {}
+        for tc in tool_calls:
+            try:
+                result = await self._execute_tool_call(
+                    tc.name, tc.arguments, updated_todo_list
+                )
+                results[tc.id] = result
+            except Exception as e:
+                logger.error(f"Sequential fallback failed for {tc.name}: {e}")
+                results[tc.id] = f"Error executing tool {tc.name}: {str(e)}"
+        return results
+
+    @staticmethod
+    def _extract_depends_on(args: Dict[str, Any]) -> List[str]:
+        """Extract dependency list from tool arguments if annotated."""
+        # The LLM can annotate dependencies via a special _depends_on key
+        # which is stripped before passing to the actual tool.
+        depends = args.pop("_depends_on", [])
+        if isinstance(depends, list):
+            return [str(d) for d in depends]
+        return []
