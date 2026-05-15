@@ -20,6 +20,15 @@ from enum import Enum
 
 from ..common.exceptions import ConfigurationError
 
+# 延迟导入 schema 模块以避免循环依赖
+_schema_available = True
+try:
+    from .schema import validate_config_dict, ValidationResult
+except ImportError:
+    _schema_available = False
+    validate_config_dict = None
+    ValidationResult = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -453,29 +462,108 @@ class ConfigLoader:
         return global_config, providers
 
     def _validate_config(self, config: LLMConfig) -> None:
-        """验证配置"""
-        # 验证默认提供商存在且启用
+        """验证配置
+
+        执行两层验证:
+        1. Pydantic schema 校验（数值范围、URL 格式、必填字段等）
+        2. 业务规则检查（提供商启用状态、默认模型存在性等）
+        """
+        errors: List[str] = []
+        warnings: List[str] = []
+
+        # ── Layer 1: Pydantic schema validation ──
+        if _schema_available and validate_config_dict is not None:
+            try:
+                # Convert LLMConfig back to raw dict form for schema validation
+                raw_config = {
+                    "global": {
+                        "default_provider": config.global_config.default_provider,
+                        "fallback_providers": config.global_config.fallback_providers,
+                        "retry": {
+                            "max_attempts": config.global_config.retry.max_attempts,
+                            "initial_delay": config.global_config.retry.initial_delay,
+                            "max_delay": config.global_config.retry.max_delay,
+                            "exponential_base": config.global_config.retry.exponential_base,
+                        },
+                        "timeout": {
+                            "connect": config.global_config.timeout.connect,
+                            "read": config.global_config.timeout.read,
+                            "total": config.global_config.timeout.total,
+                        },
+                        "log_level": config.global_config.log_level,
+                    },
+                }
+
+                result = validate_config_dict(
+                    raw_config=raw_config,
+                    provider_configs=config.providers,
+                    features={
+                        "streaming": {
+                            "enabled": config.features.streaming_enabled,
+                            "chunk_size": config.features.streaming_chunk_size,
+                        },
+                        "context": {
+                            "max_history": config.features.context_max_history,
+                            "max_tokens": config.features.context_max_tokens,
+                        },
+                        "cache": {
+                            "enabled": config.features.cache_enabled,
+                            "ttl": config.features.cache_ttl,
+                            "max_size": config.features.cache_max_size,
+                        },
+                        "monitoring": {
+                            "enabled": config.features.monitoring_enabled,
+                            "metrics_interval": config.features.monitoring_metrics_interval,
+                        },
+                        "security": {
+                            "input_validation": config.features.security_input_validation,
+                            "output_filtering": config.features.security_output_filtering,
+                            "max_input_length": config.features.security_max_input_length,
+                        },
+                    },
+                    environment=config.environment.value,
+                )
+
+                if result.errors:
+                    errors.extend(result.errors)
+                if result.warnings:
+                    warnings.extend(result.warnings)
+
+            except Exception as e:
+                # Schema validation is best-effort — don't block startup on it
+                logger.warning(f"Schema validation encountered an error: {e}")
+
+        # ── Layer 2: Business rule validation ──
         default_provider = config.global_config.default_provider
         if default_provider not in config.providers:
-            raise ConfigurationError(f"默认提供商 '{default_provider}' 未配置")
+            errors.append(f"默认提供商 '{default_provider}' 未配置")
 
-        if not config.providers[default_provider].enabled:
-            raise ConfigurationError(f"默认提供商 '{default_provider}' 未启用")
+        elif not config.providers[default_provider].enabled:
+            errors.append(f"默认提供商 '{default_provider}' 未启用")
 
-        # 验证每个启用的提供商都有有效配置
+        # 验证每个启用的提供商
         for provider_name, provider_config in config.providers.items():
             if not provider_config.enabled:
                 continue
 
             # 验证默认模型存在
             if provider_config.default_model not in provider_config.models:
-                raise ConfigurationError(
-                    f"提供商 '{provider_name}' 的默认模型 '{provider_config.default_model}' 未配置"
+                errors.append(
+                    f"提供商 '{provider_name}' 的默认模型 "
+                    f"'{provider_config.default_model}' 未配置"
                 )
 
-            # 验证API密钥（除了mock提供商）
-            if provider_name != "mock" and not provider_config.api_key:
-                logger.warning(f"提供商 '{provider_name}' 未配置API密钥")
+            # 验证API密钥（除了mock和本地提供商）
+            if provider_name not in ("mock", "ollama") and not provider_config.api_key:
+                warnings.append(f"提供商 '{provider_name}' 未配置API密钥")
+
+        # ── Report results ──
+        if errors:
+            error_msg = "\n".join(f"  - {e}" for e in errors)
+            raise ConfigurationError(f"配置验证失败:\n{error_msg}")
+
+        for w in warnings:
+            logger.warning(w)
 
         logger.info("配置验证通过")
 
