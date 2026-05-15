@@ -71,7 +71,7 @@ omit = [
     "src/web/*",
     "src/core/observability/*",
 ]
-fail_under = 87
+fail_under = 88
 
 [tool.coverage.report]
 exclude_lines = [
