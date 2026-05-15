@@ -4,10 +4,10 @@ LLM配置管理模块
 提供灵活的配置管理，支持环境变量、配置文件和默认值。
 """
 
-import os
 import logging
-from typing import Dict, Any, Optional, Union, List
+import os
 from pathlib import Path
+from typing import Any
 
 try:
     from dotenv import load_dotenv
@@ -58,7 +58,7 @@ class ConfigManager:
         "base_url": ["OPENAI_BASE_URL", "LLM_BASE_URL"],
     }
 
-    def __init__(self, config_file: Optional[Union[str, Path]] = None):
+    def __init__(self, config_file: str | Path | None = None):
         """
         初始化配置管理器
 
@@ -122,7 +122,7 @@ class ConfigManager:
                 "PyYAML未安装，无法加载YAML配置文件，请运行: uv add PyYAML"
             )
 
-        with open(self.config_file, "r", encoding="utf-8") as f:
+        with open(self.config_file, encoding="utf-8") as f:
             self._file_config = yaml.safe_load(f) or {}
 
         self.logger.debug(f"已加载YAML配置文件: {self.config_file}")
@@ -161,7 +161,7 @@ class ConfigManager:
             extra_params=config_data["extra_params"],
         )
 
-    def _merge_config(self, provider: LLMProvider, **kwargs) -> Dict[str, Any]:
+    def _merge_config(self, provider: LLMProvider, **kwargs) -> dict[str, Any]:
         """
         合并配置数据
 
@@ -225,7 +225,7 @@ class ConfigManager:
         else:
             return value
 
-    def _validate_config(self, config: Dict[str, Any]) -> None:
+    def _validate_config(self, config: dict[str, Any]) -> None:
         """
         验证配置数据
 
@@ -258,7 +258,7 @@ class ConfigManager:
         if config.get("timeout", 30.0) <= 0:
             raise LLMConfigurationError("timeout必须大于0", config_field="timeout")
 
-    def get_available_models(self, provider: LLMProvider) -> List[str]:
+    def get_available_models(self, provider: LLMProvider) -> list[str]:
         """
         获取可用的模型列表
 
@@ -279,7 +279,7 @@ class ConfigManager:
         else:
             return []
 
-    def create_config_template(self, output_path: Union[str, Path]) -> None:
+    def create_config_template(self, output_path: str | Path) -> None:
         """
         创建配置文件模板
 
@@ -314,7 +314,7 @@ class ConfigManager:
 _config_manager = None
 
 
-def get_config_manager(config_file: Optional[Union[str, Path]] = None) -> ConfigManager:
+def get_config_manager(config_file: str | Path | None = None) -> ConfigManager:
     """
     获取全局配置管理器实例
 
@@ -334,7 +334,7 @@ def get_config_manager(config_file: Optional[Union[str, Path]] = None) -> Config
 
 def create_llm_config(
     provider: LLMProvider = LLMProvider.OPENAI,
-    config_file: Optional[Union[str, Path]] = None,
+    config_file: str | Path | None = None,
     **kwargs,
 ) -> LLMConfig:
     """

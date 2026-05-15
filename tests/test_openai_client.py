@@ -4,12 +4,13 @@ OpenAI客户端单元测试
 测试OpenAI客户端的各种功能和错误处理。
 """
 
-import pytest
 import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from src.core.llm.client import LLMConfig, LLMProvider, LLMMessage
+import pytest
+
+from src.core.llm.client import LLMConfig, LLMMessage, LLMProvider
 from src.core.llm.providers.openai_client import OpenAILLMClient
 from src.core.llm.utils.error_handler import (
     LLMConfigurationError,

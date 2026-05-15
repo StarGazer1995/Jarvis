@@ -15,22 +15,19 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from src.core.common.exceptions import MCPError, ToolError
+from src.core.config.server import ServerStatus, SimpleMCPServerConfig
 from src.core.mcp.client import ARKMCPClient
-from src.core.config.server import SimpleMCPServerConfig, ServerStatus
-
-from tests.fault_injection import FaultConfig, FaultInjector
 from tests.fault_injection.mcp_faults import (
-    mcp_connection_failure,
-    mcp_server_disconnect,
-    mcp_tool_not_found,
-    mcp_tool_execution_error,
-    mcp_tool_timeout,
-    mcp_tool_invalid_response,
-    mcp_discovery_failure,
-    mcp_then_succeed,
     mcp_cascading_failure,
+    mcp_connection_failure,
+    mcp_discovery_failure,
+    mcp_server_disconnect,
+    mcp_then_succeed,
+    mcp_tool_execution_error,
+    mcp_tool_invalid_response,
+    mcp_tool_not_found,
+    mcp_tool_timeout,
 )
-
 
 # ═══════════════════════════════════════════════════════════════════
 # 1. MCP Client Unit Tests — Fault Injection

@@ -3,12 +3,13 @@ Base Agent Class
 """
 
 import logging
-from typing import Dict, Any, Optional, Callable
 from abc import ABC, abstractmethod
+from collections.abc import Callable
+from typing import Any
 
-from .types import AgentState
 from ..llm.client import LLMManager
 from ..llm.config import load_llm_config
+from .types import AgentState
 
 
 class BaseAgent(ABC):
@@ -19,7 +20,7 @@ class BaseAgent(ABC):
     and LLM integration.
     """
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, config: dict[str, Any] | None = None):
         """
         Initialize the base agent.
 
@@ -39,11 +40,11 @@ class BaseAgent(ABC):
         self.llm_enabled = self.config.get("enable_llm", True)
 
         # Tools
-        self.available_tools: Dict[str, Any] = {}
+        self.available_tools: dict[str, Any] = {}
 
     @abstractmethod
     async def process_input(
-        self, user_input: str, callbacks: Optional[Dict[str, Callable]] = None, **kwargs
+        self, user_input: str, callbacks: dict[str, Callable] | None = None, **kwargs
     ) -> str:
         """
         Process user input and return a response.

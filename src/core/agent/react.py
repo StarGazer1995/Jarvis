@@ -3,16 +3,16 @@ ReAct Agent Implementation
 """
 
 import logging
-from typing import List, Dict, Any, Optional, Callable
+from collections.abc import Callable
+from typing import Any
 
-from .base import BaseAgent
-from .types import AgentState, AgentStep
 from ..llm.client import LLMMessage
 from ..llm.converters import convert_langchain_to_llm_messages
-from ..prompt.manager import PromptManager
 from ..llm.parsers import JSONOutputParser
-
 from ..llm.stream_handler import StreamTokenHandler
+from ..prompt.manager import PromptManager
+from .base import BaseAgent
+from .types import AgentState, AgentStep
 
 
 class ReActAgent(BaseAgent):
@@ -20,7 +20,7 @@ class ReActAgent(BaseAgent):
     Agent implementing the ReAct (Reasoning and Acting) framework.
     """
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config)
         self.max_steps = self.config.get("max_steps", 15)
         self.logger = logging.getLogger("agent.react")
@@ -28,7 +28,7 @@ class ReActAgent(BaseAgent):
         self.parser = JSONOutputParser()
 
     async def process_input(
-        self, user_input: str, callbacks: Optional[Dict[str, Callable]] = None, **kwargs
+        self, user_input: str, callbacks: dict[str, Callable] | None = None, **kwargs
     ) -> str:
         """
         Process user input using the ReAct loop.
@@ -52,10 +52,10 @@ class ReActAgent(BaseAgent):
             return f"Error: {str(e)}"
 
     async def _run_loop(
-        self, user_input: str, callbacks: Optional[Dict[str, Callable]] = None
+        self, user_input: str, callbacks: dict[str, Callable] | None = None
     ) -> str:
         """Execute the ReAct loop."""
-        steps: List[AgentStep] = []
+        steps: list[AgentStep] = []
 
         # Initial message
         messages = self._build_initial_messages(user_input)
@@ -138,8 +138,8 @@ class ReActAgent(BaseAgent):
 
     async def _generate_and_stream_response(
         self,
-        messages: List[LLMMessage],
-        callbacks: Optional[Dict[str, Callable]] = None,
+        messages: list[LLMMessage],
+        callbacks: dict[str, Callable] | None = None,
     ) -> str:
         """
         Generate response with streaming and callbacks using StreamTokenHandler.
@@ -148,7 +148,7 @@ class ReActAgent(BaseAgent):
         handler = StreamTokenHandler(callbacks)
         return await handler.process_stream(self.llm_manager.stream_response(messages))
 
-    def _build_initial_messages(self, user_input: str) -> List[LLMMessage]:
+    def _build_initial_messages(self, user_input: str) -> list[LLMMessage]:
         """Build the initial prompt messages."""
         system_messages = self._get_system_prompt()
         llm_system_messages = convert_langchain_to_llm_messages(system_messages)
@@ -159,7 +159,7 @@ class ReActAgent(BaseAgent):
         """Execute a tool. Override in subclasses."""
         return f"Error: Tool execution not implemented for '{name}'"
 
-    def _get_system_prompt(self) -> List[Any]:
+    def _get_system_prompt(self) -> list[Any]:
         """Get the system prompt. Override in subclasses."""
         messages = self.prompt_manager.render_template("react_system")
         return messages

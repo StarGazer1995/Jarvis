@@ -1,7 +1,9 @@
-import pytest
 from unittest.mock import patch
-from src.web.data_layer import get_data_layer
+
+import pytest
+
 import src.web.data_layer
+from src.web.data_layer import get_data_layer
 
 
 @pytest.fixture

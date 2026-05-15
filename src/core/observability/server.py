@@ -8,9 +8,8 @@ Can run as a standalone server or be embedded in the web app.
 import asyncio
 import logging
 import time
-from typing import Optional
 
-from prometheus_client import generate_latest, REGISTRY, CONTENT_TYPE_LATEST
+from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +36,7 @@ class ObservabilityServer:
 
     def __init__(self, port: int = METRICS_PORT):
         self.port = port
-        self._server: Optional[asyncio.AbstractServer] = None
+        self._server: asyncio.AbstractServer | None = None
         self._start_time: float = 0.0
         self._running = False
 
@@ -122,7 +121,7 @@ class ObservabilityServer:
         uptime = time.time() - self._start_time
         health_data = (
             f'{{"status": "ok", "uptime_seconds": {uptime:.1f}, "port": {self.port}}}\n'
-        ).encode("utf-8")
+        ).encode()
         await self._send_response(
             writer, 200, health_data, content_type="application/json"
         )
@@ -152,7 +151,7 @@ class ObservabilityServer:
 
 
 # Global singleton for the server
-_observability_server: Optional[ObservabilityServer] = None
+_observability_server: ObservabilityServer | None = None
 
 
 def get_observability_server(port: int = METRICS_PORT) -> ObservabilityServer:

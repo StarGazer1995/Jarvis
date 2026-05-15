@@ -4,13 +4,13 @@
 定义项目中使用的自定义异常类
 """
 
-from typing import Optional, Any, Dict
+from typing import Any
 
 
 class JarvisError(Exception):
     """Jarvis项目的基础异常类"""
 
-    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
+    def __init__(self, message: str, details: dict[str, Any] | None = None):
         """
         初始化异常
 
@@ -35,8 +35,8 @@ class ConfigurationError(JarvisError):
     def __init__(
         self,
         message: str,
-        config_path: Optional[str] = None,
-        config_section: Optional[str] = None,
+        config_path: str | None = None,
+        config_section: str | None = None,
         **kwargs,
     ):
         """
@@ -65,8 +65,8 @@ class LLMError(JarvisError):
     def __init__(
         self,
         message: str,
-        provider: Optional[str] = None,
-        model: Optional[str] = None,
+        provider: str | None = None,
+        model: str | None = None,
         **kwargs,
     ):
         """
@@ -93,7 +93,7 @@ class ProviderError(LLMError):
     """提供商相关的错误"""
 
     def __init__(
-        self, message: str, provider: str, error_code: Optional[str] = None, **kwargs
+        self, message: str, provider: str, error_code: str | None = None, **kwargs
     ):
         """
         初始化提供商错误
@@ -122,7 +122,7 @@ class RateLimitError(ProviderError):
     """速率限制错误"""
 
     def __init__(
-        self, message: str, provider: str, retry_after: Optional[int] = None, **kwargs
+        self, message: str, provider: str, retry_after: int | None = None, **kwargs
     ):
         """
         初始化速率限制错误
@@ -153,8 +153,8 @@ class ValidationError(JarvisError):
     def __init__(
         self,
         message: str,
-        field: Optional[str] = None,
-        value: Optional[Any] = None,
+        field: str | None = None,
+        value: Any | None = None,
         **kwargs,
     ):
         """
@@ -180,9 +180,7 @@ class ValidationError(JarvisError):
 class TimeoutError(JarvisError):
     """超时错误"""
 
-    def __init__(
-        self, message: str, timeout_duration: Optional[float] = None, **kwargs
-    ):
+    def __init__(self, message: str, timeout_duration: float | None = None, **kwargs):
         """
         初始化超时错误
 
@@ -205,8 +203,8 @@ class RetryExhaustedError(JarvisError):
     def __init__(
         self,
         message: str,
-        max_attempts: Optional[int] = None,
-        last_error: Optional[Exception] = None,
+        max_attempts: int | None = None,
+        last_error: Exception | None = None,
         **kwargs,
     ):
         """
@@ -238,7 +236,7 @@ class SecurityError(JarvisError):
 class CapabilityError(JarvisError):
     """能力相关的错误"""
 
-    def __init__(self, message: str, capability: Optional[str] = None, **kwargs):
+    def __init__(self, message: str, capability: str | None = None, **kwargs):
         """
         初始化能力错误
 
@@ -258,7 +256,7 @@ class CapabilityError(JarvisError):
 class ToolError(JarvisError):
     """工具相关的错误"""
 
-    def __init__(self, message: str, tool_name: Optional[str] = None, **kwargs):
+    def __init__(self, message: str, tool_name: str | None = None, **kwargs):
         """
         初始化工具错误
 
@@ -278,7 +276,7 @@ class ToolError(JarvisError):
 class MCPError(JarvisError):
     """MCP相关的错误"""
 
-    def __init__(self, message: str, server_name: Optional[str] = None, **kwargs):
+    def __init__(self, message: str, server_name: str | None = None, **kwargs):
         """
         初始化MCP错误
 

@@ -10,13 +10,9 @@ with fallbacks and warnings rather than crashes.
 import json
 import os
 import tempfile
-from pathlib import Path
 
 import pytest
 import yaml
-
-from src.core.common.exceptions import ConfigurationError
-
 
 # ═══════════════════════════════════════════════════════════════════
 # 1. Config Loader — Resilience Tests

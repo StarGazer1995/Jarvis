@@ -9,21 +9,22 @@ YAML配置文件加载器和验证器
 - 配置热重载
 """
 
+import logging
 import os
 import re
-import yaml
-import logging
-from typing import Dict, Any, Optional, List, Union
-from pathlib import Path
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
+from typing import Any
+
+import yaml
 
 from ..common.exceptions import ConfigurationError
 
 # 延迟导入 schema 模块以避免循环依赖
 _schema_available = True
 try:
-    from .schema import validate_config_dict, ValidationResult
+    from .schema import ValidationResult, validate_config_dict
 except ImportError:
     _schema_available = False
     validate_config_dict = None
@@ -76,7 +77,7 @@ class ModelConfig:
     top_p: float = 1.0
     frequency_penalty: float = 0.0
     presence_penalty: float = 0.0
-    deployment_name: Optional[str] = None  # Azure OpenAI专用
+    deployment_name: str | None = None  # Azure OpenAI专用
     response_delay: float = 0.0  # Mock专用
 
 
@@ -86,18 +87,18 @@ class ProviderConfig:
 
     type: str = "openai"  # 默认为openai，用于区分提供商类型
     enabled: bool = True
-    api_key: Optional[str] = None
-    base_url: Optional[str] = None
+    api_key: str | None = None
+    base_url: str | None = None
     default_model: str = "gpt-4"
-    models: Dict[str, ModelConfig] = field(default_factory=dict)
-    retry: Optional[RetryConfig] = None
-    timeout: Optional[TimeoutConfig] = None
-    rate_limit: Optional[RateLimitConfig] = None
+    models: dict[str, ModelConfig] = field(default_factory=dict)
+    retry: RetryConfig | None = None
+    timeout: TimeoutConfig | None = None
+    rate_limit: RateLimitConfig | None = None
 
     # Azure OpenAI特定配置
-    azure_endpoint: Optional[str] = None
-    api_version: Optional[str] = None
-    organization: Optional[str] = None
+    azure_endpoint: str | None = None
+    api_version: str | None = None
+    organization: str | None = None
 
 
 @dataclass
@@ -105,7 +106,7 @@ class GlobalConfig:
     """全局配置"""
 
     default_provider: str = "openai"
-    fallback_providers: List[str] = field(default_factory=list)
+    fallback_providers: list[str] = field(default_factory=list)
     retry: RetryConfig = field(default_factory=RetryConfig)
     timeout: TimeoutConfig = field(default_factory=TimeoutConfig)
     log_level: str = "INFO"
@@ -134,7 +135,7 @@ class LLMConfig:
     """完整的LLM配置"""
 
     global_config: GlobalConfig
-    providers: Dict[str, ProviderConfig]
+    providers: dict[str, ProviderConfig]
     features: FeatureConfig
     environment: Environment = Environment.DEVELOPMENT
 
@@ -146,7 +147,7 @@ def _project_root() -> Path:
 class ConfigLoader:
     """配置加载器"""
 
-    def __init__(self, config_path: Optional[Union[str, Path]] = None):
+    def __init__(self, config_path: str | Path | None = None):
         """
         初始化配置加载器
 
@@ -158,13 +159,13 @@ class ConfigLoader:
             config_path = _project_root() / "config" / "llm_config.yaml"
 
         self.config_path = Path(config_path)
-        self._config_cache: Optional[Dict[str, Any]] = None
-        self._last_modified: Optional[float] = None
+        self._config_cache: dict[str, Any] | None = None
+        self._last_modified: float | None = None
 
         logger.info(f"配置加载器初始化，配置文件路径: {self.config_path}")
 
     def load_config(
-        self, environment: Optional[str] = None, reload: bool = False
+        self, environment: str | None = None, reload: bool = False
     ) -> LLMConfig:
         """
         加载配置文件
@@ -221,7 +222,7 @@ class ConfigLoader:
             raise ConfigurationError(f"配置文件不存在: {self.config_path}")
 
         try:
-            with open(self.config_path, "r", encoding="utf-8") as f:
+            with open(self.config_path, encoding="utf-8") as f:
                 content = f.read()
 
             # 替换环境变量
@@ -264,7 +265,7 @@ class ConfigLoader:
         pattern = r"\$\{([^}]+)\}"
         return re.sub(pattern, replace_var, content)
 
-    def _determine_environment(self, environment: Optional[str]) -> Environment:
+    def _determine_environment(self, environment: str | None) -> Environment:
         """确定当前环境"""
         if environment:
             try:
@@ -281,7 +282,7 @@ class ConfigLoader:
             return Environment.DEVELOPMENT
 
     def _parse_config(
-        self, raw_config: Dict[str, Any], environment: Environment
+        self, raw_config: dict[str, Any], environment: Environment
     ) -> LLMConfig:
         """解析配置对象"""
         # 解析全局配置
@@ -310,7 +311,7 @@ class ConfigLoader:
             environment=environment,
         )
 
-    def _parse_global_config(self, global_raw: Dict[str, Any]) -> GlobalConfig:
+    def _parse_global_config(self, global_raw: dict[str, Any]) -> GlobalConfig:
         """解析全局配置"""
         retry_raw = global_raw.get("retry", {})
         retry = RetryConfig(
@@ -336,8 +337,8 @@ class ConfigLoader:
         )
 
     def _parse_providers_config(
-        self, providers_raw: Dict[str, Any], global_config: GlobalConfig
-    ) -> Dict[str, ProviderConfig]:
+        self, providers_raw: dict[str, Any], global_config: GlobalConfig
+    ) -> dict[str, ProviderConfig]:
         """解析提供商配置"""
         providers = {}
 
@@ -405,7 +406,7 @@ class ConfigLoader:
 
         return providers
 
-    def _parse_features_config(self, features_raw: Dict[str, Any]) -> FeatureConfig:
+    def _parse_features_config(self, features_raw: dict[str, Any]) -> FeatureConfig:
         """解析功能配置"""
         streaming = features_raw.get("streaming", {})
         context = features_raw.get("context", {})
@@ -431,8 +432,8 @@ class ConfigLoader:
     def _apply_environment_config(
         self,
         global_config: GlobalConfig,
-        providers: Dict[str, ProviderConfig],
-        env_config: Dict[str, Any],
+        providers: dict[str, ProviderConfig],
+        env_config: dict[str, Any],
     ) -> tuple:
         """应用环境特定配置"""
         # 更新全局配置
@@ -468,8 +469,8 @@ class ConfigLoader:
         1. Pydantic schema 校验（数值范围、URL 格式、必填字段等）
         2. 业务规则检查（提供商启用状态、默认模型存在性等）
         """
-        errors: List[str] = []
-        warnings: List[str] = []
+        errors: list[str] = []
+        warnings: list[str] = []
 
         # ── Layer 1: Pydantic schema validation ──
         if _schema_available and validate_config_dict is not None:
@@ -569,10 +570,10 @@ class ConfigLoader:
 
 
 # 全局配置加载器实例
-_config_loader: Optional[ConfigLoader] = None
+_config_loader: ConfigLoader | None = None
 
 
-def get_config_loader(config_path: Optional[Union[str, Path]] = None) -> ConfigLoader:
+def get_config_loader(config_path: str | Path | None = None) -> ConfigLoader:
     """获取全局配置加载器实例"""
     global _config_loader
     if _config_loader is None or config_path is not None:
@@ -594,8 +595,8 @@ def get_config_path(config_name: str = "llm_config.yaml") -> Path:
 
 
 def load_llm_config(
-    environment: Optional[str] = None,
-    config_path: Optional[Union[str, Path]] = None,
+    environment: str | None = None,
+    config_path: str | Path | None = None,
     reload: bool = False,
 ) -> LLMConfig:
     """

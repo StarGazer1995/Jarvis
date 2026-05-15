@@ -1,16 +1,17 @@
 import json
 import logging
-from typing import Dict, Any, List, Optional
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, BaseMessage
+from typing import Any
+
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 
-from ..state import JarvisState
 from ...llm.client import LLMManager, LLMMessage
 from ...llm.converters import convert_langchain_to_llm_messages
-from ..utils import AgentSpec
-from ...llm.stream_handler import StreamTokenHandler
 from ...llm.parsers import JSONOutputParser
+from ...llm.stream_handler import StreamTokenHandler
 from ...prompt.manager import PromptManager
+from ..state import JarvisState
+from ..utils import AgentSpec
 
 logger = logging.getLogger("ark.nodes.master")
 
@@ -21,9 +22,7 @@ class MasterNode:
     Merges responsibilities of Supervisor (Scheduling) and Executor (Tools).
     """
 
-    def __init__(
-        self, llm_manager: LLMManager, agents: Optional[List[AgentSpec]] = None
-    ):
+    def __init__(self, llm_manager: LLMManager, agents: list[AgentSpec] | None = None):
         self.llm_manager = llm_manager
         self.agents = agents or []
         self.agent_map = {a.name: a for a in self.agents}
@@ -32,7 +31,7 @@ class MasterNode:
 
     async def __call__(
         self, state: JarvisState, config: RunnableConfig
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Execute the master agent logic.
         """
@@ -187,7 +186,7 @@ class MasterNode:
             "sender": "master",
         }
 
-    def _convert_messages(self, lc_messages: List[BaseMessage]) -> List[LLMMessage]:
+    def _convert_messages(self, lc_messages: list[BaseMessage]) -> list[LLMMessage]:
         """Convert LangChain messages to internal LLMMessage format."""
         out = []
         for m in lc_messages:
@@ -223,7 +222,7 @@ class MasterNode:
             out.append(LLMMessage(role=role, content=str(content)))
         return out
 
-    def _get_system_prompt(self, state: JarvisState) -> List[BaseMessage]:
+    def _get_system_prompt(self, state: JarvisState) -> list[BaseMessage]:
         """Generate the system prompt based on state."""
         todo_list = state.get("todo_list", [])
 

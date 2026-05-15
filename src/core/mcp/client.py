@@ -3,18 +3,18 @@ ARK引擎的MCP客户端实现
 使用官方modelcontextprotocol SDK提供标准化的MCP客户端功能
 """
 
-import logging
 import json
-from pathlib import Path
-from typing import Dict, List, Any, Optional
-from datetime import datetime
-
+import logging
 from contextlib import AsyncExitStack
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-from mcp.types import Tool, CallToolRequest
+from mcp.types import CallToolRequest, Tool
 
-from ..config.server import SimpleMCPServerConfig, ServerStatus
+from ..config.server import ServerStatus, SimpleMCPServerConfig
 
 
 class ARKMCPClient:
@@ -26,11 +26,11 @@ class ARKMCPClient:
     def __init__(self):
         """初始化MCP客户端"""
         self.logger = logging.getLogger(__name__)
-        self.servers: Dict[str, SimpleMCPServerConfig] = {}
-        self.sessions: Dict[str, ClientSession] = {}
-        self.server_exit_stacks: Dict[str, AsyncExitStack] = {}
-        self.available_tools: Dict[str, Tool] = {}
-        self.tool_schemas: Dict[str, Dict[str, Any]] = {}
+        self.servers: dict[str, SimpleMCPServerConfig] = {}
+        self.sessions: dict[str, ClientSession] = {}
+        self.server_exit_stacks: dict[str, AsyncExitStack] = {}
+        self.available_tools: dict[str, Tool] = {}
+        self.tool_schemas: dict[str, dict[str, Any]] = {}
         self.is_initialized = False
         self._running = False
 
@@ -67,7 +67,7 @@ class ARKMCPClient:
         try:
             config_file = Path(config_path)
             if config_file.exists():
-                with open(config_file, "r", encoding="utf-8") as f:
+                with open(config_file, encoding="utf-8") as f:
                     config_data = json.load(f)
 
                 # 加载服务器配置
@@ -120,7 +120,7 @@ class ARKMCPClient:
                 except Exception as e:
                     self.logger.error(f"连接到服务器 {server_name} 失败: {e}")
 
-    async def list_tools(self) -> List[Dict[str, Any]]:
+    async def list_tools(self) -> list[dict[str, Any]]:
         """
         列出所有可用的工具
 
@@ -158,8 +158,8 @@ class ARKMCPClient:
         return tools
 
     async def call_tool(
-        self, tool_name: str, arguments: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, tool_name: str, arguments: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         调用指定的工具
 
@@ -199,8 +199,8 @@ class ARKMCPClient:
             return {"success": False, "error": str(e), "tool": tool_name}
 
     async def _call_builtin_tool(
-        self, tool_name: str, arguments: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, tool_name: str, arguments: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         调用内置工具
 
@@ -302,7 +302,7 @@ class ARKMCPClient:
         else:
             return ServerStatus.UNKNOWN
 
-    def get_all_server_status(self) -> Dict[str, ServerStatus]:
+    def get_all_server_status(self) -> dict[str, ServerStatus]:
         """
         获取所有服务器的状态
 
@@ -323,20 +323,20 @@ class ARKMCPClient:
         print("🌐 ARK MCP Client Demo")
         print("=" * 30)
 
-        print(f"📊 Client Status:")
+        print("📊 Client Status:")
         print(f"  - Initialized: {self.is_initialized}")
         print(f"  - Configured Servers: {len(self.servers)}")
         print(f"  - Active Sessions: {len(self.sessions)}")
         print(f"  - Available Tools: {len(self.available_tools)}")
 
         if self.servers:
-            print(f"\n🔧 Configured Servers:")
+            print("\n🔧 Configured Servers:")
             for name, config in self.servers.items():
                 status = self.get_server_status(name)
                 print(f"  - {name}: {status.value}")
 
         if self.available_tools:
-            print(f"\n🛠️  Available Tools:")
+            print("\n🛠️  Available Tools:")
             for tool_name in self.available_tools:
                 print(f"  - {tool_name}")
 
@@ -394,7 +394,7 @@ class ARKMCPClient:
         del self.servers[server_name]
         return True
 
-    def get_server(self, server_name: str) -> Optional[SimpleMCPServerConfig]:
+    def get_server(self, server_name: str) -> SimpleMCPServerConfig | None:
         """
         获取服务器配置
 
@@ -406,7 +406,7 @@ class ARKMCPClient:
         """
         return self.servers.get(server_name)
 
-    def list_servers(self) -> List[SimpleMCPServerConfig]:
+    def list_servers(self) -> list[SimpleMCPServerConfig]:
         """
         列出所有服务器配置
 
@@ -426,7 +426,7 @@ class ARKMCPClient:
         self._running = False
         await self._disconnect_all_servers()
 
-    async def discover_tools(self, server_name: str) -> List[Dict[str, Any]]:
+    async def discover_tools(self, server_name: str) -> list[dict[str, Any]]:
         """
         发现服务器工具
 
@@ -460,8 +460,8 @@ class ARKMCPClient:
         return tools
 
     async def execute_tool(
-        self, tool_name: str, arguments: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, tool_name: str, arguments: dict[str, Any]
+    ) -> dict[str, Any] | None:
         """
         执行工具（测试兼容性方法）
 
@@ -512,7 +512,7 @@ class ARKMCPClient:
         return tool_key.split(":")[0]
 
     async def _call_session_tool(
-        self, session: ClientSession, tool_name: str, arguments: Dict[str, Any]
+        self, session: ClientSession, tool_name: str, arguments: dict[str, Any]
     ) -> Any:
         try:
             return await session.call_tool(tool_name, arguments)
@@ -523,8 +523,8 @@ class ARKMCPClient:
             return await session.call_tool(request)
 
     async def _execute_server_tool(
-        self, server_name: str, tool_name: str, arguments: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, server_name: str, tool_name: str, arguments: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         执行服务器工具
 
@@ -557,7 +557,7 @@ class ARKMCPClient:
             "error": str(result) if result.isError else None,
         }
 
-    def get_available_tools(self) -> Dict[str, Dict[str, Any]]:
+    def get_available_tools(self) -> dict[str, dict[str, Any]]:
         """
         获取可用的MCP服务器工具（不包含内置工具）
 
@@ -567,7 +567,7 @@ class ARKMCPClient:
         # 直接返回available_tools，因为它已经是正确的格式
         return self.available_tools.copy()
 
-    def get_all_tools(self) -> Dict[str, Dict[str, Any]]:
+    def get_all_tools(self) -> dict[str, dict[str, Any]]:
         """
         获取所有可用工具（包含内置工具和MCP服务器工具）
 
@@ -585,7 +585,7 @@ class ARKMCPClient:
 
         return tools
 
-    def get_tool_schema(self, tool_name: str) -> Optional[Dict[str, Any]]:
+    def get_tool_schema(self, tool_name: str) -> dict[str, Any] | None:
         """
         获取工具模式
 
@@ -602,7 +602,7 @@ class ARKMCPClient:
         # 检查MCP工具
         return self.tool_schemas.get(tool_name)
 
-    def get_client_stats(self) -> Dict[str, Any]:
+    def get_client_stats(self) -> dict[str, Any]:
         """
         获取客户端统计信息
 
@@ -727,7 +727,7 @@ class ARKMCPClient:
         for server_name in list(self.sessions.keys()):
             await self.disconnect_server(server_name)
 
-    async def _get_server_tools(self, server_name: str) -> Dict[str, Dict[str, Any]]:
+    async def _get_server_tools(self, server_name: str) -> dict[str, dict[str, Any]]:
         """
         获取指定服务器的工具列表
 

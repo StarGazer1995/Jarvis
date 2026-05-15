@@ -5,11 +5,12 @@ This module implements a generic loop for refining agent outputs through
 a generator-reviewer cycle.
 """
 
-import os
-import logging
-from datetime import datetime
-from typing import Callable, Any, Optional
 import inspect
+import logging
+import os
+from collections.abc import Callable
+from datetime import datetime
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +91,7 @@ class RefinementLoop:
                     f"3. Ensure the final output is complete and accurate.\n"
                 )
 
-                logger.info(f"[Refinement] Phase 3: Refining...")
+                logger.info("[Refinement] Phase 3: Refining...")
                 current_content = await self._call_func(
                     self.generator, refinement_prompt
                 )
@@ -107,7 +108,7 @@ class RefinementLoop:
         directory: str = "reports",
         prefix: str = "report",
         clean_cot: bool = True,
-        task: Optional[str] = None,
+        task: str | None = None,
     ) -> str:
         """
         Save the content to a file with a timestamp.

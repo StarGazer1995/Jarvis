@@ -13,11 +13,11 @@ capabilities of the ARK system, including:
 Run from project root: python examples/context_management_demo.py --verbose
 """
 
-import asyncio
-import logging
 import argparse
-import sys
+import asyncio
 import json
+import logging
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -25,8 +25,8 @@ from pathlib import Path
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from core.context_manager import ConversationTurn, ConversationContext
-from core.intent_engine import IntentType, Entity
+from core.context_manager import ConversationContext, ConversationTurn
+from core.intent_engine import Entity, IntentType
 
 
 async def demonstrate_conversation_turns():
@@ -108,7 +108,7 @@ async def demonstrate_conversation_turns():
     print(f"   References previous: {turn3.context_data.get('references_previous')}")
 
     # Demonstrate turn serialization
-    print(f"\n📄 Turn Serialization Example:")
+    print("\n📄 Turn Serialization Example:")
     turn_dict = turn1.to_dict()
     print(f"   Serialized keys: {list(turn_dict.keys())}")
 
@@ -178,7 +178,7 @@ async def demonstrate_conversation_context():
     ]
 
     # Add turns to context
-    print(f"\n📝 Adding conversation turns...")
+    print("\n📝 Adding conversation turns...")
     for i, turn_data in enumerate(sample_turns, 1):
         turn = ConversationTurn(
             turn_id=f"turn_{i:03d}",
@@ -193,7 +193,7 @@ async def demonstrate_conversation_context():
         print(f"   ✅ Added turn {i}: {turn.turn_id}")
 
     # Show context statistics
-    print(f"\n📊 Context Statistics:")
+    print("\n📊 Context Statistics:")
     stats = await context.get_context_stats()
     print(f"   - Total turns: {stats['total_turns']}")
     print(f"   - Memory usage: {stats['memory_usage_mb']:.2f}MB")
@@ -201,7 +201,7 @@ async def demonstrate_conversation_context():
     print(f"   - Intent distribution: {stats['intent_distribution']}")
 
     # Demonstrate context retrieval
-    print(f"\n🔍 Context Retrieval Examples:")
+    print("\n🔍 Context Retrieval Examples:")
 
     # Get recent turns
     recent_turns = await context.get_recent_turns(count=2)
@@ -234,10 +234,10 @@ async def demonstrate_memory_management():
         max_turns=10,
         memory_limit_mb=1,  # Very small limit for demo
     )
-    print(f"✅ Created context with 1MB memory limit")
+    print("✅ Created context with 1MB memory limit")
 
     # Add many turns to trigger memory management
-    print(f"\n📝 Adding turns to trigger memory management...")
+    print("\n📝 Adding turns to trigger memory management...")
 
     for i in range(15):  # More than max_turns
         turn = ConversationTurn(
@@ -271,13 +271,13 @@ async def demonstrate_memory_management():
 
     # Show final state
     final_stats = await context.get_context_stats()
-    print(f"\n📊 Final Memory State:")
+    print("\n📊 Final Memory State:")
     print(f"   - Turns retained: {final_stats['total_turns']}")
     print(f"   - Memory usage: {final_stats['memory_usage_mb']:.2f}MB")
     print(f"   - Cleanup events: {final_stats.get('cleanup_count', 0)}")
 
     # Demonstrate memory optimization
-    print(f"\n⚡ Memory Optimization:")
+    print("\n⚡ Memory Optimization:")
     await context.optimize_memory()
     optimized_stats = await context.get_context_stats()
     print(f"   - Memory after optimization: {optimized_stats['memory_usage_mb']:.2f}MB")
@@ -330,7 +330,7 @@ async def demonstrate_context_persistence():
         print(f"💾 Saved context to: {context_file}")
 
         # Load context from file
-        with open(context_file, "r") as f:
+        with open(context_file) as f:
             loaded_data = json.load(f)
 
         loaded_context = ConversationContext.from_dict(loaded_data)
@@ -340,7 +340,7 @@ async def demonstrate_context_persistence():
         original_stats = await original_context.get_context_stats()
         loaded_stats = await loaded_context.get_context_stats()
 
-        print(f"\n🔍 Context Comparison:")
+        print("\n🔍 Context Comparison:")
         print(f"   Original turns: {original_stats['total_turns']}")
         print(f"   Loaded turns: {loaded_stats['total_turns']}")
         print(
@@ -369,7 +369,7 @@ async def demonstrate_context_persistence():
     finally:
         # Clean up temporary file
         Path(context_file).unlink(missing_ok=True)
-        print(f"🧹 Cleaned up temporary context file")
+        print("🧹 Cleaned up temporary context file")
 
 
 async def demonstrate_multi_session_context():
@@ -449,7 +449,7 @@ async def demonstrate_multi_session_context():
         )
 
     # Analyze sessions
-    print(f"\n📊 Multi-Session Analysis:")
+    print("\n📊 Multi-Session Analysis:")
 
     for session_id, context in sessions.items():
         stats = await context.get_context_stats()
@@ -466,7 +466,7 @@ async def demonstrate_multi_session_context():
             print(f"     - Latest: {latest.user_input[:40]}...")
 
     # Cross-session analysis
-    print(f"\n🔍 Cross-Session Insights:")
+    print("\n🔍 Cross-Session Insights:")
 
     # Count total turns across all sessions
     total_turns = sum(

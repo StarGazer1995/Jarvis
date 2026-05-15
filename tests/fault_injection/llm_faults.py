@@ -5,8 +5,10 @@ Provides convenient factory functions for common LLM failure patterns
 that can be used directly as mock side_effects.
 """
 
-from typing import Any, Callable, Dict, Optional, Tuple, Type, Union
+from collections.abc import Callable
+from typing import Any
 
+from src.core.llm.types import LLMResponse
 from src.core.llm.utils.error_handler import (
     LLMAPIError,
     LLMAuthenticationError,
@@ -14,10 +16,8 @@ from src.core.llm.utils.error_handler import (
     LLMRateLimitError,
     LLMTimeoutError,
 )
-from src.core.llm.types import LLMResponse
 
-from .base import FaultConfig, FaultInjector, FaultPattern, build_side_effect
-
+from .base import FaultPattern, build_side_effect
 
 # ── Single fault patterns ──────────────────────────────────────────
 

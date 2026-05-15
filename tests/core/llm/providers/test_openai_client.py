@@ -1,7 +1,9 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+
+from src.core.llm.client import LLMConfig, LLMMessage, LLMProvider, LLMResponse
 from src.core.llm.providers.openai_client import OpenAILLMClient
-from src.core.llm.client import LLMConfig, LLMMessage, LLMResponse, LLMProvider
 
 
 @pytest.fixture

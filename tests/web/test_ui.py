@@ -1,10 +1,11 @@
-import pytest
-import subprocess
-import time
-import requests
-import sys
-import os
 import importlib.util
+import os
+import subprocess
+import sys
+import time
+
+import pytest
+import requests
 from playwright.sync_api import Page, expect
 
 # Skip if chainlit is not installed or if running in environment where UI testing is hard
@@ -58,7 +59,7 @@ def chainlit_server():
         # Check if process is still running
         if process.poll() is not None:
             stdout, stderr = process.communicate()
-            print(f"Chainlit server exited prematurely.")
+            print("Chainlit server exited prematurely.")
             print(f"STDOUT: {stdout.decode()}")
             print(f"STDERR: {stderr.decode()}")
             break

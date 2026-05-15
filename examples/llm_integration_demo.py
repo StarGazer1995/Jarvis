@@ -9,8 +9,8 @@ maintaining fallback to template-based responses.
 
 import asyncio
 import logging
-import sys
 import os
+import sys
 
 # Add the src directory to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -227,21 +227,21 @@ async def display_system_status(engine):
 
     status = engine.get_status()
 
-    print(f"\n🔧 Engine Status:")
+    print("\n🔧 Engine Status:")
     print(f"  State: {status['state']}")
     print(f"  LLM Enabled: {status.get('llm_enabled', 'N/A')}")
     print(f"  Available Tools: {status['available_tools']}")
     print(f"  Decision History: {status.get('decision_history_count', 0)}")
 
     engine_status = engine.get_engine_status()
-    print(f"\n⚙️  Engine Details:")
+    print("\n⚙️  Engine Details:")
     print(f"  Performance Metrics: {engine_status.get('performance_metrics', {})}")
     print(f"  Tool Usage Stats: {engine_status.get('tool_usage_stats', {})}")
     print(f"  Available Tools: {len(engine_status.get('available_tools', []))}")
 
     # LLM specific status
     if hasattr(engine, "llm_config") and engine.llm_config:
-        print(f"\n🤖 LLM Configuration:")
+        print("\n🤖 LLM Configuration:")
         print(f"  Provider: {engine.llm_config.provider.value}")
         print(f"  Model: {engine.llm_config.model}")
         print(f"  Max Tokens: {engine.llm_config.max_tokens}")

@@ -6,23 +6,24 @@ discovery system, including tool metadata, filtering, discovery providers,
 and the central registry functionality.
 """
 
-import pytest
-import json
-import tempfile
-import os
 import asyncio
-from unittest.mock import Mock, AsyncMock
+import json
+import os
+import tempfile
 from datetime import datetime
+from unittest.mock import AsyncMock, Mock
+
+import pytest
 
 from src.core.mcp.registry import (
-    ToolStatus,
-    ToolCategory,
-    ToolMetadata,
-    ToolFilter,
-    ToolDiscoveryProvider,
-    MCPToolDiscoveryProvider,
-    FileToolDiscoveryProvider,
     ARKToolRegistry,
+    FileToolDiscoveryProvider,
+    MCPToolDiscoveryProvider,
+    ToolCategory,
+    ToolDiscoveryProvider,
+    ToolFilter,
+    ToolMetadata,
+    ToolStatus,
 )
 
 

@@ -1,12 +1,12 @@
 import os
-from typing import Optional
+
 import chainlit as cl
 
 # Cache admin password at module level
 _ADMIN_PASSWORD = os.environ.get("CHAINLIT_ADMIN_PASSWORD")
 
 
-def auth_callback(username: str, password: str) -> Optional[cl.User]:
+def auth_callback(username: str, password: str) -> cl.User | None:
     """
     Chainlit authentication callback.
     Validates the username and password against environment variables.

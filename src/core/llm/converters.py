@@ -1,15 +1,15 @@
-from typing import List
 from langchain_core.messages import (
-    BaseMessage,
-    SystemMessage,
-    HumanMessage,
     AIMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
     ToolMessage,
 )
+
 from src.core.llm.types import LLMMessage
 
 
-def convert_langchain_to_llm_messages(messages: List[BaseMessage]) -> List[LLMMessage]:
+def convert_langchain_to_llm_messages(messages: list[BaseMessage]) -> list[LLMMessage]:
     """
     Convert LangChain messages to internal LLMMessage format.
 

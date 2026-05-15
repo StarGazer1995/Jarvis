@@ -6,18 +6,19 @@ including command-line interface, interactive mode, demo mode,
 and argument parsing functionality.
 """
 
-import pytest
-from unittest.mock import Mock, patch, AsyncMock, mock_open
 import argparse
-import sys
-import signal
 import json
+import signal
+import sys
 from pathlib import Path
+from unittest.mock import AsyncMock, Mock, mock_open, patch
+
+import pytest
 
 # Add the src directory to the path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from src.main import JarvisApp, main, cli_main
+from src.main import JarvisApp, cli_main, main
 
 
 class TestJarvisApp:

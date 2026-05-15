@@ -5,7 +5,8 @@ This module provides tools for real-time web research using Tavily.
 """
 
 import os
-from typing import Dict, Any, Optional
+from typing import Any
+
 from tavily import TavilyClient
 
 
@@ -14,7 +15,7 @@ class WebResearcher:
     Provides web research capabilities including searching and content extraction.
     """
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: str | None = None):
         """
         Initialize the WebResearcher.
 
@@ -29,7 +30,7 @@ class WebResearcher:
 
         self.client = TavilyClient(api_key=self.api_key) if self.api_key else None
 
-    def search(self, query: str, domains: Optional[list[str]] = None) -> str:
+    def search(self, query: str, domains: list[str] | None = None) -> str:
         """
         Search the web for a query and return relevant results.
 
@@ -115,7 +116,7 @@ class WebResearcher:
         except Exception as e:
             return f"Error browsing URL: {str(e)}"
 
-    def get_tools(self) -> Dict[str, Any]:
+    def get_tools(self) -> dict[str, Any]:
         """
         Return the tool definitions and implementations for registration.
         """

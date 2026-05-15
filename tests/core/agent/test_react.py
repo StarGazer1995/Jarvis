@@ -1,5 +1,7 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from src.core.agent.react import ReActAgent
 from src.core.agent.types import AgentState
 

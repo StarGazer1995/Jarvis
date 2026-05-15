@@ -6,11 +6,11 @@
 
 import hashlib
 import json
-import time
 import logging
-from typing import Dict, Any, Optional, Tuple, List
+import time
+from typing import Any
 
-from ..types import LLMResponse, LLMMessage
+from ..types import LLMMessage, LLMResponse
 
 
 class CacheManager:
@@ -26,10 +26,10 @@ class CacheManager:
         """
         self.ttl = ttl
         self.max_size = max_size
-        self._cache: Dict[str, Tuple[LLMResponse, float]] = {}
+        self._cache: dict[str, tuple[LLMResponse, float]] = {}
         self.logger = logging.getLogger(__name__)
 
-    def get(self, messages: List[LLMMessage], **kwargs) -> Optional[LLMResponse]:
+    def get(self, messages: list[LLMMessage], **kwargs) -> LLMResponse | None:
         """
         获取缓存的响应
 
@@ -53,7 +53,7 @@ class CacheManager:
 
         return None
 
-    def set(self, messages: List[LLMMessage], response: LLMResponse, **kwargs) -> None:
+    def set(self, messages: list[LLMMessage], response: LLMResponse, **kwargs) -> None:
         """
         设置缓存
 
@@ -72,7 +72,7 @@ class CacheManager:
         self._cache[key] = (response, time.time())
         self.logger.debug(f"缓存设置: {key[:8]}")
 
-    def _generate_key(self, messages: List[LLMMessage], **kwargs) -> str:
+    def _generate_key(self, messages: list[LLMMessage], **kwargs) -> str:
         """生成缓存键"""
         # 序列化消息
         msgs_data = [{"role": m.role, "content": m.content} for m in messages]
@@ -93,6 +93,6 @@ class CacheManager:
         """清空缓存"""
         self._cache.clear()
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """获取缓存统计"""
         return {"size": len(self._cache), "max_size": self.max_size, "ttl": self.ttl}

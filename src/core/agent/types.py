@@ -2,9 +2,9 @@
 Agent Framework Types
 """
 
-from enum import Enum
 from dataclasses import dataclass
-from typing import Optional, Union, Dict, Any
+from enum import Enum
+from typing import Any
 
 
 class AgentState(Enum):
@@ -23,6 +23,6 @@ class AgentStep:
     """Represents a single step in an agent's reasoning loop."""
 
     thought: str
-    action: Optional[str] = None
-    action_input: Optional[Union[Dict[str, Any], str]] = None
-    observation: Optional[str] = None
+    action: str | None = None
+    action_input: dict[str, Any] | str | None = None
+    observation: str | None = None

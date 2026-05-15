@@ -1,9 +1,10 @@
-import pytest
 import sys
 from pathlib import Path
 
-from src.core.mcp.client import ARKMCPClient
+import pytest
+
 from src.core.config.server import SimpleMCPServerConfig
+from src.core.mcp.client import ARKMCPClient
 
 
 @pytest.mark.asyncio

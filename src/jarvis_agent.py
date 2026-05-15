@@ -6,10 +6,11 @@ the ARK (Autonomous Reasoning Kernel) engine with a conversational
 AI interface.
 """
 
-import logging
 import asyncio
-from typing import Dict, List, Any, Optional, Callable
+import logging
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 from .core.ark.engine import ARKEngine, ARKState
 from .core.config.server import SimpleMCPServerConfig
@@ -25,7 +26,7 @@ class JarvisConfig:
     max_conversation_history: int = 100
     enable_tool_chaining: bool = True
     confidence_threshold: float = 0.7
-    mcp_servers: List[SimpleMCPServerConfig] = None
+    mcp_servers: list[SimpleMCPServerConfig] = None
 
     def __post_init__(self):
         if self.mcp_servers is None:
@@ -42,7 +43,7 @@ class JarvisAgent:
     various AI capabilities.
     """
 
-    def __init__(self, config: Optional[JarvisConfig] = None):
+    def __init__(self, config: JarvisConfig | None = None):
         """
         Initialize Jarvis Agent.
 
@@ -69,9 +70,9 @@ class JarvisAgent:
         self.conversation_active = False
 
         # Callbacks for extensibility
-        self.on_startup_callbacks: List[Callable] = []
-        self.on_shutdown_callbacks: List[Callable] = []
-        self.on_message_callbacks: List[Callable] = []
+        self.on_startup_callbacks: list[Callable] = []
+        self.on_shutdown_callbacks: list[Callable] = []
+        self.on_message_callbacks: list[Callable] = []
 
         self.logger.info(f"Jarvis Agent v{self.config.version} initialized")
 
@@ -124,7 +125,7 @@ class JarvisAgent:
             self.logger.error(f"Jarvis Agent initialization failed: {e}")
             return False
 
-    def register_capabilities(self, capabilities: List[Any]) -> None:
+    def register_capabilities(self, capabilities: list[Any]) -> None:
         """
         Register capabilities with the ARK engine.
 
@@ -193,8 +194,8 @@ class JarvisAgent:
     async def process_message(
         self,
         message: str,
-        user_id: Optional[str] = None,
-        callbacks: Optional[Dict[str, Callable]] = None,
+        user_id: str | None = None,
+        callbacks: dict[str, Callable] | None = None,
     ) -> str:
         """
         Process a user message and return a response.
@@ -238,7 +239,7 @@ class JarvisAgent:
             self.logger.error(f"Error processing message: {e}")
             return f"I encountered an error while processing your message: {str(e)}"
 
-    async def start_conversation(self, user_id: Optional[str] = None) -> str:
+    async def start_conversation(self, user_id: str | None = None) -> str:
         """
         Start a new conversation session.
 
@@ -265,7 +266,7 @@ class JarvisAgent:
         self.logger.info(f"Started conversation for user {user_id}")
         return welcome_message
 
-    async def end_conversation(self, user_id: Optional[str] = None) -> str:
+    async def end_conversation(self, user_id: str | None = None) -> str:
         """
         End the current conversation session.
 
@@ -349,7 +350,7 @@ class JarvisAgent:
         self.on_message_callbacks.append(callback)
         self.logger.debug("Added message callback")
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """
         Get current agent status.
 
@@ -388,7 +389,7 @@ class JarvisAgent:
         """
         return self.ark_engine.context_manager.export_conversation(format)
 
-    def get_available_tools(self) -> List[str]:
+    def get_available_tools(self) -> list[str]:
         """
         Get list of available tools.
 
@@ -397,7 +398,7 @@ class JarvisAgent:
         """
         return list(self.ark_engine.available_tools.keys())
 
-    def get_tool_usage_stats(self) -> Dict[str, int]:
+    def get_tool_usage_stats(self) -> dict[str, int]:
         """
         Get tool usage statistics.
 
@@ -430,7 +431,7 @@ class JarvisAgent:
         """
         return self.ark_engine.context_manager.get_user_preference(key, default)
 
-    async def health_check(self) -> Dict[str, Any]:
+    async def health_check(self) -> dict[str, Any]:
         """
         Perform a health check of the agent and its components.
 

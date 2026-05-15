@@ -5,18 +5,18 @@ This module manages conversation context, memory, and state across
 interactions in the ARK-powered Jarvis system.
 """
 
+import json
 import logging
-from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
-import json
+from typing import Any
 
-from langchain_core.prompts import PromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
-from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_community.chat_models import ChatOllama
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import PromptTemplate
+from langchain_openai import ChatOpenAI
 
 from ..config.loader import load_llm_config
 
@@ -30,11 +30,11 @@ class ConversationTurn:
     user_input: str
     agent_response: str
     timestamp: float = field(default_factory=lambda: datetime.now().timestamp())
-    intent: Optional[str] = None
-    entities: Dict[str, Any] = field(default_factory=dict)
-    tools_used: List[str] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    raw_response: Optional[str] = None
+    intent: str | None = None
+    entities: dict[str, Any] = field(default_factory=dict)
+    tools_used: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    raw_response: str | None = None
 
     @property
     def processing_time(self) -> float:
@@ -46,7 +46,7 @@ class ConversationTurn:
         """Set processing time in metadata."""
         self.metadata["processing_time"] = value
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Convert conversation turn to dictionary.
 
@@ -64,7 +64,7 @@ class ConversationTurn:
             "raw_response": self.raw_response,
         }
 
-    def to_langchain_message(self) -> List[BaseMessage]:
+    def to_langchain_message(self) -> list[BaseMessage]:
         """
         Convert conversation turn to LangChain messages.
 
@@ -81,7 +81,7 @@ class ConversationTurn:
         return messages
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ConversationTurn":
+    def from_dict(cls, data: dict[str, Any]) -> "ConversationTurn":
         """
         Create conversation turn from dictionary.
 
@@ -111,7 +111,7 @@ class ConversationContext:
     and contextual information that helps ARK make better decisions.
     """
 
-    def __init__(self, max_history: int = 100, session_id: Optional[str] = None):
+    def __init__(self, max_history: int = 100, session_id: str | None = None):
         """
         Initialize conversation context manager.
 
@@ -120,10 +120,10 @@ class ConversationContext:
             session_id: Optional session identifier. If not provided, a new one will be generated
         """
         self.max_history = max_history
-        self.conversation_history: List[ConversationTurn] = []
-        self.user_preferences: Dict[str, Any] = {}
-        self.session_metadata: Dict[str, Any] = {}
-        self.current_context: Dict[str, Any] = {}
+        self.conversation_history: list[ConversationTurn] = []
+        self.user_preferences: dict[str, Any] = {}
+        self.session_metadata: dict[str, Any] = {}
+        self.current_context: dict[str, Any] = {}
         self.ark_logger = logging.getLogger("ark.context")
 
         # Initialize session
@@ -145,12 +145,12 @@ class ConversationContext:
         )
 
     @property
-    def user_memory(self) -> Dict[str, Any]:
+    def user_memory(self) -> dict[str, Any]:
         """Alias for user_preferences for backward compatibility."""
         return self.user_preferences
 
     @user_memory.setter
-    def user_memory(self, value: Dict[str, Any]) -> None:
+    def user_memory(self, value: dict[str, Any]) -> None:
         """Setter for user_memory alias."""
         self.user_preferences = value
 
@@ -164,10 +164,10 @@ class ConversationContext:
         self,
         user_input: str,
         agent_response: str,
-        intent: Optional[str] = None,
-        tools_used: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        raw_response: Optional[str] = None,
+        intent: str | None = None,
+        tools_used: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+        raw_response: str | None = None,
     ) -> None:
         """
         Add a conversation exchange to the context.
@@ -310,7 +310,7 @@ class ConversationContext:
             f"max_history={self.max_history})"
         )
 
-    def get_recent_turns(self, num_turns: int = 5) -> List[ConversationTurn]:
+    def get_recent_turns(self, num_turns: int = 5) -> list[ConversationTurn]:
         """
         Get the most recent conversation turns in reverse chronological order.
 
@@ -327,7 +327,7 @@ class ConversationContext:
         recent = self.conversation_history[-num_turns:]
         return list(reversed(recent))
 
-    def get_conversation_summary(self) -> Dict[str, Any]:
+    def get_conversation_summary(self) -> dict[str, Any]:
         """
         Generate a summary of the current conversation context.
 
@@ -359,7 +359,7 @@ class ConversationContext:
             "duration": duration,
         }
 
-    def get_cleaned_history(self, max_messages: int = 20) -> List[BaseMessage]:
+    def get_cleaned_history(self, max_messages: int = 20) -> list[BaseMessage]:
         """
         Get cleaned conversation history formatted as LangChain messages.
 
@@ -378,7 +378,7 @@ class ConversationContext:
             List of cleaned LangChain BaseMessage objects
         """
         # Convert all turns to a flat list of messages
-        raw_messages: List[BaseMessage] = []
+        raw_messages: list[BaseMessage] = []
         for turn in self.conversation_history:
             raw_messages.extend(turn.to_langchain_message())
 
@@ -412,7 +412,7 @@ class ConversationContext:
         if not raw_messages:
             return []
 
-        cleaned_messages: List[BaseMessage] = []
+        cleaned_messages: list[BaseMessage] = []
 
         for msg in raw_messages:
             if not msg.content or not msg.content.strip():
@@ -438,8 +438,8 @@ class ConversationContext:
 
         # R4: Merge consecutive user messages
 
-        merged_messages: List[BaseMessage] = []
-        current_user_buffer: List[str] = []
+        merged_messages: list[BaseMessage] = []
+        current_user_buffer: list[str] = []
 
         for msg in cleaned_messages:
             if isinstance(msg, HumanMessage):
@@ -526,7 +526,7 @@ class ConversationContext:
         self.current_context.clear()
         self.ark_logger.debug("ARK context: Cleared all context variables")
 
-    def get_session_stats(self) -> Dict[str, Any]:
+    def get_session_stats(self) -> dict[str, Any]:
         """
         Get statistics about the current session.
 

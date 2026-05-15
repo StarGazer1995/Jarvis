@@ -4,25 +4,27 @@ LLM工厂测试模块
 测试LLM提供商注册、工厂创建、客户端管理等功能
 """
 
-import pytest
 import tempfile
-import yaml
+from typing import Any
 from unittest.mock import Mock, patch
-from typing import Dict, Any
 
-from src.core.llm.factory import (
-    LLMProviderRegistry,
-    LLMProviderFactory,
-    ProviderInfo,
-    create_llm_client,
-    ProviderType,
-)
+import pytest
+import yaml
+
+from src.core.common.exceptions import ConfigurationError
 from src.core.config.loader import (
     LLMConfig,
     ProviderConfig,
 )
-from src.core.llm.client import BaseLLMClient, LLMConfig as ClientLLMConfig
-from src.core.common.exceptions import ConfigurationError
+from src.core.llm.client import BaseLLMClient
+from src.core.llm.client import LLMConfig as ClientLLMConfig
+from src.core.llm.factory import (
+    LLMProviderFactory,
+    LLMProviderRegistry,
+    ProviderInfo,
+    ProviderType,
+    create_llm_client,
+)
 
 
 class MockLLMClient(BaseLLMClient):
@@ -157,7 +159,7 @@ class TestLLMProviderFactory:
     """测试LLM提供商工厂"""
 
     @pytest.fixture
-    def sample_config_data(self) -> Dict[str, Any]:
+    def sample_config_data(self) -> dict[str, Any]:
         """示例配置数据"""
         return {
             "global": {

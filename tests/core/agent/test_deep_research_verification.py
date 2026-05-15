@@ -2,8 +2,10 @@
 Verify Deep Research Implementation
 """
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
+
 from src.core.agent.deep_research import DeepResearchAgent
 
 
@@ -75,8 +77,8 @@ async def test_file_parser_routing():
         patch.dict("sys.modules", {"pypdf": MagicMock(), "docx": MagicMock()}),
     ):
         # Setup mocks
-        import pypdf
         import docx
+        import pypdf
 
         # Mock PDF
         mock_pdf_reader = MagicMock()

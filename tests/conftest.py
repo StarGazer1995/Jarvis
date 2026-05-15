@@ -5,21 +5,21 @@ This module provides common test fixtures, configuration, and utilities
 that are shared across all test modules in the project.
 """
 
-import pytest
 import asyncio
-import tempfile
-import shutil
 import os
+import shutil
+import tempfile
 from pathlib import Path
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import AsyncMock, Mock
 
-from src.jarvis_agent import JarvisConfig, JarvisAgent
-from src.core.config.server import SimpleMCPServerConfig
-from src.core.mcp.client import ARKMCPClient
-from src.core.context.manager import ConversationContext
+import pytest
+
 from src.core.ark.engine import ARKEngine
+from src.core.config.server import ARKServerConfigManager, SimpleMCPServerConfig
+from src.core.context.manager import ConversationContext
+from src.core.mcp.client import ARKMCPClient
 from src.core.mcp.registry import ARKToolRegistry
-from src.core.config.server import ARKServerConfigManager
+from src.jarvis_agent import JarvisAgent, JarvisConfig
 
 
 @pytest.fixture(scope="session")
@@ -449,7 +449,7 @@ def read_test_file(path: str) -> str:
     Returns:
         str: File content
     """
-    with open(path, "r") as f:
+    with open(path) as f:
         return f.read()
 
 

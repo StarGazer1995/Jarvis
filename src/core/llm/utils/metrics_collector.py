@@ -5,8 +5,8 @@
 """
 
 import logging
-from typing import Dict, Any
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -42,7 +42,7 @@ class MetricsCollector:
         self.logger = logging.getLogger(__name__)
 
     def record_request(
-        self, success: bool, latency: float, tokens: Dict[str, int] = None
+        self, success: bool, latency: float, tokens: dict[str, int] = None
     ):
         """
         记录请求指标
@@ -67,7 +67,7 @@ class MetricsCollector:
         else:
             self.metrics.failed_requests += 1
 
-    def get_metrics(self) -> Dict[str, Any]:
+    def get_metrics(self) -> dict[str, Any]:
         """获取指标汇总"""
         return {
             "total_requests": self.metrics.total_requests,

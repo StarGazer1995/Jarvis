@@ -4,9 +4,9 @@ LLM类型定义模块
 包含LLM相关的基础数据结构和枚举。
 """
 
-from typing import Dict, Any, Optional, Union
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 
 class LLMProvider(Enum):
@@ -25,7 +25,7 @@ class LLMMessage:
 
     role: str  # "system", "user", "assistant"
     content: str
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -42,27 +42,27 @@ class LLMResponse:
     """LLM响应格式"""
 
     content: str
-    usage: Union[Dict[str, int], TokenUsage] = field(default_factory=dict)
+    usage: dict[str, int] | TokenUsage = field(default_factory=dict)
     model: str = ""
     finish_reason: str = ""
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class LLMConfig:
     """LLM配置"""
 
-    provider: Union[LLMProvider, str]
+    provider: LLMProvider | str
     model: str
-    api_key: Optional[str] = None
-    base_url: Optional[str] = None
+    api_key: str | None = None
+    base_url: str | None = None
     temperature: float = 0.7
     max_tokens: int = 1000
-    timeout: Union[float, Dict[str, float]] = 30.0
-    retry: Dict[str, Any] = field(default_factory=dict)
+    timeout: float | dict[str, float] = 30.0
+    retry: dict[str, Any] = field(default_factory=dict)
     stream: bool = False
-    extra_params: Dict[str, Any] = field(default_factory=dict)
-    provider_name: Optional[str] = None  # 用于显示的用户友好提供商名称
+    extra_params: dict[str, Any] = field(default_factory=dict)
+    provider_name: str | None = None  # 用于显示的用户友好提供商名称
 
     # 兼容性字段
     retry_attempts: int = 3
@@ -83,7 +83,7 @@ class LLMConfig:
                 return LLMProvider.OPENAI
 
     @classmethod
-    def from_dict(cls, config_dict: Dict[str, Any]) -> "LLMConfig":
+    def from_dict(cls, config_dict: dict[str, Any]) -> "LLMConfig":
         """Create LLMConfig from dictionary."""
         provider_str = config_dict.get("provider", "openai")
         provider = cls._parse_provider(provider_str)
@@ -121,7 +121,7 @@ class LLMConfig:
             stream=os.getenv("LLM_STREAM", "false").lower() == "true",
         )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert LLMConfig to dictionary."""
         provider_val = (
             self.provider.value

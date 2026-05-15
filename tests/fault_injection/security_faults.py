@@ -5,13 +5,13 @@ Provides convenient factory functions for common security failure patterns
 that can be used directly as mock side_effects.
 """
 
-from typing import Any, Callable, Dict, Optional, Tuple
+from collections.abc import Callable
+from typing import Any
 
 from src.core.common.exceptions import SecurityError
 from src.core.security.manager import ValidationResponse, ValidationResult
 
-from .base import FaultConfig, FaultInjector, build_side_effect
-
+from .base import build_side_effect
 
 # ── Validation faults ──────────────────────────────────────────────
 

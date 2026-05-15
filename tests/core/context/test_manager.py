@@ -1,7 +1,9 @@
-import pytest
 from datetime import datetime
+
+import pytest
+from langchain_core.messages import AIMessage, HumanMessage
+
 from src.core.context.manager import ConversationContext, ConversationTurn
-from langchain_core.messages import HumanMessage, AIMessage
 
 
 class TestConversationContext:

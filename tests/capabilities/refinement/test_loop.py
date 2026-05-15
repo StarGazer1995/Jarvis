@@ -1,5 +1,7 @@
+from unittest.mock import AsyncMock, mock_open, patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, mock_open
+
 from src.capabilities.refinement.loop import RefinementLoop
 
 

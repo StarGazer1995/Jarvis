@@ -4,16 +4,16 @@
 这个模块负责管理系统提示词、对话模板和上下文构建。
 """
 
-import logging
 import json
-from typing import Dict, List, Any, Optional
+import logging
 from datetime import datetime
+from typing import Any
 
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.prompts import (
     ChatPromptTemplate,
     SystemMessagePromptTemplate,
 )
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 
 
 class PromptManager:
@@ -21,7 +21,7 @@ class PromptManager:
 
     def __init__(self):
         """初始化提示词管理器"""
-        self.templates: Dict[str, ChatPromptTemplate] = {}
+        self.templates: dict[str, ChatPromptTemplate] = {}
         self.logger = logging.getLogger("prompt.manager")
         self.load_default_templates()
 
@@ -418,7 +418,7 @@ You MUST output your response in the following JSON format:
         self.templates[name] = template
         self.logger.info(f"添加提示词模板: {name}")
 
-    def get_template(self, name: str) -> Optional[ChatPromptTemplate]:
+    def get_template(self, name: str) -> ChatPromptTemplate | None:
         """
         获取提示词模板
 
@@ -430,7 +430,7 @@ You MUST output your response in the following JSON format:
         """
         return self.templates.get(name)
 
-    def render_template(self, name: str, **kwargs) -> List[BaseMessage]:
+    def render_template(self, name: str, **kwargs) -> list[BaseMessage]:
         """
         渲染提示词模板
 
@@ -458,11 +458,11 @@ You MUST output your response in the following JSON format:
     def build_conversation_messages(
         self,
         user_input: str,
-        conversation_history: List[Dict[str, str]],
-        system_context: Dict[str, Any],
-        intent_info: Optional[Dict[str, Any]] = None,
-        tool_results: Optional[List[Dict[str, Any]]] = None,
-    ) -> List[BaseMessage]:
+        conversation_history: list[dict[str, str]],
+        system_context: dict[str, Any],
+        intent_info: dict[str, Any] | None = None,
+        tool_results: list[dict[str, Any]] | None = None,
+    ) -> list[BaseMessage]:
         """
         构建对话消息列表
 
@@ -507,7 +507,7 @@ You MUST output your response in the following JSON format:
         return messages
 
     def build_tool_usage_prompt(
-        self, user_input: str, intent: str, available_tools: List[Dict[str, Any]]
+        self, user_input: str, intent: str, available_tools: list[dict[str, Any]]
     ) -> str:
         """
         构建工具使用决策提示词
@@ -540,9 +540,9 @@ You MUST output your response in the following JSON format:
         user_input: str,
         intent: str,
         confidence: float,
-        entities: List[Dict[str, Any]],
-        tool_results: List[Dict[str, Any]],
-        context: Dict[str, Any],
+        entities: list[dict[str, Any]],
+        tool_results: list[dict[str, Any]],
+        context: dict[str, Any],
     ) -> str:
         """
         构建响应生成提示词
@@ -583,5 +583,5 @@ You MUST output your response in the following JSON format:
         )
         return messages[0].content
 
-    def list_templates(self) -> List[str]:
+    def list_templates(self) -> list[str]:
         return list(self.templates.keys())

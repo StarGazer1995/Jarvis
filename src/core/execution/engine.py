@@ -15,8 +15,9 @@ Supports:
 import asyncio
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -29,9 +30,9 @@ class ToolCall:
     """A single tool call request with optional dependency info."""
 
     name: str
-    arguments: Dict[str, Any]
+    arguments: dict[str, Any]
     id: str = ""
-    depends_on: List[str] = field(default_factory=list)
+    depends_on: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -41,7 +42,7 @@ class ExecutionNode:
     tool_call: ToolCall
     deps_remaining: int = 0  # Count of unmet dependencies
     result: Any = None
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class ExecutionGraph:
@@ -52,14 +53,14 @@ class ExecutionGraph:
     tool(s) it depends on via the ``depends_on`` field.
     """
 
-    def __init__(self, tool_calls: List[ToolCall]):
+    def __init__(self, tool_calls: list[ToolCall]):
         self.tool_calls = tool_calls
-        self.nodes: Dict[str, ExecutionNode] = {}
+        self.nodes: dict[str, ExecutionNode] = {}
         self._build()
 
     def _build(self):
         """Build the execution graph and validate dependencies."""
-        name_counts: Dict[str, int] = {}
+        name_counts: dict[str, int] = {}
 
         # Create nodes, assign IDs if missing
         for tc in self.tool_calls:
@@ -88,7 +89,7 @@ class ExecutionGraph:
         for tid, node in self.nodes.items():
             node.deps_remaining = len(node.tool_call.depends_on)
 
-    def get_ready_tools(self, completed: set) -> List[str]:
+    def get_ready_tools(self, completed: set) -> list[str]:
         """Get tool IDs whose dependencies are all satisfied."""
         ready = []
         for tid, node in self.nodes.items():
@@ -109,10 +110,10 @@ class ExecutionPlan:
     grouped into parallel batches.
     """
 
-    def __init__(self, tool_calls: List[ToolCall]):
+    def __init__(self, tool_calls: list[ToolCall]):
         self.graph = ExecutionGraph(tool_calls)
 
-    def resolve(self) -> List[List[str]]:
+    def resolve(self) -> list[list[str]]:
         """
         Resolve the execution plan into batches.
 
@@ -121,7 +122,7 @@ class ExecutionPlan:
             that can be executed in parallel.
         """
         completed: set = set()
-        batches: List[List[str]] = []
+        batches: list[list[str]] = []
 
         # Guard: empty input
         if not self.graph.tool_calls:
@@ -157,7 +158,7 @@ class ParallelExecutor:
 
     def __init__(
         self,
-        execute_fn: Callable[[str, Dict[str, Any]], Any],
+        execute_fn: Callable[[str, dict[str, Any]], Any],
     ):
         """
         Args:
@@ -168,9 +169,9 @@ class ParallelExecutor:
 
     async def run(
         self,
-        tool_calls: List[ToolCall],
-        shared_context: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        tool_calls: list[ToolCall],
+        shared_context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """
         Execute tool calls respecting dependencies.
 
@@ -186,8 +187,8 @@ class ParallelExecutor:
 
         plan = ExecutionPlan(tool_calls)
         batches = plan.resolve()
-        results: Dict[str, Any] = {}
-        errors: Dict[str, str] = {}
+        results: dict[str, Any] = {}
+        errors: dict[str, str] = {}
 
         for batch_idx, batch in enumerate(batches):
             logger.info(
@@ -222,9 +223,9 @@ class ParallelExecutor:
 
     def _resolve_refs(
         self,
-        args: Dict[str, Any],
-        results: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        args: dict[str, Any],
+        results: dict[str, Any],
+    ) -> dict[str, Any]:
         """Replace $ref{tool_name} references with actual results."""
         resolved = {}
         for key, value in args.items():
@@ -245,7 +246,7 @@ class ParallelExecutor:
         return resolved
 
     @staticmethod
-    def _lookup_ref(ref: str, results: Dict[str, Any]) -> str:
+    def _lookup_ref(ref: str, results: dict[str, Any]) -> str:
         """Look up a reference like ``tool_name`` or ``tool_name.field``."""
         if "." in ref:
             tool_id, field = ref.split(".", 1)

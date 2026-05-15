@@ -1,7 +1,10 @@
 import inspect
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Dict, Any, Union
+from typing import Any
+
 from langchain_core.messages import BaseMessage, HumanMessage
+
 from src.core.ark.state import MultiAgentState
 
 
@@ -13,19 +16,19 @@ class AgentSpec:
 
     name: str
     description: str
-    node: Callable[[MultiAgentState], Dict[str, Any]]
+    node: Callable[[MultiAgentState], dict[str, Any]]
 
 
 def create_agent_node(
     agent_name: str,
-    agent_func: Callable[[MultiAgentState], Union[Dict, str, BaseMessage]],
+    agent_func: Callable[[MultiAgentState], dict | str | BaseMessage],
 ):
     """
     Helper to wrap a simple function into a Protocol-Compliant Node.
     Ensures the output is correctly formatted as a message tagged with the agent's name.
     """
 
-    async def agent_node(state: MultiAgentState) -> Dict[str, Any]:
+    async def agent_node(state: MultiAgentState) -> dict[str, Any]:
         result = agent_func(state)
         if inspect.isawaitable(result):
             result = await result

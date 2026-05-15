@@ -4,30 +4,31 @@ This file combines tests from test_server_config.py, test_server_config_coverage
 and test_server_config_edge_cases.py with API compatibility fixes.
 """
 
-import pytest
-import tempfile
-import os
-import json
-import yaml
 import asyncio
+import json
+import os
+import tempfile
 import unittest.mock
-from unittest.mock import patch
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+import yaml
 
 from src.core.config.server import (
-    ServerType,
-    ServerStatus,
+    ARKServerConfigManager,
     AuthType,
+    EnvironmentConfigProvider,
+    FileConfigProvider,
     MCPServerConfig,
-    SimpleMCPServerConfig,
     ServerCredentials,
     ServerHealthCheck,
     ServerLimits,
     ServerMetrics,
-    FileConfigProvider,
-    EnvironmentConfigProvider,
-    ARKServerConfigManager,
+    ServerStatus,
+    ServerType,
+    SimpleMCPServerConfig,
 )
 
 
@@ -436,7 +437,7 @@ class TestFileConfigProvider:
         assert result is True
 
         # Verify file content
-        with open(temp_config_file, "r") as f:
+        with open(temp_config_file) as f:
             data = json.load(f)
 
         assert len(data["servers"]) == 1
@@ -458,7 +459,7 @@ class TestFileConfigProvider:
         assert result is True
 
         # Verify file content
-        with open(yaml_file, "r") as f:
+        with open(yaml_file) as f:
             data = yaml.safe_load(f)
 
         assert len(data["servers"]) == 1
@@ -518,7 +519,7 @@ class TestFileConfigProvider:
         assert result is True
 
         # Verify file content
-        with open(temp_config_file, "r") as f:
+        with open(temp_config_file) as f:
             data = json.load(f)
 
         assert len(data["servers"]) == 2
@@ -579,7 +580,7 @@ class TestFileConfigProvider:
         assert result is True
 
         # Verify file content
-        with open(temp_config_file, "r") as f:
+        with open(temp_config_file) as f:
             data = json.load(f)
 
         assert len(data["servers"]) == 1
@@ -628,7 +629,7 @@ class TestFileConfigProvider:
         assert result is True
 
         # Verify file content
-        with open(yaml_file, "r") as f:
+        with open(yaml_file) as f:
             data = yaml.safe_load(f)
 
         assert len(data["servers"]) == 0

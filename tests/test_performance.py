@@ -8,21 +8,15 @@ using pytest-benchmark. Run with:
     uv run pytest tests/test_performance.py --benchmark-compare  # compare with saved
 """
 
-import time
 from unittest.mock import AsyncMock
 
-import pytest
-
-from src.core.llm.utils.retry_handler import RetryHandler
-from src.core.llm.utils.error_handler import LLMAPIError, LLMTimeoutError
 from src.core.llm.types import LLMResponse
-
+from src.core.llm.utils.error_handler import LLMAPIError, LLMTimeoutError
+from src.core.llm.utils.retry_handler import RetryHandler
 from tests.fault_injection import FaultConfig, FaultInjector
 from tests.fault_injection.llm_faults import (
     llm_timeout_then_succeed,
-    llm_timeout,
 )
-
 
 # ═══════════════════════════════════════════════════════════════════
 # 1. FaultInjector Overhead
@@ -278,7 +272,7 @@ class TestSchemaValidationBenchmarks:
 
     def test_validate_full_config(self, benchmark):
         """Time to validate a complete provider configuration through Pydantic."""
-        from src.core.config.schema import ProviderConfigSchema, ModelConfigSchema
+        from src.core.config.schema import ModelConfigSchema, ProviderConfigSchema
 
         def run():
             return ProviderConfigSchema(
@@ -301,7 +295,7 @@ class TestSchemaValidationBenchmarks:
 
     def test_validate_faulty_config_overhead(self, benchmark):
         """Time to reject an invalid config (failure path)."""
-        from src.core.config.schema import ProviderConfigSchema, ModelConfigSchema
+        from src.core.config.schema import ModelConfigSchema, ProviderConfigSchema
 
         def run():
             try:
@@ -320,8 +314,8 @@ class TestSchemaValidationBenchmarks:
 
     def test_validate_config_dict_overhead(self, benchmark):
         """Time for the full validate_config_dict bridge function."""
+        from src.core.config.loader import ModelConfig, ProviderConfig
         from src.core.config.schema import validate_config_dict
-        from src.core.config.loader import ProviderConfig, ModelConfig
 
         provider = ProviderConfig(
             type="openai",

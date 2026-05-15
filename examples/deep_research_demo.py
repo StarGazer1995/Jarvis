@@ -3,9 +3,9 @@ Deep Research Demo
 """
 
 import asyncio
+import logging
 import os
 import sys
-import logging
 
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

@@ -17,34 +17,31 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from src.core.llm.utils.retry_handler import (
-    RetryHandler,
-    RateLimitHandler,
-    with_retry,
-)
+from src.core.llm.types import LLMResponse
 from src.core.llm.utils.error_handler import (
-    LLMError,
     LLMAPIError,
-    LLMRateLimitError,
-    LLMTimeoutError,
     LLMAuthenticationError,
     LLMConfigurationError,
+    LLMError,
+    LLMRateLimitError,
+    LLMTimeoutError,
 )
-from src.core.llm.types import LLMResponse
-
+from src.core.llm.utils.retry_handler import (
+    RateLimitHandler,
+    RetryHandler,
+    with_retry,
+)
 from tests.fault_injection import FaultConfig, FaultInjector
 from tests.fault_injection.llm_faults import (
-    llm_timeout_then_succeed,
-    llm_rate_limit_then_succeed,
-    llm_api_error_then_succeed,
-    mixed_llm_faults,
-    llm_timeout,
-    llm_rate_limit,
     llm_api_error,
     llm_auth_error,
     llm_config_error,
+    llm_rate_limit,
+    llm_rate_limit_then_succeed,
+    llm_timeout,
+    llm_timeout_then_succeed,
+    mixed_llm_faults,
 )
-
 
 # ═══════════════════════════════════════════════════════════════════
 # 1. FaultInjector Unit Tests
@@ -368,7 +365,7 @@ class TestErrorHandlerFaultInjection:
 
     def test_handle_generic_error(self):
         """handle_openai_error should wrap unknown errors as generic LLMError."""
-        from src.core.llm.utils.error_handler import handle_openai_error, LLMError
+        from src.core.llm.utils.error_handler import handle_openai_error
 
         generic = ValueError("something broke")
         result = handle_openai_error(generic)
@@ -377,7 +374,7 @@ class TestErrorHandlerFaultInjection:
 
     def test_handle_llm_error_passthrough(self):
         """handle_openai_error should pass through LLMError instances unchanged."""
-        from src.core.llm.utils.error_handler import handle_openai_error, LLMError
+        from src.core.llm.utils.error_handler import handle_openai_error
 
         original = LLMError("Already formatted error")
         result = handle_openai_error(original)
@@ -402,8 +399,8 @@ class TestErrorHandlerFaultInjection:
     def test_handle_openai_timeout_error(self):
         """handle_openai_error should convert timeout errors."""
         from src.core.llm.utils.error_handler import (
-            handle_openai_error,
             LLMTimeoutError,
+            handle_openai_error,
         )
 
         try:
@@ -418,7 +415,7 @@ class TestErrorHandlerFaultInjection:
 
     def test_handle_generic_error(self):
         """handle_openai_error should wrap unknown errors as generic LLMError."""
-        from src.core.llm.utils.error_handler import handle_openai_error, LLMError
+        from src.core.llm.utils.error_handler import handle_openai_error
 
         generic = ValueError("something broke")
         result = handle_openai_error(generic)
@@ -439,7 +436,8 @@ class TestLLMManagerFallbackFaultInjection:
         """LLMManager should try fallback providers when primary fails."""
         try:
             from src.core.llm.manager import LLMManager
-            from src.core.llm.types import LLMConfig, LLMProvider, LLMMessage
+
+            from src.core.llm.types import LLMConfig, LLMMessage, LLMProvider
         except ImportError:
             pytest.skip("LLMManager not available")
 

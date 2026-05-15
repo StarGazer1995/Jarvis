@@ -5,10 +5,10 @@ This module provides configuration management for LLM integration in the ARK eng
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Any
 
+from .types import LLMConfig, LLMProvider
 
-from .types import LLMProvider, LLMConfig
 # Import for type checking or lazy loading to avoid circular imports if any
 # from ..config.loader import LLMConfig as YamlLLMConfig, ModelConfig
 
@@ -20,9 +20,9 @@ class LLMConfigManager:
 
     def __init__(self):
         """Initialize LLM configuration manager."""
-        self._config: Optional[LLMConfig] = None
+        self._config: LLMConfig | None = None
 
-    def load_config(self, config_source: Optional[Dict[str, Any]] = None) -> LLMConfig:
+    def load_config(self, config_source: dict[str, Any] | None = None) -> LLMConfig:
         """
         Load LLM configuration from various sources.
 
@@ -40,7 +40,7 @@ class LLMConfigManager:
 
         return self._config
 
-    def get_config(self) -> Optional[LLMConfig]:
+    def get_config(self) -> LLMConfig | None:
         """Get current LLM configuration."""
         return self._config
 
@@ -65,7 +65,7 @@ class LLMConfigManager:
         # Mock provider removed
         return True
 
-    def get_provider_info(self) -> Dict[str, Any]:
+    def get_provider_info(self) -> dict[str, Any]:
         """Get information about the current provider."""
         if self._config is None:
             return {"provider": "none", "configured": False}
@@ -83,12 +83,12 @@ class LLMConfigManager:
 llm_config_manager = LLMConfigManager()
 
 
-def get_llm_config() -> Optional[LLMConfig]:
+def get_llm_config() -> LLMConfig | None:
     """Get global LLM configuration."""
     return llm_config_manager.get_config()
 
 
-def load_llm_config(config_source: Optional[Dict[str, Any]] = None) -> LLMConfig:
+def load_llm_config(config_source: dict[str, Any] | None = None) -> LLMConfig:
     """Load global LLM configuration."""
     return llm_config_manager.load_config(config_source)
 

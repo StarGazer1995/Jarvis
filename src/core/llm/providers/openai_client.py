@@ -5,7 +5,8 @@ OpenAI LLM客户端实现
 """
 
 import time
-from typing import List, Dict, Any, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Any
 
 from ..client import BaseLLMClient, LLMMessage, LLMResponse
 from ..types import LLMConfig
@@ -14,7 +15,7 @@ from ..utils.error_handler import (
     handle_openai_error,
     log_llm_error,
 )
-from ..utils.retry_handler import llm_retry, RateLimitHandler
+from ..utils.retry_handler import RateLimitHandler, llm_retry
 
 
 class OpenAILLMClient(BaseLLMClient):
@@ -59,8 +60,8 @@ class OpenAILLMClient(BaseLLMClient):
 
             # 导入OpenAI库和httpx
             try:
-                import openai
                 import httpx
+                import openai
             except ImportError:
                 raise LLMConfigurationError(
                     "OpenAI或httpx库未安装，请运行: uv add openai httpx"
@@ -148,7 +149,7 @@ class OpenAILLMClient(BaseLLMClient):
 
     @llm_retry
     async def generate_response(
-        self, messages: List[LLMMessage], **kwargs
+        self, messages: list[LLMMessage], **kwargs
     ) -> LLMResponse:
         """
         生成OpenAI响应
@@ -208,7 +209,7 @@ class OpenAILLMClient(BaseLLMClient):
 
     @llm_retry
     async def stream_response(
-        self, messages: List[LLMMessage], **kwargs
+        self, messages: list[LLMMessage], **kwargs
     ) -> AsyncGenerator[str, None]:
         """
         流式生成OpenAI响应
@@ -284,8 +285,8 @@ class OpenAILLMClient(BaseLLMClient):
             raise error
 
     def _convert_messages_to_openai(
-        self, messages: List[LLMMessage]
-    ) -> List[Dict[str, str]]:
+        self, messages: list[LLMMessage]
+    ) -> list[dict[str, str]]:
         """
         将LLMMessage转换为OpenAI格式
 
@@ -302,8 +303,8 @@ class OpenAILLMClient(BaseLLMClient):
         return openai_messages
 
     def _prepare_request_params(
-        self, messages: List[Dict[str, str]], **kwargs
-    ) -> Dict[str, Any]:
+        self, messages: list[dict[str, str]], **kwargs
+    ) -> dict[str, Any]:
         """
         准备OpenAI请求参数
 
@@ -386,7 +387,7 @@ class OpenAILLMClient(BaseLLMClient):
             f"运行时间: {duration:.2f}s"
         )
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         获取客户端统计信息
 

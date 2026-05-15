@@ -5,30 +5,21 @@ Provides fixtures that make it easy to set up fault scenarios
 across all layers of the ARK engine.
 """
 
-from typing import Any, Dict, List, Optional
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 
 import pytest
 
-from src.core.common.exceptions import MCPError, SecurityError, ToolError
+from src.core.common.exceptions import MCPError
 from src.core.llm.types import LLMResponse
-from src.core.llm.utils.error_handler import (
-    LLMAPIError,
-    LLMRateLimitError,
-    LLMTimeoutError,
-)
 from src.core.security.manager import ValidationResponse, ValidationResult
 
-from .base import FaultConfig, FaultInjector, FaultPattern
 from .llm_faults import (
-    llm_timeout_then_succeed,
     llm_rate_limit_then_succeed,
-    llm_api_error_then_succeed,
+    llm_timeout_then_succeed,
     mixed_llm_faults,
 )
-from .mcp_faults import mcp_then_succeed, mcp_cascading_failure
+from .mcp_faults import mcp_cascading_failure, mcp_then_succeed
 from .security_faults import security_then_succeed
-
 
 # ── LLM fault injection fixtures ───────────────────────────────────
 

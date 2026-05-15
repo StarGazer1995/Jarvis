@@ -4,9 +4,9 @@
 # It sets up the engine, configures the LLM client, and processes a user request with real-time streaming output to the console.
 
 import asyncio
-import sys
-import os
 import logging
+import os
+import sys
 
 # Add project root to path
 sys.path.append(os.getcwd())

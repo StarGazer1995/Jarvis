@@ -12,30 +12,24 @@ scenarios using the FaultInjector framework. Covers:
 """
 
 import time
-from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
 from src.core.common.exceptions import SecurityError
 from src.core.security.manager import (
     ARKSecurityManager,
-    SecurityLevel,
+    AuditLogger,
+    InputValidator,
     PermissionType,
-    ValidationResult,
+    SecurityContext,
     ValidationRequest,
     ValidationResponse,
-    SecurityContext,
-    SecurityPolicy,
-    RateLimiter,
-    InputValidator,
-    AuditLogger,
+    ValidationResult,
 )
-
-from tests.fault_injection import FaultConfig, FaultInjector
 from tests.fault_injection.security_faults import (
-    rate_limit_exceeded,
-    permission_denied,
     input_validation_failed,
+    permission_denied,
+    rate_limit_exceeded,
     requires_approval,
     security_audit_failure,
     security_then_succeed,

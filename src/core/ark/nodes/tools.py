@@ -1,12 +1,12 @@
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
 
-from ...mcp.client import ARKMCPClient
 from ...execution.engine import ParallelExecutor, ToolCall
+from ...mcp.client import ARKMCPClient
 from ..state import JarvisState
 from ..tasks import execute_manage_tasks
 
@@ -46,7 +46,7 @@ class ToolsNode:
         self,
         name: str,
         args: Any,
-        updated_todo_list: Optional[List[Dict[str, Any]]] = None,
+        updated_todo_list: list[dict[str, Any]] | None = None,
     ) -> Any:
         if name == "manage_tasks":
             if updated_todo_list is None:
@@ -82,7 +82,7 @@ class ToolsNode:
         updated_todo_list = [t.copy() for t in state.get("todo_list", [])]
 
         # Convert to ToolCall objects, extracting dependency info from args
-        tool_calls: List[ToolCall] = []
+        tool_calls: list[ToolCall] = []
         for tc in tool_calls_data:
             name = tc["name"]
             args = tc.get("args", {})
@@ -140,9 +140,9 @@ class ToolsNode:
 
     async def _run_sequential(
         self,
-        tool_calls: List[ToolCall],
-        updated_todo_list: List[Dict[str, Any]],
-    ) -> Dict[str, Any]:
+        tool_calls: list[ToolCall],
+        updated_todo_list: list[dict[str, Any]],
+    ) -> dict[str, Any]:
         """Fallback: execute tool calls one at a time."""
         results = {}
         for tc in tool_calls:
@@ -157,7 +157,7 @@ class ToolsNode:
         return results
 
     @staticmethod
-    def _extract_depends_on(args: Dict[str, Any]) -> List[str]:
+    def _extract_depends_on(args: dict[str, Any]) -> list[str]:
         """Extract dependency list from tool arguments if annotated."""
         # The LLM can annotate dependencies via a special _depends_on key
         # which is stripped before passing to the actual tool.

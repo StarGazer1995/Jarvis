@@ -1,4 +1,5 @@
 from unittest.mock import Mock
+
 from src.core.ark.nodes.master import MasterNode
 from src.core.llm.client import LLMManager
 

@@ -9,11 +9,9 @@ All models mirror the dataclasses in loader.py but add runtime validation.
 """
 
 import re
-from typing import Dict, List, Optional, Set
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing_extensions import Self
-
 
 # ── Constants ──────────────────────────────────────────────────────
 
@@ -92,7 +90,7 @@ class ModelConfigSchema(BaseModel):
     top_p: float = Field(default=1.0, ge=0.0, le=1.0)
     frequency_penalty: float = Field(default=0.0, ge=-2.0, le=2.0)
     presence_penalty: float = Field(default=0.0, ge=-2.0, le=2.0)
-    deployment_name: Optional[str] = None
+    deployment_name: str | None = None
     response_delay: float = Field(default=0.0, ge=0.0, le=60.0)
 
 
@@ -104,16 +102,16 @@ class ProviderConfigSchema(BaseModel):
 
     type: str = "openai"
     enabled: bool = True
-    api_key: Optional[str] = None
-    base_url: Optional[str] = None
+    api_key: str | None = None
+    base_url: str | None = None
     default_model: str = "gpt-4"
-    models: Dict[str, ModelConfigSchema] = Field(default_factory=dict)
-    retry: Optional[RetryConfigSchema] = None
-    timeout: Optional[TimeoutConfigSchema] = None
-    rate_limit: Optional[RateLimitConfigSchema] = None
-    azure_endpoint: Optional[str] = None
-    api_version: Optional[str] = None
-    organization: Optional[str] = None
+    models: dict[str, ModelConfigSchema] = Field(default_factory=dict)
+    retry: RetryConfigSchema | None = None
+    timeout: TimeoutConfigSchema | None = None
+    rate_limit: RateLimitConfigSchema | None = None
+    azure_endpoint: str | None = None
+    api_version: str | None = None
+    organization: str | None = None
 
     @field_validator("type")
     @classmethod
@@ -125,14 +123,14 @@ class ProviderConfigSchema(BaseModel):
 
     @field_validator("base_url")
     @classmethod
-    def validate_base_url(cls, v: Optional[str]) -> Optional[str]:
+    def validate_base_url(cls, v: str | None) -> str | None:
         if v is not None and v.strip() and not URL_PATTERN.match(v):
             raise ValueError(f"Invalid URL format: '{v}'")
         return v if (v and v.strip()) else None
 
     @field_validator("azure_endpoint")
     @classmethod
-    def validate_azure_endpoint(cls, v: Optional[str]) -> Optional[str]:
+    def validate_azure_endpoint(cls, v: str | None) -> str | None:
         if v is not None and v.strip() and not URL_PATTERN.match(v):
             raise ValueError(f"Invalid Azure endpoint URL: '{v}'")
         return v if (v and v.strip()) else None
@@ -154,7 +152,7 @@ class GlobalConfigSchema(BaseModel):
     """Validated global configuration."""
 
     default_provider: str = "openai"
-    fallback_providers: List[str] = Field(default_factory=list)
+    fallback_providers: list[str] = Field(default_factory=list)
     retry: RetryConfigSchema = Field(default_factory=RetryConfigSchema)
     timeout: TimeoutConfigSchema = Field(default_factory=TimeoutConfigSchema)
     log_level: str = "INFO"
@@ -191,7 +189,7 @@ class LLMConfigSchema(BaseModel):
     """Complete validated LLM configuration."""
 
     global_config: GlobalConfigSchema
-    providers: Dict[str, ProviderConfigSchema]
+    providers: dict[str, ProviderConfigSchema]
     features: FeatureConfigSchema = Field(default_factory=FeatureConfigSchema)
     environment: str = "development"
 
@@ -243,8 +241,8 @@ class ValidationResult:
 
     def __init__(self, is_valid: bool = True):
         self.is_valid = is_valid
-        self.errors: List[str] = []
-        self.warnings: List[str] = []
+        self.errors: list[str] = []
+        self.warnings: list[str] = []
 
     def add_error(self, message: str) -> None:
         self.is_valid = False

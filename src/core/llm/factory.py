@@ -9,11 +9,11 @@ LLM提供商工厂模式
 - 多环境支持
 """
 
-import logging
 import asyncio
-from typing import Dict, Optional, Type, Any, List
+import logging
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 from ..config.loader import LLMConfig, ProviderConfig, load_llm_config
 from .client import BaseLLMClient
@@ -43,7 +43,7 @@ class ProviderInfo:
 
     name: str
     type: ProviderType
-    client_class: Type[BaseLLMClient]
+    client_class: type[BaseLLMClient]
     enabled: bool
     config: ProviderConfig
 
@@ -53,7 +53,7 @@ class LLMProviderRegistry:
 
     def __init__(self):
         """初始化提供商注册表"""
-        self._providers: Dict[str, Type[BaseLLMClient]] = {}
+        self._providers: dict[str, type[BaseLLMClient]] = {}
         self._register_builtin_providers()
 
     def _register_builtin_providers(self) -> None:
@@ -66,7 +66,7 @@ class LLMProviderRegistry:
 
         logger.info(f"已注册 {len(self._providers)} 个内置提供商")
 
-    def register_provider(self, name: str, client_class: Type[BaseLLMClient]) -> None:
+    def register_provider(self, name: str, client_class: type[BaseLLMClient]) -> None:
         """
         注册LLM提供商
 
@@ -91,7 +91,7 @@ class LLMProviderRegistry:
             del self._providers[name]
             logger.debug(f"注销提供商: {name}")
 
-    def get_provider_class(self, name: str) -> Optional[Type[BaseLLMClient]]:
+    def get_provider_class(self, name: str) -> type[BaseLLMClient] | None:
         """
         获取提供商客户端类
 
@@ -103,7 +103,7 @@ class LLMProviderRegistry:
         """
         return self._providers.get(name)
 
-    def list_providers(self) -> List[str]:
+    def list_providers(self) -> list[str]:
         """获取所有已注册的提供商名称"""
         return list(self._providers.keys())
 
@@ -115,7 +115,7 @@ class LLMProviderRegistry:
 class LLMProviderFactory:
     """LLM提供商工厂"""
 
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(self, config_path: str | None = None):
         """
         初始化LLM提供商工厂
 
@@ -124,14 +124,14 @@ class LLMProviderFactory:
         """
         self.config_path = config_path
         self.registry = LLMProviderRegistry()
-        self._config: Optional[LLMConfig] = None
-        self._client_pool: Dict[str, BaseLLMClient] = {}
-        self._initialized_providers: Dict[str, bool] = {}
+        self._config: LLMConfig | None = None
+        self._client_pool: dict[str, BaseLLMClient] = {}
+        self._initialized_providers: dict[str, bool] = {}
 
         logger.info("LLM提供商工厂初始化完成")
 
     def load_config(
-        self, environment: Optional[str] = None, reload: bool = False
+        self, environment: str | None = None, reload: bool = False
     ) -> LLMConfig:
         """
         加载配置
@@ -156,7 +156,7 @@ class LLMProviderFactory:
 
         return self._config
 
-    def get_default_provider(self, environment: Optional[str] = None) -> BaseLLMClient:
+    def get_default_provider(self, environment: str | None = None) -> BaseLLMClient:
         """
         获取默认LLM提供商客户端
 
@@ -172,7 +172,7 @@ class LLMProviderFactory:
         return self.get_provider(default_provider_name, environment)
 
     def get_provider(
-        self, provider_name: str, environment: Optional[str] = None
+        self, provider_name: str, environment: str | None = None
     ) -> BaseLLMClient:
         """
         获取指定的LLM提供商客户端
@@ -288,7 +288,7 @@ class LLMProviderFactory:
         provider_name: str,
         provider_config: ProviderConfig,
         global_config: LLMConfig,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         准备提供商配置参数
 
@@ -353,8 +353,8 @@ class LLMProviderFactory:
         return config_dict
 
     def list_available_providers(
-        self, environment: Optional[str] = None
-    ) -> List[ProviderInfo]:
+        self, environment: str | None = None
+    ) -> list[ProviderInfo]:
         """
         获取所有可用的提供商信息
 
@@ -390,7 +390,7 @@ class LLMProviderFactory:
 
         return providers
 
-    def list_enabled_providers(self, environment: Optional[str] = None) -> List[str]:
+    def list_enabled_providers(self, environment: str | None = None) -> list[str]:
         """
         获取所有启用的提供商名称
 
@@ -409,8 +409,8 @@ class LLMProviderFactory:
         ]
 
     def get_provider_models(
-        self, provider_name: str, environment: Optional[str] = None
-    ) -> List[str]:
+        self, provider_name: str, environment: str | None = None
+    ) -> list[str]:
         """
         获取提供商支持的模型列表
 
@@ -430,7 +430,7 @@ class LLMProviderFactory:
         return list(provider_config.models.keys())
 
     def validate_provider_config(
-        self, provider_name: str, environment: Optional[str] = None
+        self, provider_name: str, environment: str | None = None
     ) -> bool:
         """
         验证提供商配置
@@ -482,7 +482,7 @@ class LLMProviderFactory:
             logger.error(f"验证提供商配置失败 '{provider_name}': {e}")
             return False
 
-    def reload_config(self, environment: Optional[str] = None) -> None:
+    def reload_config(self, environment: str | None = None) -> None:
         """
         重新加载配置
 
@@ -535,10 +535,10 @@ class LLMProviderFactory:
 
 
 # 全局工厂实例
-_factory: Optional[LLMProviderFactory] = None
+_factory: LLMProviderFactory | None = None
 
 
-def get_llm_factory(config_path: Optional[str] = None) -> LLMProviderFactory:
+def get_llm_factory(config_path: str | None = None) -> LLMProviderFactory:
     """
     获取全局LLM提供商工厂实例
 
@@ -555,9 +555,9 @@ def get_llm_factory(config_path: Optional[str] = None) -> LLMProviderFactory:
 
 
 def create_llm_client(
-    provider_name: Optional[str] = None,
-    environment: Optional[str] = None,
-    config_path: Optional[str] = None,
+    provider_name: str | None = None,
+    environment: str | None = None,
+    config_path: str | None = None,
 ) -> BaseLLMClient:
     """
     便捷函数：创建LLM客户端

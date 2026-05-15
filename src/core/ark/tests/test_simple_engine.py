@@ -1,9 +1,10 @@
 import unittest
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
+
+from src.core.agent.types import AgentState
 
 # Import from the new simple engine module
 from src.core.ark.simple_engine import SimpleARKEngine, TaskStatus
-from src.core.agent.types import AgentState
 
 
 class TestSimpleARKEngine(unittest.IsolatedAsyncioTestCase):

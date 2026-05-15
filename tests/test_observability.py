@@ -9,14 +9,11 @@ Covers:
 """
 
 import asyncio
-import json
-import time
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
 from src.core.observability import MetricsRegistry, ObservabilityServer
-
 
 # ═══════════════════════════════════════════════════════════════════
 # 1. MetricsRegistry — Metric Definitions
@@ -243,8 +240,8 @@ class TestMonitoredLLMClientObservability:
     @pytest.mark.asyncio
     async def test_successful_call_records_metrics(self):
         """A successful LLM call should increment counters and record latency."""
-        from src.core.llm.client import MonitoredLLMClient, BaseLLMClient
-        from src.core.llm.types import LLMConfig, LLMProvider, LLMMessage, LLMResponse
+        from src.core.llm.client import BaseLLMClient, MonitoredLLMClient
+        from src.core.llm.types import LLMConfig, LLMMessage, LLMProvider, LLMResponse
 
         # Create a mock client
         mock_inner = AsyncMock(spec=BaseLLMClient)
@@ -279,8 +276,8 @@ class TestMonitoredLLMClientObservability:
     @pytest.mark.asyncio
     async def test_failed_call_records_error_metric(self):
         """A failed LLM call should record error metrics."""
-        from src.core.llm.client import MonitoredLLMClient, BaseLLMClient
-        from src.core.llm.types import LLMConfig, LLMProvider, LLMMessage
+        from src.core.llm.client import BaseLLMClient, MonitoredLLMClient
+        from src.core.llm.types import LLMConfig, LLMMessage, LLMProvider
 
         mock_inner = AsyncMock(spec=BaseLLMClient)
         mock_inner.generate_response = AsyncMock(side_effect=ValueError("API error"))

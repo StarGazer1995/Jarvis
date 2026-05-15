@@ -1,4 +1,5 @@
-from typing import TypedDict, List, Dict, Any, Annotated
+from typing import Annotated, Any, TypedDict
+
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 
@@ -9,19 +10,19 @@ class JarvisState(TypedDict):
     """
 
     # Messages history, using add_messages reducer to append new messages
-    messages: Annotated[List[BaseMessage], add_messages]
+    messages: Annotated[list[BaseMessage], add_messages]
 
     # The original user input for the current turn
     user_input: str
 
     # Current todo list state (synced with ARK engine)
-    todo_list: List[Dict[str, Any]]
+    todo_list: list[dict[str, Any]]
 
     # Available tools definitions (for prompt injection)
-    available_tools: Dict[str, Any]
+    available_tools: dict[str, Any]
 
     # Intermediate reasoning steps or context
-    scratchpad: Dict[str, Any]
+    scratchpad: dict[str, Any]
 
     # The last node that executed (useful for routing)
     sender: str
@@ -36,4 +37,4 @@ class MultiAgentState(JarvisState):
     next: str
 
     # Shared structured data for inter-agent protocol
-    structured_data: Dict[str, Any]
+    structured_data: dict[str, Any]

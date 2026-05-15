@@ -1,15 +1,15 @@
-import os
-import logging
 import asyncio
+import logging
+import os
 from copy import deepcopy
-from typing import Dict, Any
+from typing import Any
 
-from src.jarvis_agent import JarvisAgent, JarvisConfig
 from src.core.agent.deep_research import DeepResearchAgent
-from src.core.config.server import SimpleMCPServerConfig
 from src.core.config.loader import load_llm_config
-from src.core.llm.config import convert_to_client_config
+from src.core.config.server import SimpleMCPServerConfig
 from src.core.llm.client import LLMManager
+from src.core.llm.config import convert_to_client_config
+from src.jarvis_agent import JarvisAgent, JarvisConfig
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ def get_llm_config(env: str = "production"):
 
 
 def _apply_user_settings(
-    client_config: Any, user_settings: Dict[str, Any] | None
+    client_config: Any, user_settings: dict[str, Any] | None
 ) -> Any:
     if client_config is None:
         return None
@@ -71,7 +71,7 @@ def _apply_user_settings(
 async def create_agent(
     agent_type: str = "jarvis",
     env: str = "production",
-    user_settings: Dict[str, Any] | None = None,
+    user_settings: dict[str, Any] | None = None,
 ) -> Any:
     """
     Factory function to create and initialize an agent.

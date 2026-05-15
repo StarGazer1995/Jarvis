@@ -6,10 +6,10 @@ LLM客户端模块
 
 import logging
 import time
-from typing import Dict, List, Optional, AsyncGenerator
 from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator
 
-from .types import LLMMessage, LLMResponse, LLMConfig, LLMProvider
+from .types import LLMConfig, LLMMessage, LLMProvider, LLMResponse
 from .utils.cache_manager import CacheManager
 from .utils.metrics_collector import global_metrics
 
@@ -45,7 +45,7 @@ class BaseLLMClient(ABC):
 
     @abstractmethod
     async def generate_response(
-        self, messages: List[LLMMessage], **kwargs
+        self, messages: list[LLMMessage], **kwargs
     ) -> LLMResponse:
         """
         生成响应
@@ -61,7 +61,7 @@ class BaseLLMClient(ABC):
 
     @abstractmethod
     async def stream_response(
-        self, messages: List[LLMMessage], **kwargs
+        self, messages: list[LLMMessage], **kwargs
     ) -> AsyncGenerator[str, None]:
         """
         流式生成响应
@@ -104,12 +104,12 @@ class LLMClientWrapper(BaseLLMClient):
         return result
 
     async def generate_response(
-        self, messages: List[LLMMessage], **kwargs
+        self, messages: list[LLMMessage], **kwargs
     ) -> LLMResponse:
         return await self.client.generate_response(messages, **kwargs)
 
     async def stream_response(
-        self, messages: List[LLMMessage], **kwargs
+        self, messages: list[LLMMessage], **kwargs
     ) -> AsyncGenerator[str, None]:
         async for chunk in self.client.stream_response(messages, **kwargs):
             yield chunk
@@ -122,13 +122,13 @@ class CachedLLMClient(LLMClientWrapper):
     """带缓存的LLM客户端包装器"""
 
     def __init__(
-        self, client: BaseLLMClient, cache_manager: Optional[CacheManager] = None
+        self, client: BaseLLMClient, cache_manager: CacheManager | None = None
     ):
         super().__init__(client)
         self._cache_manager = cache_manager or CacheManager()
 
     async def generate_response(
-        self, messages: List[LLMMessage], **kwargs
+        self, messages: list[LLMMessage], **kwargs
     ) -> LLMResponse:
         # 检查缓存
         cached = self._cache_manager.get(messages, **kwargs)
@@ -160,7 +160,7 @@ class MonitoredLLMClient(LLMClientWrapper):
             self._prometheus_available = False
 
     async def generate_response(
-        self, messages: List[LLMMessage], **kwargs
+        self, messages: list[LLMMessage], **kwargs
     ) -> LLMResponse:
         start_time = time.time()
         success = False
@@ -261,20 +261,20 @@ class LLMClientFactory:
 class LLMManager:
     """LLM管理器，负责管理多个LLM客户端"""
 
-    def __init__(self, default_config: Optional[LLMConfig] = None):
+    def __init__(self, default_config: LLMConfig | None = None):
         """
         初始化LLM管理器
 
         Args:
             default_config: 可选的默认LLM配置，如果提供将自动创建默认客户端
         """
-        self.clients: Dict[str, BaseLLMClient] = {}
-        self.default_client: Optional[str] = None
-        self.fallback_providers: List[str] = []
+        self.clients: dict[str, BaseLLMClient] = {}
+        self.default_client: str | None = None
+        self.fallback_providers: list[str] = []
         self.logger = logging.getLogger("llm.manager")
         self._default_config = default_config
 
-    def set_fallback_providers(self, providers: List[str]) -> None:
+    def set_fallback_providers(self, providers: list[str]) -> None:
         """
         设置降级提供商列表
 
@@ -327,7 +327,7 @@ class LLMManager:
         return await self.add_client("default", self._default_config)
 
     async def generate_response(
-        self, messages: List[LLMMessage], client_name: Optional[str] = None, **kwargs
+        self, messages: list[LLMMessage], client_name: str | None = None, **kwargs
     ) -> LLMResponse:
         """
         生成响应（支持自动降级）
@@ -373,7 +373,7 @@ class LLMManager:
             raise e
 
     async def stream_response(
-        self, messages: List[LLMMessage], client_name: Optional[str] = None, **kwargs
+        self, messages: list[LLMMessage], client_name: str | None = None, **kwargs
     ) -> AsyncGenerator[str, None]:
         """
         流式生成响应
@@ -395,7 +395,7 @@ class LLMManager:
         async for chunk in client.stream_response(messages, **kwargs):
             yield chunk
 
-    def get_available_clients(self) -> List[str]:
+    def get_available_clients(self) -> list[str]:
         """
         获取可用的客户端列表
 

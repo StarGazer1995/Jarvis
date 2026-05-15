@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import AsyncMock, patch
-from langchain_core.messages import HumanMessage, AIMessage
+
+from langchain_core.messages import AIMessage, HumanMessage
 
 from src.core.ark.engine import ARKEngine, ARKState
 

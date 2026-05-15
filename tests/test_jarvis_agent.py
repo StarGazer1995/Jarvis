@@ -4,12 +4,13 @@ Test module for Jarvis Agent functionality.
 This module contains comprehensive tests for the JarvisAgent class and its configuration.
 """
 
-import pytest
-from unittest.mock import Mock, patch, AsyncMock
 import dataclasses
+from unittest.mock import AsyncMock, Mock, patch
 
-from src.jarvis_agent import JarvisConfig, JarvisAgent
+import pytest
+
 from src.core.config.server import SimpleMCPServerConfig
+from src.jarvis_agent import JarvisAgent, JarvisConfig
 
 
 class TestJarvisConfig:
