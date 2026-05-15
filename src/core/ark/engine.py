@@ -84,6 +84,19 @@ class ARKEngine(ReActAgent):
         # Initialize performance tracking
         self._initialize_performance_metrics()
 
+        # Initialize Prometheus observability
+        try:
+            from ..observability import MetricsRegistry, observability_server
+
+            MetricsRegistry.init_engine_info()
+            self._metrics = MetricsRegistry
+            self._observability = observability_server
+            self._prometheus_available = True
+        except ImportError:
+            self._prometheus_available = False
+            self._metrics = None
+            self._observability = None
+
         self.ark_logger.info(
             "ARK engine initialized - Autonomous Reasoning Kernel ready"
         )
@@ -284,6 +297,18 @@ class ARKEngine(ReActAgent):
             "tool_success_rate": 0.0,
             "start_time": self._get_timestamp(),
         }
+
+    async def _start_observability(self) -> None:
+        """Start the Prometheus metrics server if not already running."""
+        if (
+            self._prometheus_available
+            and self._observability
+            and not self._observability.is_running
+        ):
+            try:
+                await self._observability.start()
+            except Exception as e:
+                self.ark_logger.warning(f"Failed to start observability server: {e}")
 
     def _get_timestamp(self) -> str:
         """Get current timestamp."""

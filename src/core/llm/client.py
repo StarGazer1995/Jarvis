@@ -144,10 +144,20 @@ class CachedLLMClient(LLMClientWrapper):
 
 
 class MonitoredLLMClient(LLMClientWrapper):
-    """带监控的LLM客户端包装器"""
+    """带监控的LLM客户端包装器
+
+    集成 MetricsCollector（内部指标）和 Prometheus（外部可观测性）。
+    """
 
     def __init__(self, client: BaseLLMClient):
         super().__init__(client)
+        self._prometheus_available = True
+        try:
+            from ..observability import MetricsRegistry
+
+            self._metrics = MetricsRegistry
+        except ImportError:
+            self._prometheus_available = False
 
     async def generate_response(
         self, messages: List[LLMMessage], **kwargs
@@ -155,14 +165,41 @@ class MonitoredLLMClient(LLMClientWrapper):
         start_time = time.time()
         success = False
         tokens = {}
+        provider = (
+            self.config.provider.value
+            if hasattr(self.config.provider, "value")
+            else str(self.config.provider)
+        )
+        model = self.config.model
+
+        if self._prometheus_available:
+            self._metrics.llm_in_flight.labels(provider=provider).inc()
+
         try:
             response = await self.client.generate_response(messages, **kwargs)
             success = True
             tokens = response.usage
             return response
+        except Exception as e:
+            if self._prometheus_available:
+                self._metrics.record_error("llm", type(e).__name__)
+            raise
         finally:
             latency = time.time() - start_time
             global_metrics.record_request(success, latency, tokens)
+
+            if self._prometheus_available:
+                self._metrics.llm_in_flight.labels(provider=provider).dec()
+                self._metrics.record_llm_call(
+                    provider=provider,
+                    model=model,
+                    status="success" if success else "error",
+                    latency=latency,
+                    prompt_tokens=tokens.get("prompt_tokens", 0) if tokens else 0,
+                    completion_tokens=tokens.get("completion_tokens", 0)
+                    if tokens
+                    else 0,
+                )
 
 
 class LLMClientFactory:
