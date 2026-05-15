@@ -108,15 +108,15 @@ async def main():
         """The reviewer validates the content."""
         reviewer_prompt = f"""
         You are a strict QA Reviewer. Validate the research report below.
-        
+
         Report:
         {content}
-        
+
         Check for:
         1. Coverage of BOTH 'OpenAI o1' AND 'Claude 3.5 Sonnet'.
         2. Specific pricing numbers for BOTH.
         3. Relevant source URLs listed.
-        
+
         Output "PASS" if good.
         Output "RETRY: <instructions>" if missing info.
         """

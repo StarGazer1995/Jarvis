@@ -275,90 +275,90 @@ You MUST output your response in the following JSON format:
     "instructions": "You may call one or more functions to assist with the user query.",
     "definitions": [
       {{
-        "type": "function", 
+        "type": "function",
         "function": {{
-          "name": "search", 
-          "description": "Perform Google web searches then returns a string of the top search results. Accepts multiple queries.", 
+          "name": "search",
+          "description": "Perform Google web searches then returns a string of the top search results. Accepts multiple queries.",
           "parameters": {{
-            "type": "object", 
+            "type": "object",
             "properties": {{
               "query": {{
-                "type": "array", 
-                "items": {{"type": "string", "description": "The search query."}}, 
-                "minItems": 1, 
+                "type": "array",
+                "items": {{"type": "string", "description": "The search query."}},
+                "minItems": 1,
                 "description": "The list of search queries."
               }}
-            }}, 
+            }},
             "required": ["query"]
           }}
         }}
       }},
       {{
-        "type": "function", 
+        "type": "function",
         "function": {{
-          "name": "visit", 
-          "description": "Visit webpage(s) and return the summary of the content.", 
+          "name": "visit",
+          "description": "Visit webpage(s) and return the summary of the content.",
           "parameters": {{
-            "type": "object", 
+            "type": "object",
             "properties": {{
               "url": {{
-                "type": "array", 
-                "items": {{"type": "string"}}, 
+                "type": "array",
+                "items": {{"type": "string"}},
                 "description": "The URL(s) of the webpage(s) to visit. Can be a single URL or an array of URLs."
-              }}, 
+              }},
               "goal": {{"type": "string", "description": "The specific information goal for visiting webpage(s)."}}
-            }}, 
+            }},
             "required": ["url", "goal"]
           }}
         }}
       }},
       {{
-        "type": "function", 
+        "type": "function",
         "function": {{
-          "name": "PythonInterpreter", 
-          "description": "Executes Python code in a sandboxed environment. To use this tool, you must follow this format:\\n1. The code to be executed must be passed as a string in the 'code' argument within the JSON object.\\n\\nIMPORTANT: Any output you want to see MUST be printed to standard output using the print() function.\\n\\nExample of a correct call:\\n{{ \"thought\": \"...\", \"type\": \"tool_call\", \"content\": {{ \"name\": \"PythonInterpreter\", \"arguments\": {{ \"code\": \"print('hello')\" }} }} }}\\n", 
+          "name": "PythonInterpreter",
+          "description": "Executes Python code in a sandboxed environment. To use this tool, you must follow this format:\\n1. The code to be executed must be passed as a string in the 'code' argument within the JSON object.\\n\\nIMPORTANT: Any output you want to see MUST be printed to standard output using the print() function.\\n\\nExample of a correct call:\\n{{ \"thought\": \"...\", \"type\": \"tool_call\", \"content\": {{ \"name\": \"PythonInterpreter\", \"arguments\": {{ \"code\": \"print('hello')\" }} }} }}\\n",
           "parameters": {{
-            "type": "object", 
+            "type": "object",
             "properties": {{
               "code": {{"type": "string", "description": "The Python code to execute."}}
-            }}, 
+            }},
             "required": ["code"]
           }}
         }}
       }},
       {{
-        "type": "function", 
+        "type": "function",
         "function": {{
-          "name": "google_scholar", 
-          "description": "Leverage Google Scholar to retrieve relevant information from academic publications. Accepts multiple queries. This tool will also return results from google search", 
+          "name": "google_scholar",
+          "description": "Leverage Google Scholar to retrieve relevant information from academic publications. Accepts multiple queries. This tool will also return results from google search",
           "parameters": {{
-            "type": "object", 
+            "type": "object",
             "properties": {{
               "query": {{
-                "type": "array", 
-                "items": {{"type": "string", "description": "The search query."}}, 
-                "minItems": 1, 
+                "type": "array",
+                "items": {{"type": "string", "description": "The search query."}},
+                "minItems": 1,
                 "description": "The list of search queries for Google Scholar."
               }}
-            }}, 
+            }},
             "required": ["query"]
           }}
         }}
       }},
       {{
-        "type": "function", 
+        "type": "function",
         "function": {{
-          "name": "parse_file", 
-          "description": "This is a tool that can be used to parse multiple user uploaded local files such as PDF, DOCX, PPTX, TXT, CSV, XLSX, DOC, ZIP, MP4, MP3.", 
+          "name": "parse_file",
+          "description": "This is a tool that can be used to parse multiple user uploaded local files such as PDF, DOCX, PPTX, TXT, CSV, XLSX, DOC, ZIP, MP4, MP3.",
           "parameters": {{
-            "type": "object", 
+            "type": "object",
             "properties": {{
               "files": {{
-                "type": "array", 
-                "items": {{"type": "string"}}, 
+                "type": "array",
+                "items": {{"type": "string"}},
                 "description": "The file name of the user uploaded local files to be parsed."
               }}
-            }}, 
+            }},
             "required": ["files"]
           }}
         }}

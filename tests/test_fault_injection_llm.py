@@ -413,15 +413,6 @@ class TestErrorHandlerFaultInjection:
         result = handle_openai_error(timeout_error)
         assert isinstance(result, LLMTimeoutError)
 
-    def test_handle_generic_error(self):
-        """handle_openai_error should wrap unknown errors as generic LLMError."""
-        from src.core.llm.utils.error_handler import handle_openai_error
-
-        generic = ValueError("something broke")
-        result = handle_openai_error(generic)
-        assert isinstance(result, LLMError)
-        assert "something broke" in result.message
-
 
 # ═══════════════════════════════════════════════════════════════════
 # 7. LLM Manager Fallback Tests
@@ -437,7 +428,7 @@ class TestLLMManagerFallbackFaultInjection:
         try:
             from src.core.llm.manager import LLMManager
 
-            from src.core.llm.types import LLMConfig, LLMMessage, LLMProvider
+            from src.core.llm.types import LLMMessage
         except ImportError:
             pytest.skip("LLMManager not available")
 

@@ -50,7 +50,7 @@ I need to calculate.
 
 ## Response
 {
-  "name": "calculator", 
+  "name": "calculator",
   "arguments": {"expr": "2+2"}
 }
 """
@@ -90,7 +90,7 @@ Thinking...
 
 ## Response
 {
-  "name": "wait", 
+  "name": "wait",
   "arguments": "forever"
 }
 """
