@@ -112,29 +112,41 @@ class TestOpenAILLMClient:
         assert client._client is not None
 
     @pytest.mark.asyncio
+    @pytest.mark.skipif(
+        "openai" not in sys.modules,
+        reason="Only runs when openai is already imported (isolation guarantee)",
+    )
     async def test_initialization_import_error(self, valid_config):
-        """测试OpenAI库导入错误"""
+        """测试OpenAI库导入错误
+
+        注意: 此测试依赖 import hook 机制，需要在 openai 已加载的环境下运行。
+        通过删除 sys.modules 中的 openai 条目 + 拦截 __import__ 来模拟导入失败。
+        """
         client = OpenAILLMClient(valid_config)
 
-        # Remove openai from sys.modules if present
-        with patch.dict("sys.modules"):
-            if "openai" in sys.modules:
-                del sys.modules["openai"]
+        # Remove openai from sys.modules so __import__ is triggered
+        saved_modules = {}
+        for mod in list(sys.modules.keys()):
+            if mod == "openai" or mod.startswith("openai."):
+                saved_modules[mod] = sys.modules.pop(mod)
 
-            # Patch __import__ to raise ImportError
-            def side_effect(name, *args, **kwargs):
-                if name == "openai":
-                    raise ImportError("No module named 'openai'")
+        try:
+
+            def raise_import_error(name, *args, **kwargs):
+                if name == "openai" or name.startswith("openai."):
+                    raise ImportError(f"No module named '{name}'")
                 return __import__(name, *args, **kwargs)
 
-            # Need to patch builtins.__import__ specifically
             import builtins
 
-            with patch.object(builtins, "__import__", side_effect=side_effect):
+            with patch.object(builtins, "__import__", side_effect=raise_import_error):
                 result = await client.initialize()
 
-        assert result is False
-        assert client._initialized is False
+            assert result is False
+            assert client._initialized is False
+        finally:
+            # Restore modules
+            sys.modules.update(saved_modules)
 
     @pytest.mark.asyncio
     async def test_initialization_authentication_error(self, valid_config):

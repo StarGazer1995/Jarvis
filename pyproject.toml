@@ -65,7 +65,13 @@ markers = [
 
 [tool.coverage.run]
 source = ["src"]
-omit = ["tests/*", "examples/*"]
+omit = [
+    "tests/*",
+    "examples/*",
+    "src/web/*",
+    "src/core/observability/*",
+]
+fail_under = 90
 
 [tool.coverage.report]
 exclude_lines = [

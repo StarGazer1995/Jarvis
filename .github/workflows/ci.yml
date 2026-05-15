@@ -1,0 +1,213 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "feat/**", "fix/**"]
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.10"
+  UV_VERSION: "0.6"
+
+jobs:
+  # ═══════════════════════════════════════════════════════════════
+  # Stage 1: Lint & Format Check
+  # ═══════════════════════════════════════════════════════════════
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync --only-dev
+
+      - name: Run ruff check
+        run: uv run ruff check .
+
+      - name: Run ruff format check
+        run: uv run ruff format --check .
+
+  # ═══════════════════════════════════════════════════════════════
+  # Stage 2: Config Schema Validation
+  # ═══════════════════════════════════════════════════════════════
+  config-schema:
+    name: Config Schema Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Validate config schema
+        run: uv run pytest tests/test_config_schema.py -v --tb=short
+
+      - name: Verify config loads
+        run: |
+          uv run python -c "
+          from src.core.config.loader import load_llm_config
+          config = load_llm_config(environment='testing')
+          assert config is not None
+          print(f'Config OK: {len(config.providers)} providers loaded')
+          "
+
+  # ═══════════════════════════════════════════════════════════════
+  # Stage 3: Unit Tests (offline, using mocks)
+  # ═══════════════════════════════════════════════════════════════
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run unit tests
+        run: |
+          uv run pytest tests/ \
+            --ignore=tests/web \
+            --ignore=tests/integration \
+            --ignore=tests/test_performance.py \
+            --ignore=tests/test_observability.py \
+            --ignore=tests/test_observability_server.py \
+            -v --tb=short -q
+
+  # ═══════════════════════════════════════════════════════════════
+  # Stage 4: Fault Injection Tests
+  # ═══════════════════════════════════════════════════════════════
+  fault-injection:
+    name: Fault Injection Tests
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run fault injection tests
+        run: uv run pytest tests/test_fault_injection_*.py -v --tb=short -q
+
+  # ═══════════════════════════════════════════════════════════════
+  # Stage 5: Parallel Execution Tests
+  # ═══════════════════════════════════════════════════════════════
+  parallel-execution:
+    name: Parallel Execution Tests
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run parallel execution tests
+        run: uv run pytest tests/test_parallel_execution.py -v --tb=short -q
+
+  # ═══════════════════════════════════════════════════════════════
+  # Stage 6: Coverage (threshold from pyproject.toml)
+  # ═══════════════════════════════════════════════════════════════
+  coverage:
+    name: Coverage Gate
+    runs-on: ubuntu-latest
+    needs: [unit-tests, fault-injection, parallel-execution]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run tests with coverage
+        run: |
+          uv run pytest tests/ \
+            --ignore=tests/web \
+            --ignore=tests/integration \
+            --ignore=tests/test_performance.py \
+            --ignore=tests/test_observability.py \
+            --ignore=tests/test_observability_server.py \
+            --cov=src \
+            --cov-report=term-missing \
+            -v --tb=short -q
+
+  # ═══════════════════════════════════════════════════════════════
+  # Stage 7: Performance Benchmark (optional)
+  # ═══════════════════════════════════════════════════════════════
+  benchmark:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    needs: [lint]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run benchmarks
+        run: uv run pytest tests/test_performance.py --benchmark-only --benchmark-json=benchmark_results.json
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: benchmark_results.json
+
+  # ═══════════════════════════════════════════════════════════════
+  # Stage 8: Docker Build Check
+  # ═══════════════════════════════════════════════════════════════
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: [coverage]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build --target app -t jarvis-agent:ci .
