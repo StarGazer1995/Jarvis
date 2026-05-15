@@ -1,6 +1,8 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
-from src.web.history_manager import restore_agent_history, cleanup_system_messages
+
+from src.web.history_manager import cleanup_system_messages, restore_agent_history
 
 
 def test_restore_agent_history_dict():

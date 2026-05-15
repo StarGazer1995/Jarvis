@@ -3,7 +3,7 @@ Tests for the generic ReAct Agent
 """
 
 import unittest
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 from src.core.agent.react import ReActAgent
 from src.core.agent.types import AgentState
@@ -50,7 +50,7 @@ I need to calculate.
 
 ## Response
 {
-  "name": "calculator", 
+  "name": "calculator",
   "arguments": {"expr": "2+2"}
 }
 """
@@ -90,7 +90,7 @@ Thinking...
 
 ## Response
 {
-  "name": "wait", 
+  "name": "wait",
   "arguments": "forever"
 }
 """

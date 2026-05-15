@@ -3,9 +3,9 @@ Deep Research Tools
 Implementation of tools required for the Deep Research agent.
 """
 
-import os
 import logging
-from typing import List, Optional
+import os
+
 import requests
 
 try:
@@ -13,11 +13,11 @@ try:
 except ImportError:
     TavilyClient = None
 
-from src.core.llm.client import LLMManager
-from src.core.llm.converters import convert_langchain_to_llm_messages
-from src.core.llm.config import load_llm_config
-from src.core.prompt.manager import PromptManager
 from src.capabilities.interpreter import PythonInterpreter
+from src.core.llm.client import LLMManager
+from src.core.llm.config import load_llm_config
+from src.core.llm.converters import convert_langchain_to_llm_messages
+from src.core.prompt.manager import PromptManager
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class DeepResearchTools:
     Tools for Deep Research Agent.
     """
 
-    def __init__(self, llm_manager: Optional[LLMManager] = None):
+    def __init__(self, llm_manager: LLMManager | None = None):
         """
         Initialize the tools.
         """
@@ -46,7 +46,7 @@ class DeepResearchTools:
 
         self.interpreter = PythonInterpreter()
 
-    async def search(self, query: List[str]) -> str:
+    async def search(self, query: list[str]) -> str:
         """
         Perform web searches for multiple queries.
         """
@@ -73,7 +73,7 @@ class DeepResearchTools:
 
         return "\n=======\n".join(results)
 
-    async def visit(self, url: List[str], goal: str) -> str:
+    async def visit(self, url: list[str], goal: str) -> str:
         """
         Visit webpages and extract information based on the goal.
         """
@@ -145,7 +145,7 @@ class DeepResearchTools:
         """
         return self.interpreter.execute(code)
 
-    async def google_scholar(self, query: List[str]) -> str:
+    async def google_scholar(self, query: list[str]) -> str:
         """
         Search Google Scholar.
         Currently falls back to generic search_knowledge if specific API not available.
@@ -181,7 +181,7 @@ class DeepResearchTools:
 
         return "\n=======\n".join(results)
 
-    async def parse_file(self, files: List[str]) -> str:
+    async def parse_file(self, files: list[str]) -> str:
         """
         Parse local files (PDF, DOCX, TXT, etc.).
         """
@@ -221,7 +221,7 @@ class DeepResearchTools:
 
                 else:
                     # Fallback to text
-                    with open(filename, "r", encoding="utf-8", errors="ignore") as f:
+                    with open(filename, encoding="utf-8", errors="ignore") as f:
                         content = f.read()
 
                 if not content.startswith("Error"):

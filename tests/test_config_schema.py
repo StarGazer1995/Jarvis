@@ -7,26 +7,20 @@ misconfigured values before they cause runtime errors.
 
 import pytest
 
-from src.core.config.schema import (
-    RetryConfigSchema,
-    TimeoutConfigSchema,
-    ModelConfigSchema,
-    GlobalConfigSchema,
-    ProviderConfigSchema,
-    FeatureConfigSchema,
-    LLMConfigSchema,
-    validate_config_dict,
-    ValidationResult,
-)
 from src.core.config.loader import (
-    RetryConfig,
-    TimeoutConfig,
     ModelConfig,
     ProviderConfig,
-    GlobalConfig,
-    FeatureConfig,
+    RetryConfig,
 )
-
+from src.core.config.schema import (
+    GlobalConfigSchema,
+    LLMConfigSchema,
+    ModelConfigSchema,
+    ProviderConfigSchema,
+    RetryConfigSchema,
+    TimeoutConfigSchema,
+    validate_config_dict,
+)
 
 # ═══════════════════════════════════════════════════════════════════
 # 1. RetryConfig Validation

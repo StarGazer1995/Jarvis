@@ -5,7 +5,7 @@ Defines all Prometheus metrics used across the ARK engine.
 Uses a central MetricsRegistry for consistent naming and labeling.
 """
 
-from prometheus_client import Counter, Histogram, Gauge, Info
+from prometheus_client import Counter, Gauge, Histogram, Info
 
 
 class MetricsRegistry:

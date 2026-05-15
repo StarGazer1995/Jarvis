@@ -2,9 +2,12 @@
 Verify Deep Research Implementation
 """
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
+
 from src.core.agent.deep_research import DeepResearchAgent
+from src.core.agent.types import AgentState
 
 
 @pytest.fixture
@@ -14,9 +17,6 @@ def mock_llm_manager():
         manager.initialize_default_client = AsyncMock(return_value=True)
         manager.generate_response = AsyncMock()
         yield manager
-
-
-from src.core.agent.types import AgentState
 
 
 @pytest.mark.asyncio
@@ -75,8 +75,8 @@ async def test_file_parser_routing():
         patch.dict("sys.modules", {"pypdf": MagicMock(), "docx": MagicMock()}),
     ):
         # Setup mocks
-        import pypdf
         import docx
+        import pypdf
 
         # Mock PDF
         mock_pdf_reader = MagicMock()

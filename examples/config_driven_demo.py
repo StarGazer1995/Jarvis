@@ -10,21 +10,20 @@
 - 多环境支持
 """
 
+import argparse
+import asyncio
+import logging
 import os
 import sys
-import asyncio
-import argparse
-import logging
-from typing import Optional
 from pathlib import Path
 
 # 添加项目根目录到Python路径
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.core.llm_factory import LLMProviderFactory, create_llm_client
 from src.core.config_loader import load_llm_config
 from src.core.llm_client import LLMMessage
+from src.core.llm_factory import LLMProviderFactory, create_llm_client
 
 
 def setup_logging(level: str = "INFO") -> None:
@@ -65,7 +64,7 @@ def print_subsection(title: str) -> None:
     print(f"{'-' * 40}")
 
 
-async def demo_basic_usage(config_path: Optional[str] = None) -> None:
+async def demo_basic_usage(config_path: str | None = None) -> None:
     """
     演示基本使用方法
 
@@ -93,7 +92,7 @@ async def demo_basic_usage(config_path: Optional[str] = None) -> None:
         print(f"❌ 基本使用演示失败: {e}")
 
 
-async def demo_provider_switching(config_path: Optional[str] = None) -> None:
+async def demo_provider_switching(config_path: str | None = None) -> None:
     """
     演示提供商切换
 
@@ -182,7 +181,7 @@ async def demo_environment_configs() -> None:
             print(f"❌ 环境 {env_name} 测试失败: {e}")
 
 
-async def demo_model_comparison(config_path: Optional[str] = None) -> None:
+async def demo_model_comparison(config_path: str | None = None) -> None:
     """
     演示模型对比
 
@@ -232,7 +231,7 @@ async def demo_model_comparison(config_path: Optional[str] = None) -> None:
         print(f"❌ 模型对比演示失败: {e}")
 
 
-async def demo_config_validation(config_path: Optional[str] = None) -> None:
+async def demo_config_validation(config_path: str | None = None) -> None:
     """
     演示配置验证
 
@@ -276,7 +275,7 @@ async def demo_config_validation(config_path: Optional[str] = None) -> None:
         print(f"❌ 配置验证演示失败: {e}")
 
 
-async def demo_error_handling(config_path: Optional[str] = None) -> None:
+async def demo_error_handling(config_path: str | None = None) -> None:
     """
     演示错误处理
 
@@ -326,7 +325,7 @@ async def demo_error_handling(config_path: Optional[str] = None) -> None:
         print(f"✅ 正确捕获异常: {e}")
 
 
-async def demo_performance_comparison(config_path: Optional[str] = None) -> None:
+async def demo_performance_comparison(config_path: str | None = None) -> None:
     """
     演示性能对比
 
@@ -409,7 +408,7 @@ async def demo_performance_comparison(config_path: Optional[str] = None) -> None
         print(f"❌ 性能对比演示失败: {e}")
 
 
-async def interactive_demo(config_path: Optional[str] = None) -> None:
+async def interactive_demo(config_path: str | None = None) -> None:
     """
     交互式演示
 

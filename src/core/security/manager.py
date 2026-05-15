@@ -10,11 +10,12 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Any, Set, Callable
-import re
+from typing import Any
 
 
 class SecurityLevel(Enum):
@@ -58,20 +59,20 @@ class SecurityPolicy:
     name: str
     description: str
     security_level: SecurityLevel
-    allowed_permissions: Set[PermissionType]
-    denied_permissions: Set[PermissionType] = field(default_factory=set)
+    allowed_permissions: set[PermissionType]
+    denied_permissions: set[PermissionType] = field(default_factory=set)
     max_execution_time: float = 30.0  # seconds
     rate_limit_per_minute: int = 60
     rate_limit_per_hour: int = 1000
     requires_approval: bool = False
-    allowed_domains: Set[str] = field(default_factory=set)
-    blocked_domains: Set[str] = field(default_factory=set)
-    allowed_file_patterns: List[str] = field(default_factory=list)
-    blocked_file_patterns: List[str] = field(default_factory=list)
+    allowed_domains: set[str] = field(default_factory=set)
+    blocked_domains: set[str] = field(default_factory=set)
+    allowed_file_patterns: list[str] = field(default_factory=list)
+    blocked_file_patterns: list[str] = field(default_factory=list)
     max_input_size: int = 1024 * 1024  # 1MB
-    custom_validators: List[str] = field(default_factory=list)
+    custom_validators: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert policy to dictionary representation."""
         return {
             "name": self.name,
@@ -92,7 +93,7 @@ class SecurityPolicy:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "SecurityPolicy":
+    def from_dict(cls, data: dict[str, Any]) -> "SecurityPolicy":
         """Create policy from dictionary representation."""
         return cls(
             name=data["name"],
@@ -131,12 +132,12 @@ class SecurityContext:
     tool_version: str
     execution_id: str
     timestamp: float
-    source_ip: Optional[str] = None
-    user_agent: Optional[str] = None
-    permissions_granted: Set[PermissionType] = field(default_factory=set)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    source_ip: str | None = None
+    user_agent: str | None = None
+    permissions_granted: set[PermissionType] = field(default_factory=set)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert context to dictionary representation."""
         return {
             "user_id": self.user_id,
@@ -161,11 +162,11 @@ class ValidationRequest:
     """
 
     context: SecurityContext
-    tool_parameters: Dict[str, Any]
-    requested_permissions: Set[PermissionType]
-    input_data: Optional[Any] = None
-    target_resources: List[str] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    tool_parameters: dict[str, Any]
+    requested_permissions: set[PermissionType]
+    input_data: Any | None = None
+    target_resources: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -179,13 +180,13 @@ class ValidationResponse:
     result: ValidationResult
     policy_applied: str
     message: str
-    allowed_permissions: Set[PermissionType] = field(default_factory=set)
-    denied_permissions: Set[PermissionType] = field(default_factory=set)
-    execution_constraints: Dict[str, Any] = field(default_factory=dict)
-    audit_log_id: Optional[str] = None
-    retry_after: Optional[float] = None
+    allowed_permissions: set[PermissionType] = field(default_factory=set)
+    denied_permissions: set[PermissionType] = field(default_factory=set)
+    execution_constraints: dict[str, Any] = field(default_factory=dict)
+    audit_log_id: str | None = None
+    retry_after: float | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert response to dictionary representation."""
         return {
             "result": self.result.value,
@@ -208,7 +209,7 @@ class RateLimiter:
 
     def __init__(self):
         """Initialize the rate limiter."""
-        self.user_windows: Dict[str, Dict[str, List[float]]] = {}
+        self.user_windows: dict[str, dict[str, list[float]]] = {}
         self.lock = asyncio.Lock()
 
     async def check_rate_limit(
@@ -259,7 +260,7 @@ class RateLimiter:
 
     async def get_rate_limit_status(
         self, user_id: str, tool_name: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get current rate limit status for a user and tool.
 
@@ -338,7 +339,7 @@ class InputValidator:
 
     @staticmethod
     def validate_file_path(
-        path: str, allowed_patterns: List[str], blocked_patterns: List[str]
+        path: str, allowed_patterns: list[str], blocked_patterns: list[str]
     ) -> bool:
         """
         Validate file path against allowed and blocked patterns.
@@ -369,7 +370,7 @@ class InputValidator:
 
     @staticmethod
     def validate_domain(
-        domain: str, allowed_domains: Set[str], blocked_domains: Set[str]
+        domain: str, allowed_domains: set[str], blocked_domains: set[str]
     ) -> bool:
         """
         Validate domain against allowed and blocked lists.
@@ -438,7 +439,7 @@ class AuditLogger:
     Logs all security-related events for compliance and monitoring.
     """
 
-    def __init__(self, log_file: Optional[str] = None):
+    def __init__(self, log_file: str | None = None):
         """
         Initialize the audit logger.
 
@@ -468,7 +469,7 @@ class AuditLogger:
             "session_id",
         }
         if isinstance(value, dict):
-            redacted: Dict[str, Any] = {}
+            redacted: dict[str, Any] = {}
             for k, v in value.items():
                 key_lower = str(k).lower()
                 if any(s in key_lower for s in sensitive_keys):
@@ -572,7 +573,7 @@ class ARKSecurityManager:
     """
 
     def __init__(
-        self, config_file: Optional[str] = None, audit_log_file: Optional[str] = None
+        self, config_file: str | None = None, audit_log_file: str | None = None
     ):
         """
         Initialize the security manager.
@@ -582,12 +583,12 @@ class ARKSecurityManager:
             audit_log_file: Optional audit log file path
         """
         self.logger = logging.getLogger(__name__)
-        self.policies: Dict[str, SecurityPolicy] = {}
+        self.policies: dict[str, SecurityPolicy] = {}
         self.rate_limiter = RateLimiter()
         self.input_validator = InputValidator()
         self.audit_logger = AuditLogger(audit_log_file)
-        self.custom_validators: Dict[str, Callable] = {}
-        self.approval_queue: List[ValidationRequest] = []
+        self.custom_validators: dict[str, Callable] = {}
+        self.approval_queue: list[ValidationRequest] = []
 
         # Load default policies
         self._load_default_policies()
@@ -682,7 +683,7 @@ class ARKSecurityManager:
             bool: True if loaded successfully
         """
         try:
-            with open(config_file, "r") as f:
+            with open(config_file) as f:
                 config = json.load(f)
 
             # Load policies
@@ -761,7 +762,7 @@ class ARKSecurityManager:
             self.logger.error(f"Failed to remove security policy: {e}")
             return False
 
-    def get_policy(self, policy_name: str) -> Optional[SecurityPolicy]:
+    def get_policy(self, policy_name: str) -> SecurityPolicy | None:
         """
         Get a security policy by name.
 
@@ -773,7 +774,7 @@ class ARKSecurityManager:
         """
         return self.policies.get(policy_name)
 
-    def list_policies(self) -> List[str]:
+    def list_policies(self) -> list[str]:
         """
         List all available security policies.
 
@@ -995,7 +996,7 @@ class ARKSecurityManager:
                 message=f"Validation error: {str(e)}",
             )
 
-    async def get_security_status(self) -> Dict[str, Any]:
+    async def get_security_status(self) -> dict[str, Any]:
         """
         Get current security manager status.
 
@@ -1023,7 +1024,7 @@ class ARKSecurityManager:
         self.logger.info(f"Cleared {count} items from approval queue")
         return count
 
-    def get_approval_queue(self) -> List[ValidationRequest]:
+    def get_approval_queue(self) -> list[ValidationRequest]:
         """
         Get current approval queue.
 

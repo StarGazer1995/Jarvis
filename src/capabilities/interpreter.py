@@ -6,7 +6,7 @@ or cloud sandbox services. Local execution is NOT supported for security reasons
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Any
 
 try:
     import docker
@@ -28,10 +28,10 @@ class PythonInterpreter:
 
     def __init__(
         self,
-        safe_globals: Optional[Dict[str, Any]] = None,
+        safe_globals: dict[str, Any] | None = None,
         execution_mode: str = "docker",
-        docker_config: Optional[Dict[str, str]] = None,
-        sandbox_config: Optional[Dict[str, str]] = None,
+        docker_config: dict[str, str] | None = None,
+        sandbox_config: dict[str, str] | None = None,
     ):
         """
         Initialize the interpreter.

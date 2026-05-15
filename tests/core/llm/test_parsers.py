@@ -1,5 +1,6 @@
 import pytest
-from src.core.llm.parsers import JSONOutputParser, AgentResponse
+
+from src.core.llm.parsers import AgentResponse, JSONOutputParser
 
 
 def test_json_output_parser_simple():

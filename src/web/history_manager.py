@@ -1,7 +1,9 @@
 import logging
+
 from sqlalchemy import text
-from src.web.data_layer import get_data_layer
+
 from src.jarvis_agent import JarvisAgent
+from src.web.data_layer import get_data_layer
 
 logger = logging.getLogger(__name__)
 

@@ -3,11 +3,11 @@ Deep Research Agent Implementation
 """
 
 import logging
-from typing import Dict, Any, Optional, List
 from datetime import datetime
+from typing import Any
 
-from src.core.agent.react import ReActAgent
 from src.capabilities.deep_research_tools import DeepResearchTools
+from src.core.agent.react import ReActAgent
 
 
 class DeepResearchAgent(ReActAgent):
@@ -16,14 +16,14 @@ class DeepResearchAgent(ReActAgent):
     Inherits from ReActAgent to reuse JSON parsing and execution loop logic.
     """
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config)
         self.logger = logging.getLogger("agent.deep_research")
         # Deep research typically requires more steps
         self.max_steps = self.config.get("max_steps", 30)
         self.tools = DeepResearchTools(self.llm_manager)
 
-    def _get_system_prompt(self) -> List[Any]:
+    def _get_system_prompt(self) -> list[Any]:
         """Override system prompt with Deep Research specific prompt."""
         current_date = datetime.now().strftime("%Y-%m-%d")
         messages = self.prompt_manager.render_template(

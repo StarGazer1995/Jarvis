@@ -1726,7 +1726,10 @@ test = [
 [package.dev-dependencies]
 dev = [
     { name = "playwright" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
     { name = "pytest-benchmark" },
+    { name = "pytest-cov" },
     { name = "pytest-playwright" },
     { name = "ruff" },
 ]
@@ -1774,7 +1777,10 @@ provides-extras = ["test", "dev"]
 [package.metadata.requires-dev]
 dev = [
     { name = "playwright", specifier = ">=1.58.0" },
+    { name = "pytest", specifier = ">=7.0.0" },
+    { name = "pytest-asyncio", specifier = ">=0.21.0" },
     { name = "pytest-benchmark", specifier = ">=5.2.3" },
+    { name = "pytest-cov", specifier = ">=4.0.0" },
     { name = "pytest-playwright", specifier = ">=0.7.2" },
     { name = "ruff", specifier = ">=0.1.0" },
 ]

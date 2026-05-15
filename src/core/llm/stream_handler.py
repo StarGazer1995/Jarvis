@@ -7,7 +7,7 @@ thought and content fields for real-time display.
 
 import logging
 import re
-from typing import Dict, Callable, AsyncGenerator, Optional
+from collections.abc import AsyncGenerator, Callable
 
 
 class StreamTokenHandler:
@@ -15,7 +15,7 @@ class StreamTokenHandler:
     Handles streaming tokens from LLM, parsing specific tags and invoking callbacks.
     """
 
-    def __init__(self, callbacks: Optional[Dict[str, Callable]] = None):
+    def __init__(self, callbacks: dict[str, Callable] | None = None):
         """
         Initialize the handler.
 

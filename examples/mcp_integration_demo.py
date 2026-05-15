@@ -13,11 +13,11 @@ capabilities of the ARK system, including:
 Run from project root: python examples/mcp_integration_demo.py --verbose
 """
 
-import asyncio
-import logging
 import argparse
-import sys
+import asyncio
 import json
+import logging
+import sys
 import tempfile
 from pathlib import Path
 
@@ -25,9 +25,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from core.mcp_client import ARKMCPClient
+from core.security_manager import ARKSecurityManager, PermissionType
 from core.server_config import ARKServerConfigManager, SimpleMCPServerConfig
 from core.tool_registry import ARKToolRegistry, ToolCategory
-from core.security_manager import ARKSecurityManager, PermissionType
 
 
 async def demonstrate_mcp_server_management():
@@ -201,7 +201,7 @@ async def demonstrate_tool_discovery_and_registry():
         )
 
     # Show registry statistics
-    print(f"\n📊 Tool Registry Statistics:")
+    print("\n📊 Tool Registry Statistics:")
     stats = await tool_registry.get_registry_stats()
     print(f"  - Total tools: {stats['total_tools']}")
     print(f"  - By category: {stats['by_category']}")
@@ -209,7 +209,7 @@ async def demonstrate_tool_discovery_and_registry():
     print(f"  - By server: {stats['by_server']}")
 
     # Demonstrate tool filtering
-    print(f"\n🔍 Tool Filtering Examples:")
+    print("\n🔍 Tool Filtering Examples:")
 
     # Filter by category
     filesystem_tools = await tool_registry.discover_tools(
@@ -249,8 +249,9 @@ async def demonstrate_tool_execution_with_security():
     ARKMCPClient()
 
     # Simulate tool execution scenarios
-    from core.security_manager import SecurityContext, ValidationRequest
     import time
+
+    from core.security_manager import SecurityContext, ValidationRequest
 
     execution_scenarios = [
         {
@@ -333,11 +334,11 @@ async def demonstrate_tool_execution_with_security():
         if response.result.value == "allowed":
             print(f"   🚀 Executing tool: {scenario['tool']}")
             await asyncio.sleep(0.3)  # Simulate execution time
-            print(f"   ✅ Tool execution completed successfully")
+            print("   ✅ Tool execution completed successfully")
         elif response.result.value == "requires_approval":
-            print(f"   ⏳ Tool execution pending approval")
+            print("   ⏳ Tool execution pending approval")
         else:
-            print(f"   ❌ Tool execution blocked")
+            print("   ❌ Tool execution blocked")
 
 
 async def demonstrate_configuration_persistence():
@@ -406,7 +407,7 @@ async def demonstrate_configuration_persistence():
                     print(f"  - {config_name}: {config.description}")
 
         # Demonstrate configuration validation
-        print(f"\n🔍 Validating configurations...")
+        print("\n🔍 Validating configurations...")
 
         for config_name in ["file_ops", "web_search"]:
             config = await config_manager.get_configuration(config_name)
@@ -416,7 +417,7 @@ async def demonstrate_configuration_persistence():
                 print(f"{status} {config_name}: {'Valid' if is_valid else 'Invalid'}")
 
         # Show health status
-        print(f"\n💓 Health Status:")
+        print("\n💓 Health Status:")
         health_status = await config_manager.get_health_status()
         print(f"  - Total configurations: {health_status.get('total_configs', 0)}")
         print(f"  - Valid configurations: {health_status.get('valid_configs', 0)}")
@@ -425,7 +426,7 @@ async def demonstrate_configuration_persistence():
     finally:
         # Clean up temporary file
         Path(config_file).unlink(missing_ok=True)
-        print(f"🧹 Cleaned up temporary configuration file")
+        print("🧹 Cleaned up temporary configuration file")
 
 
 async def main():

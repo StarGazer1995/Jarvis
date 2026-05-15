@@ -1,5 +1,6 @@
-import os
 import logging
+import os
+
 from chainlit.data.sql_alchemy import SQLAlchemyDataLayer
 
 # Configure logger

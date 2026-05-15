@@ -5,19 +5,21 @@ in the ARK engine, including server discovery, health monitoring, and
 configuration persistence. Updated to work with official modelcontextprotocol SDK.
 """
 
-import logging
 import asyncio
 import json
+import logging
 import os
-import time
 import threading
+import time
+from abc import ABC, abstractmethod
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from typing import Dict, List, Any, Optional, Set, Callable
-from dataclasses import dataclass, field, asdict
 from enum import Enum
 from pathlib import Path
+from typing import Any
+
 import yaml
-from abc import ABC, abstractmethod
 
 # Import official MCP types
 from mcp import StdioServerParameters
@@ -91,14 +93,14 @@ class ServerCredentials:
     """Server authentication credentials."""
 
     auth_type: AuthType = AuthType.NONE
-    api_key: Optional[str] = None
-    bearer_token: Optional[str] = None
-    username: Optional[str] = None
-    password: Optional[str] = None
-    oauth2_config: Dict[str, Any] = field(default_factory=dict)
-    custom_headers: Dict[str, str] = field(default_factory=dict)
+    api_key: str | None = None
+    bearer_token: str | None = None
+    username: str | None = None
+    password: str | None = None
+    oauth2_config: dict[str, Any] = field(default_factory=dict)
+    custom_headers: dict[str, str] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert credentials to dictionary (excluding sensitive data)."""
         return {
             "auth_type": self.auth_type.value,
@@ -120,10 +122,10 @@ class ServerHealthCheck:
     timeout: int = 10  # seconds
     max_failures: int = 3
     retry_delay: int = 30  # seconds
-    health_endpoint: Optional[str] = None
-    expected_response: Optional[str] = None
+    health_endpoint: str | None = None
+    expected_response: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert health check config to dictionary."""
         return asdict(self)
 
@@ -139,7 +141,7 @@ class ServerLimits:
     connection_timeout: int = 30  # seconds
     request_timeout: int = 60  # seconds
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert limits to dictionary."""
         return asdict(self)
 
@@ -155,17 +157,17 @@ class ServerMetrics:
     successful_requests: int = 0
     failed_requests: int = 0
     average_response_time: float = 0.0
-    last_connection_time: Optional[float] = None
-    last_request_time: Optional[float] = None
-    last_error: Optional[str] = None
-    last_error_time: Optional[float] = None
+    last_connection_time: float | None = None
+    last_request_time: float | None = None
+    last_error: str | None = None
+    last_error_time: float | None = None
     uptime_percentage: float = 100.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert metrics to dictionary."""
         return asdict(self)
 
-    def update_connection(self, success: bool, error: Optional[str] = None) -> None:
+    def update_connection(self, success: bool, error: str | None = None) -> None:
         """Update connection metrics."""
         self.total_connections += 1
         if success:
@@ -178,7 +180,7 @@ class ServerMetrics:
                 self.last_error_time = time.time()
 
     def update_request(
-        self, success: bool, response_time: float, error: Optional[str] = None
+        self, success: bool, response_time: float, error: str | None = None
     ) -> None:
         """Update request metrics."""
         self.total_requests += 1
@@ -212,8 +214,8 @@ class SimpleMCPServerConfig:
 
     name: str
     command: str
-    args: List[str] = field(default_factory=list)
-    env: Dict[str, str] = field(default_factory=dict)
+    args: list[str] = field(default_factory=list)
+    env: dict[str, str] = field(default_factory=dict)
     description: str = ""
     enabled: bool = True
     timeout: int = 30
@@ -227,12 +229,12 @@ class SimpleMCPServerConfig:
             env=self.env if self.env else None,
         )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "SimpleMCPServerConfig":
+    def from_dict(cls, data: dict[str, Any]) -> "SimpleMCPServerConfig":
         """Create from dictionary."""
         return cls(**data)
 
@@ -252,23 +254,23 @@ class MCPServerConfig:
     config_type: ConfigType = ConfigType.DEVELOPMENT
 
     # Connection configuration
-    command: Optional[str] = None  # For STDIO servers
-    args: List[str] = field(default_factory=list)  # Command arguments
-    host: Optional[str] = None  # For TCP servers
-    port: Optional[int] = None  # For TCP servers
+    command: str | None = None  # For STDIO servers
+    args: list[str] = field(default_factory=list)  # Command arguments
+    host: str | None = None  # For TCP servers
+    port: int | None = None  # For TCP servers
     protocol: str = "http"  # Protocol for connection
     timeout: float = 30.0  # Connection timeout in seconds
     max_retries: int = 3  # Maximum retry attempts
 
     # Environment and working directory
-    env: Dict[str, str] = field(default_factory=dict)
-    cwd: Optional[str] = None
+    env: dict[str, str] = field(default_factory=dict)
+    cwd: str | None = None
 
     # Authentication and security
     credentials: ServerCredentials = field(default_factory=ServerCredentials)
     ssl_verify: bool = True
-    ssl_cert_path: Optional[str] = None
-    ssl_key_path: Optional[str] = None
+    ssl_cert_path: str | None = None
+    ssl_key_path: str | None = None
 
     # Health monitoring
     health_check: ServerHealthCheck = field(default_factory=ServerHealthCheck)
@@ -277,32 +279,32 @@ class MCPServerConfig:
     limits: ServerLimits = field(default_factory=ServerLimits)
 
     # Security and authentication
-    security_level: Optional[SecurityLevel] = (
+    security_level: SecurityLevel | None = (
         SecurityLevel.MEDIUM if SecurityLevel else None
     )
-    api_key: Optional[str] = None
-    headers: Dict[str, str] = field(default_factory=dict)
+    api_key: str | None = None
+    headers: dict[str, str] = field(default_factory=dict)
 
     # Metadata
     description: str = ""
     version: str = "1.0.0"
-    tags: List[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
     priority: int = 100  # Lower number = higher priority
     enabled: bool = True
     auto_start: bool = True
     auto_restart: bool = True
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     # Runtime data
     metrics: ServerMetrics = field(default_factory=ServerMetrics)
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
-    last_updated: Optional[datetime] = None
+    last_updated: datetime | None = None
 
     # Private fields
-    _url: Optional[str] = field(default=None, init=False)
+    _url: str | None = field(default=None, init=False)
 
-    def to_dict(self, include_sensitive: bool = False) -> Dict[str, Any]:
+    def to_dict(self, include_sensitive: bool = False) -> dict[str, Any]:
         """
         Convert server config to dictionary.
 
@@ -353,7 +355,7 @@ class MCPServerConfig:
         return config_dict
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "MCPServerConfig":
+    def from_dict(cls, data: dict[str, Any]) -> "MCPServerConfig":
         """
         Create server config from dictionary.
 
@@ -437,7 +439,7 @@ class MCPServerConfig:
 
         return config
 
-    def validate(self) -> tuple[bool, List[str]]:
+    def validate(self) -> tuple[bool, list[str]]:
         """
         Validate server configuration.
 
@@ -532,7 +534,7 @@ class MCPServerConfig:
         return f"MCPServerConfig(name='{self.name}', type={self.server_type.value}, connection={connection_info})"
 
     @property
-    def url(self) -> Optional[str]:
+    def url(self) -> str | None:
         """Get the server URL for HTTP/WebSocket servers."""
         if self.server_type in [ServerType.HTTP, ServerType.WEBSOCKET]:
             if hasattr(self, "_url") and self._url:
@@ -548,7 +550,7 @@ class MCPServerConfig:
         return None
 
     @url.setter
-    def url(self, value: Optional[str]) -> None:
+    def url(self, value: str | None) -> None:
         """Set the server URL."""
         self._url = value
 
@@ -581,17 +583,17 @@ class MCPServerConfig:
 @dataclass
 class ConfigOperationResult:
     success: bool
-    code: Optional[str] = None
-    phase: Optional[str] = None
-    message: Optional[str] = None
-    server_name: Optional[str] = None
+    code: str | None = None
+    phase: str | None = None
+    message: str | None = None
+    server_name: str | None = None
 
 
 class ServerConfigProvider(ABC):
     """Abstract base class for server configuration providers."""
 
     @abstractmethod
-    async def load_configs(self) -> List[MCPServerConfig]:
+    async def load_configs(self) -> list[MCPServerConfig]:
         """
         Load server configurations.
 
@@ -658,26 +660,26 @@ class FileConfigProvider(ServerConfigProvider):
         self.logger = logging.getLogger("jarvis.server_config.file")
 
     def _read_file_data(self, file_path: Path) -> Any:
-        with open(file_path, "r") as f:
+        with open(file_path) as f:
             if file_path.suffix == ".json":
                 return json.load(f)
             return yaml.safe_load(f)
 
-    def _parse_data_to_configs(self, data: Any) -> List[MCPServerConfig]:
+    def _parse_data_to_configs(self, data: Any) -> list[MCPServerConfig]:
         if isinstance(data, dict) and "servers" in data:
             return [MCPServerConfig.from_dict(item) for item in data["servers"]]
         if isinstance(data, list):
             return [MCPServerConfig.from_dict(item) for item in data]
         return [MCPServerConfig.from_dict(data)]
 
-    def _load_from_file(self, file_path: Path, configs: List[MCPServerConfig]) -> None:
+    def _load_from_file(self, file_path: Path, configs: list[MCPServerConfig]) -> None:
         try:
             data = self._read_file_data(file_path)
             configs.extend(self._parse_data_to_configs(data))
         except Exception as e:
             self.logger.error(f"Failed to load config from {file_path}: {e}")
 
-    def _serialize_configs(self, configs: List[MCPServerConfig]) -> dict[str, Any]:
+    def _serialize_configs(self, configs: list[MCPServerConfig]) -> dict[str, Any]:
         config_data = [cfg.to_dict(include_sensitive=False) for cfg in configs]
         return {"servers": config_data}
 
@@ -688,11 +690,11 @@ class FileConfigProvider(ServerConfigProvider):
             else:
                 yaml.dump(data, f, default_flow_style=False)
 
-    def _write_single_file_configs(self, configs: List[MCPServerConfig]) -> None:
+    def _write_single_file_configs(self, configs: list[MCPServerConfig]) -> None:
         data = self._serialize_configs(configs)
         self._write_to_file(self.file_path, data)
 
-    async def load_configs(self) -> List[MCPServerConfig]:
+    async def load_configs(self) -> list[MCPServerConfig]:
         """Load configurations from files."""
         configs = []
 
@@ -744,7 +746,7 @@ class FileConfigProvider(ServerConfigProvider):
             self.logger.error(f"Failed to save config for {config.name}: {e}")
             return False
 
-    async def save_configs(self, configs: List[MCPServerConfig]) -> bool:
+    async def save_configs(self, configs: list[MCPServerConfig]) -> bool:
         """Save multiple configurations to file(s)."""
         try:
             if self.single_file_mode:
@@ -816,7 +818,7 @@ class EnvironmentConfigProvider(ServerConfigProvider):
         self.name = "environment_provider"
         self.logger = logging.getLogger("jarvis.server_config.env")
 
-    async def load_configs(self) -> List[MCPServerConfig]:
+    async def load_configs(self) -> list[MCPServerConfig]:
         """Load configurations from environment variables."""
         configs = []
 
@@ -891,7 +893,7 @@ class EnvironmentConfigProvider(ServerConfigProvider):
             "Save operation not supported for EnvironmentConfigProvider"
         )
 
-    async def save_configs(self, configs: List[MCPServerConfig]) -> bool:
+    async def save_configs(self, configs: list[MCPServerConfig]) -> bool:
         """Save configurations is not supported for environment provider."""
         raise NotImplementedError(
             "Save operation not supported for EnvironmentConfigProvider"
@@ -912,7 +914,7 @@ class ARKServerConfigManager:
     for all MCP servers in the system.
     """
 
-    def __init__(self, config_provider: Optional[ServerConfigProvider] = None):
+    def __init__(self, config_provider: ServerConfigProvider | None = None):
         """
         Initialize server configuration manager.
 
@@ -922,25 +924,25 @@ class ARKServerConfigManager:
         self.logger = logging.getLogger("jarvis.server_config")
 
         # Configuration storage
-        self.configs: Dict[str, MCPServerConfig] = {}
+        self.configs: dict[str, MCPServerConfig] = {}
         self.config_provider = config_provider or FileConfigProvider()
 
         # Multiple providers support
-        self.providers: List[ServerConfigProvider] = []
+        self.providers: list[ServerConfigProvider] = []
 
         # Event callbacks
-        self.on_config_added: List[Callable] = []
-        self.on_config_updated: List[Callable] = []
-        self.on_config_removed: List[Callable] = []
-        self.on_status_changed: List[Callable] = []
+        self.on_config_added: list[Callable] = []
+        self.on_config_updated: list[Callable] = []
+        self.on_config_removed: list[Callable] = []
+        self.on_status_changed: list[Callable] = []
 
         # Background tasks
-        self._health_check_task: Optional[asyncio.Task] = None
+        self._health_check_task: asyncio.Task | None = None
         self._running = False
         self._last_operation_result = ConfigOperationResult(success=True)
 
     def _set_success_result(
-        self, server_name: Optional[str] = None
+        self, server_name: str | None = None
     ) -> ConfigOperationResult:
         result = ConfigOperationResult(success=True, server_name=server_name)
         self._last_operation_result = result
@@ -951,7 +953,7 @@ class ARKServerConfigManager:
         code: ConfigOperationCode | str,
         phase: ConfigOperationPhase | str,
         message: str,
-        server_name: Optional[str] = None,
+        server_name: str | None = None,
     ) -> ConfigOperationResult:
         normalized_code = code.value if isinstance(code, ConfigOperationCode) else code
         normalized_phase = (
@@ -1221,7 +1223,7 @@ class ARKServerConfigManager:
                 server_name=config.name,
             )
 
-    def validate_config(self, config: MCPServerConfig) -> tuple[bool, List[str]]:
+    def validate_config(self, config: MCPServerConfig) -> tuple[bool, list[str]]:
         """
         Validate a server configuration.
 
@@ -1322,7 +1324,7 @@ class ARKServerConfigManager:
                 return True
         return False
 
-    async def load_from_providers(self) -> List[MCPServerConfig]:
+    async def load_from_providers(self) -> list[MCPServerConfig]:
         """
         Load configurations from all providers.
 
@@ -1380,7 +1382,7 @@ class ARKServerConfigManager:
 
         return success
 
-    def get_config(self, server_name: str) -> Optional[MCPServerConfig]:
+    def get_config(self, server_name: str) -> MCPServerConfig | None:
         """
         Get server configuration by name.
 
@@ -1392,7 +1394,7 @@ class ARKServerConfigManager:
         """
         return self.configs.get(server_name)
 
-    def get_all_configs(self) -> List[MCPServerConfig]:
+    def get_all_configs(self) -> list[MCPServerConfig]:
         """
         Get all server configurations.
 
@@ -1401,7 +1403,7 @@ class ARKServerConfigManager:
         """
         return list(self.configs.values())
 
-    def get_enabled_configs(self) -> List[MCPServerConfig]:
+    def get_enabled_configs(self) -> list[MCPServerConfig]:
         """
         Get enabled server configurations.
 
@@ -1410,7 +1412,7 @@ class ARKServerConfigManager:
         """
         return [config for config in self.configs.values() if config.enabled]
 
-    def get_configs_by_status(self, status: ServerStatus) -> List[MCPServerConfig]:
+    def get_configs_by_status(self, status: ServerStatus) -> list[MCPServerConfig]:
         """
         Get configurations by status.
 
@@ -1422,7 +1424,7 @@ class ARKServerConfigManager:
         """
         return [config for config in self.configs.values() if config.status == status]
 
-    def get_configs_by_type(self, server_type: ServerType) -> List[MCPServerConfig]:
+    def get_configs_by_type(self, server_type: ServerType) -> list[MCPServerConfig]:
         """
         Get configurations by server type.
 
@@ -1469,7 +1471,7 @@ class ARKServerConfigManager:
 
         return True
 
-    def get_manager_stats(self) -> Dict[str, Any]:
+    def get_manager_stats(self) -> dict[str, Any]:
         """
         Get configuration manager statistics.
 
@@ -1602,7 +1604,7 @@ class ARKServerConfigManager:
             return len([config for config in self.configs.values() if config.enabled])
         return len(self.configs)
 
-    def get_config_types(self) -> Set[ConfigType]:
+    def get_config_types(self) -> set[ConfigType]:
         """
         Get all unique configuration types in configurations.
 
@@ -1611,7 +1613,7 @@ class ARKServerConfigManager:
         """
         return {config.config_type for config in self.configs.values()}
 
-    def get_security_levels(self) -> Set[SecurityLevel]:
+    def get_security_levels(self) -> set[SecurityLevel]:
         """
         Get all unique security levels in configurations.
 
@@ -1639,7 +1641,7 @@ class ARKServerConfigManager:
         enabled_only: bool = False,
         config_type: ConfigType = None,
         security_level: SecurityLevel = None,
-    ) -> List[MCPServerConfig]:
+    ) -> list[MCPServerConfig]:
         """
         List configurations with optional filtering.
 
@@ -1668,7 +1670,7 @@ class ARKServerConfigManager:
 
         return configs
 
-    async def health_check(self) -> Dict[str, Dict[str, Any]]:
+    async def health_check(self) -> dict[str, dict[str, Any]]:
         """
         Perform health check on all enabled servers.
 

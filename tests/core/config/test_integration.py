@@ -4,26 +4,29 @@
 测试配置加载器、LLM工厂和客户端之间的集成功能
 """
 
-import os
-import pytest
-import tempfile
-import yaml
 import asyncio
+import os
+import tempfile
+from typing import Any
 from unittest.mock import patch
-from typing import Dict, Any
 
-from src.core.config.loader import load_llm_config, ConfigLoader, Environment
-from src.core.llm.factory import (
-    LLMProviderFactory,
-    create_llm_client,
-)
+import pytest
+import yaml
+
+from src.core.common.exceptions import ConfigurationError
+from src.core.config.loader import ConfigLoader, Environment, load_llm_config
 from src.core.llm.client import (
     BaseLLMClient,
     LLMMessage,
     LLMResponse,
+)
+from src.core.llm.client import (
     LLMConfig as ClientLLMConfig,
 )
-from src.core.common.exceptions import ConfigurationError
+from src.core.llm.factory import (
+    LLMProviderFactory,
+    create_llm_client,
+)
 
 
 class IntegrationMockClient(BaseLLMClient):
@@ -100,7 +103,7 @@ class TestConfigurationIntegration:
     """测试配置集成"""
 
     @pytest.fixture
-    def comprehensive_config(self) -> Dict[str, Any]:
+    def comprehensive_config(self) -> dict[str, Any]:
         """全面的配置数据"""
         return {
             "global": {
@@ -533,7 +536,7 @@ providers:
 
     def test_configuration_inheritance_and_overrides(self, temp_config_file):
         """测试配置继承和覆盖"""
-        config = load_llm_config(temp_config_file)
+        config = load_llm_config(config_path=temp_config_file)
 
         # 验证全局配置
         global_retry = config.global_config.retry

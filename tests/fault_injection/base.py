@@ -6,8 +6,9 @@ during testing. Supports both sync and async callables, configurable
 failure counts, and composable fault patterns.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Any
 
 
 @dataclass
@@ -24,9 +25,9 @@ class FaultConfig:
             return a default value.
     """
 
-    exception: Type[Exception]
-    args: Tuple[Any, ...] = field(default_factory=tuple)
-    kwargs: Dict[str, Any] = field(default_factory=dict)
+    exception: type[Exception]
+    args: tuple[Any, ...] = field(default_factory=tuple)
+    kwargs: dict[str, Any] = field(default_factory=dict)
     fail_count: int = 1
     success_value: Any = None
 
@@ -42,15 +43,15 @@ class FaultPattern:
 
     def __init__(self, name: str = ""):
         self.name = name
-        self._configs: List[FaultConfig] = []
+        self._configs: list[FaultConfig] = []
         self._final_success: Any = None
 
     def add_fault(
         self,
-        exception: Type[Exception],
+        exception: type[Exception],
         fail_count: int = 1,
-        args: Optional[Tuple[Any, ...]] = None,
-        kwargs: Optional[Dict[str, Any]] = None,
+        args: tuple[Any, ...] | None = None,
+        kwargs: dict[str, Any] | None = None,
     ) -> "FaultPattern":
         """Add a fault to the pattern.
 
@@ -125,7 +126,7 @@ class FaultInjector:
             *configs: FaultConfig objects defining the fault sequence.
             success_value: Default value returned after all faults exhausted.
         """
-        self._phases: List[_FaultPhase] = []
+        self._phases: list[_FaultPhase] = []
         self._success_value = success_value
 
         for config in configs:
@@ -144,9 +145,9 @@ class FaultInjector:
 
     def _add_phase(
         self,
-        exception_cls: Type[Exception],
-        args: Tuple[Any, ...],
-        kwargs: Dict[str, Any],
+        exception_cls: type[Exception],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
         count: int,
     ) -> None:
         """Add a fault phase to the sequence."""
@@ -224,9 +225,9 @@ class _FaultPhase:
 
     def __init__(
         self,
-        exception_cls: Type[Exception],
-        args: Tuple[Any, ...],
-        kwargs: Dict[str, Any],
+        exception_cls: type[Exception],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
         fail_count: int,
     ):
         self.exception_cls = exception_cls
@@ -247,10 +248,10 @@ def _construct_exception(phase: _FaultPhase) -> Exception:
 
 # Convenience aliases
 def build_side_effect(
-    exception: Type[Exception],
+    exception: type[Exception],
     fail_count: int = 1,
-    args: Optional[Tuple[Any, ...]] = None,
-    kwargs: Optional[Dict[str, Any]] = None,
+    args: tuple[Any, ...] | None = None,
+    kwargs: dict[str, Any] | None = None,
     success_value: Any = None,
 ) -> Callable:
     """Quick-build a fault injector side_effect.

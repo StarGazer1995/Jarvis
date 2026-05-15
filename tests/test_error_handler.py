@@ -4,15 +4,15 @@
 测试LLM错误处理的各种异常类型和处理机制。
 """
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from src.core.llm.utils.error_handler import (
-    LLMError,
     LLMAPIError,
-    LLMRateLimitError,
     LLMAuthenticationError,
-    LLMTimeoutError,
     LLMConfigurationError,
+    LLMError,
+    LLMRateLimitError,
+    LLMTimeoutError,
     handle_openai_error,
     log_llm_error,
 )

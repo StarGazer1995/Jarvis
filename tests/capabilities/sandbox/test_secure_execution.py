@@ -5,13 +5,15 @@ This module demonstrates and verifies how to run code/tools within the
 ARK Security Sandbox environment, ensuring policies are enforced.
 """
 
-import pytest
 import time
+
+import pytest
+
 from src.core.security.manager import (
     ARKSecurityManager,
+    PermissionType,
     SecurityContext,
     ValidationRequest,
-    PermissionType,
     ValidationResult,
 )
 

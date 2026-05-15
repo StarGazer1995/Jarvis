@@ -4,16 +4,16 @@
 这个模块负责管理系统提示词、对话模板和上下文构建。
 """
 
-import logging
 import json
-from typing import Dict, List, Any, Optional
+import logging
 from datetime import datetime
+from typing import Any
 
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.prompts import (
     ChatPromptTemplate,
     SystemMessagePromptTemplate,
 )
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 
 
 class PromptManager:
@@ -21,7 +21,7 @@ class PromptManager:
 
     def __init__(self):
         """初始化提示词管理器"""
-        self.templates: Dict[str, ChatPromptTemplate] = {}
+        self.templates: dict[str, ChatPromptTemplate] = {}
         self.logger = logging.getLogger("prompt.manager")
         self.load_default_templates()
 
@@ -275,90 +275,90 @@ You MUST output your response in the following JSON format:
     "instructions": "You may call one or more functions to assist with the user query.",
     "definitions": [
       {{
-        "type": "function", 
+        "type": "function",
         "function": {{
-          "name": "search", 
-          "description": "Perform Google web searches then returns a string of the top search results. Accepts multiple queries.", 
+          "name": "search",
+          "description": "Perform Google web searches then returns a string of the top search results. Accepts multiple queries.",
           "parameters": {{
-            "type": "object", 
+            "type": "object",
             "properties": {{
               "query": {{
-                "type": "array", 
-                "items": {{"type": "string", "description": "The search query."}}, 
-                "minItems": 1, 
+                "type": "array",
+                "items": {{"type": "string", "description": "The search query."}},
+                "minItems": 1,
                 "description": "The list of search queries."
               }}
-            }}, 
+            }},
             "required": ["query"]
           }}
         }}
       }},
       {{
-        "type": "function", 
+        "type": "function",
         "function": {{
-          "name": "visit", 
-          "description": "Visit webpage(s) and return the summary of the content.", 
+          "name": "visit",
+          "description": "Visit webpage(s) and return the summary of the content.",
           "parameters": {{
-            "type": "object", 
+            "type": "object",
             "properties": {{
               "url": {{
-                "type": "array", 
-                "items": {{"type": "string"}}, 
+                "type": "array",
+                "items": {{"type": "string"}},
                 "description": "The URL(s) of the webpage(s) to visit. Can be a single URL or an array of URLs."
-              }}, 
+              }},
               "goal": {{"type": "string", "description": "The specific information goal for visiting webpage(s)."}}
-            }}, 
+            }},
             "required": ["url", "goal"]
           }}
         }}
       }},
       {{
-        "type": "function", 
+        "type": "function",
         "function": {{
-          "name": "PythonInterpreter", 
-          "description": "Executes Python code in a sandboxed environment. To use this tool, you must follow this format:\\n1. The code to be executed must be passed as a string in the 'code' argument within the JSON object.\\n\\nIMPORTANT: Any output you want to see MUST be printed to standard output using the print() function.\\n\\nExample of a correct call:\\n{{ \"thought\": \"...\", \"type\": \"tool_call\", \"content\": {{ \"name\": \"PythonInterpreter\", \"arguments\": {{ \"code\": \"print('hello')\" }} }} }}\\n", 
+          "name": "PythonInterpreter",
+          "description": "Executes Python code in a sandboxed environment. To use this tool, you must follow this format:\\n1. The code to be executed must be passed as a string in the 'code' argument within the JSON object.\\n\\nIMPORTANT: Any output you want to see MUST be printed to standard output using the print() function.\\n\\nExample of a correct call:\\n{{ \"thought\": \"...\", \"type\": \"tool_call\", \"content\": {{ \"name\": \"PythonInterpreter\", \"arguments\": {{ \"code\": \"print('hello')\" }} }} }}\\n",
           "parameters": {{
-            "type": "object", 
+            "type": "object",
             "properties": {{
               "code": {{"type": "string", "description": "The Python code to execute."}}
-            }}, 
+            }},
             "required": ["code"]
           }}
         }}
       }},
       {{
-        "type": "function", 
+        "type": "function",
         "function": {{
-          "name": "google_scholar", 
-          "description": "Leverage Google Scholar to retrieve relevant information from academic publications. Accepts multiple queries. This tool will also return results from google search", 
+          "name": "google_scholar",
+          "description": "Leverage Google Scholar to retrieve relevant information from academic publications. Accepts multiple queries. This tool will also return results from google search",
           "parameters": {{
-            "type": "object", 
+            "type": "object",
             "properties": {{
               "query": {{
-                "type": "array", 
-                "items": {{"type": "string", "description": "The search query."}}, 
-                "minItems": 1, 
+                "type": "array",
+                "items": {{"type": "string", "description": "The search query."}},
+                "minItems": 1,
                 "description": "The list of search queries for Google Scholar."
               }}
-            }}, 
+            }},
             "required": ["query"]
           }}
         }}
       }},
       {{
-        "type": "function", 
+        "type": "function",
         "function": {{
-          "name": "parse_file", 
-          "description": "This is a tool that can be used to parse multiple user uploaded local files such as PDF, DOCX, PPTX, TXT, CSV, XLSX, DOC, ZIP, MP4, MP3.", 
+          "name": "parse_file",
+          "description": "This is a tool that can be used to parse multiple user uploaded local files such as PDF, DOCX, PPTX, TXT, CSV, XLSX, DOC, ZIP, MP4, MP3.",
           "parameters": {{
-            "type": "object", 
+            "type": "object",
             "properties": {{
               "files": {{
-                "type": "array", 
-                "items": {{"type": "string"}}, 
+                "type": "array",
+                "items": {{"type": "string"}},
                 "description": "The file name of the user uploaded local files to be parsed."
               }}
-            }}, 
+            }},
             "required": ["files"]
           }}
         }}
@@ -418,7 +418,7 @@ You MUST output your response in the following JSON format:
         self.templates[name] = template
         self.logger.info(f"添加提示词模板: {name}")
 
-    def get_template(self, name: str) -> Optional[ChatPromptTemplate]:
+    def get_template(self, name: str) -> ChatPromptTemplate | None:
         """
         获取提示词模板
 
@@ -430,7 +430,7 @@ You MUST output your response in the following JSON format:
         """
         return self.templates.get(name)
 
-    def render_template(self, name: str, **kwargs) -> List[BaseMessage]:
+    def render_template(self, name: str, **kwargs) -> list[BaseMessage]:
         """
         渲染提示词模板
 
@@ -458,11 +458,11 @@ You MUST output your response in the following JSON format:
     def build_conversation_messages(
         self,
         user_input: str,
-        conversation_history: List[Dict[str, str]],
-        system_context: Dict[str, Any],
-        intent_info: Optional[Dict[str, Any]] = None,
-        tool_results: Optional[List[Dict[str, Any]]] = None,
-    ) -> List[BaseMessage]:
+        conversation_history: list[dict[str, str]],
+        system_context: dict[str, Any],
+        intent_info: dict[str, Any] | None = None,
+        tool_results: list[dict[str, Any]] | None = None,
+    ) -> list[BaseMessage]:
         """
         构建对话消息列表
 
@@ -507,7 +507,7 @@ You MUST output your response in the following JSON format:
         return messages
 
     def build_tool_usage_prompt(
-        self, user_input: str, intent: str, available_tools: List[Dict[str, Any]]
+        self, user_input: str, intent: str, available_tools: list[dict[str, Any]]
     ) -> str:
         """
         构建工具使用决策提示词
@@ -540,9 +540,9 @@ You MUST output your response in the following JSON format:
         user_input: str,
         intent: str,
         confidence: float,
-        entities: List[Dict[str, Any]],
-        tool_results: List[Dict[str, Any]],
-        context: Dict[str, Any],
+        entities: list[dict[str, Any]],
+        tool_results: list[dict[str, Any]],
+        context: dict[str, Any],
     ) -> str:
         """
         构建响应生成提示词
@@ -583,5 +583,5 @@ You MUST output your response in the following JSON format:
         )
         return messages[0].content
 
-    def list_templates(self) -> List[str]:
+    def list_templates(self) -> list[str]:
         return list(self.templates.keys())

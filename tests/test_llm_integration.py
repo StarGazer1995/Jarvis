@@ -3,6 +3,7 @@ Tests for LLM integration in ARK engine.
 """
 
 import pytest
+
 from src.core.llm.config import LLMConfig, LLMProvider
 from src.core.prompt.manager import PromptManager
 
@@ -101,7 +102,7 @@ class TestPromptManager:
 
         assert isinstance(messages, list)
         assert len(messages) > 0
-        from langchain_core.messages import SystemMessage, HumanMessage
+        from langchain_core.messages import HumanMessage, SystemMessage
 
         assert any(isinstance(msg, SystemMessage) for msg in messages)
         assert any(isinstance(msg, HumanMessage) for msg in messages)

@@ -2,8 +2,10 @@
 Tests for Python Interpreter Capability
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
+
 from src.capabilities.interpreter import PythonInterpreter
 
 # We need to mock docker since we removed local execution support

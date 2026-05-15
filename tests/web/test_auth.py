@@ -1,4 +1,5 @@
 from unittest.mock import patch
+
 from src.web.auth import auth_callback
 
 

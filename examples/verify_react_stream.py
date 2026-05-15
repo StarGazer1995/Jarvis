@@ -1,11 +1,11 @@
 import asyncio
-import sys
 import os
+import sys
 
 # Add project root to path
 sys.path.append(os.getcwd())
 
-from src.core.agent.react import ReActAgent, AgentState
+from src.core.agent.react import AgentState, ReActAgent
 
 
 class MockLLMManager:

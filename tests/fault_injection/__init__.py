@@ -28,7 +28,7 @@ Usage:
     )
 """
 
-from .base import FaultInjector, FaultConfig, FaultPattern
+from .base import FaultConfig, FaultInjector, FaultPattern
 
 __all__ = [
     "FaultInjector",

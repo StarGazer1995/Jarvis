@@ -5,7 +5,7 @@ LiteLLM客户端实现
 """
 
 import time
-from typing import List, AsyncGenerator
+from collections.abc import AsyncGenerator
 
 from ..client import BaseLLMClient, LLMMessage, LLMResponse
 from ..types import LLMConfig
@@ -37,11 +37,11 @@ class LiteLLMClient(BaseLLMClient):
         self._start_time = time.time()
 
     @staticmethod
-    def _format_messages(messages: List[LLMMessage]) -> list[dict[str, str]]:
+    def _format_messages(messages: list[LLMMessage]) -> list[dict[str, str]]:
         return [{"role": msg.role, "content": msg.content} for msg in messages]
 
     def _build_params(
-        self, messages: List[LLMMessage], stream: bool, **kwargs
+        self, messages: list[LLMMessage], stream: bool, **kwargs
     ) -> dict[str, object]:
         params: dict[str, object] = {
             "model": self.config.model,
@@ -84,7 +84,7 @@ class LiteLLMClient(BaseLLMClient):
 
     @llm_retry
     async def generate_response(
-        self, messages: List[LLMMessage], **kwargs
+        self, messages: list[LLMMessage], **kwargs
     ) -> LLMResponse:
         """生成响应"""
         if not self._initialized:
@@ -132,7 +132,7 @@ class LiteLLMClient(BaseLLMClient):
 
     @llm_retry
     async def stream_response(
-        self, messages: List[LLMMessage], **kwargs
+        self, messages: list[LLMMessage], **kwargs
     ) -> AsyncGenerator[str, None]:
         """流式生成响应"""
         if not self._initialized:

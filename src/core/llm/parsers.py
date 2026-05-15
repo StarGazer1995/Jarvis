@@ -8,8 +8,9 @@ and ensuring strict schema validation.
 import json
 import logging
 import re
-from typing import Any, Dict, Optional, Union, Type
 from abc import ABC, abstractmethod
+from typing import Any
+
 from pydantic import BaseModel, ValidationError
 
 try:
@@ -39,7 +40,7 @@ class JSONOutputParser(BaseOutputParser):
 
     def __init__(
         self,
-        pydantic_model: Optional[Type[BaseModel]] = None,
+        pydantic_model: type[BaseModel] | None = None,
         allow_repair: bool = False,
     ):
         """
@@ -53,7 +54,7 @@ class JSONOutputParser(BaseOutputParser):
         self.allow_repair = allow_repair
         self.logger = logging.getLogger("llm.parsers.json")
 
-    def parse(self, text: str) -> Union[Dict[str, Any], BaseModel]:
+    def parse(self, text: str) -> dict[str, Any] | BaseModel:
         """
         Parse the text into a dictionary or Pydantic model.
 
@@ -136,4 +137,4 @@ class AgentResponse(BaseModel):
 
     thought: str
     type: str  # "answer", "tool_call", "error"
-    content: Union[str, Dict[str, Any]]
+    content: str | dict[str, Any]

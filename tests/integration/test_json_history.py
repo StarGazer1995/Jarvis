@@ -1,8 +1,10 @@
-import pytest
 import asyncio
 from unittest.mock import AsyncMock, patch
-from src.core.ark.engine import ARKEngine
+
+import pytest
 from langchain_core.messages import AIMessage
+
+from src.core.ark.engine import ARKEngine
 
 
 @pytest.mark.asyncio

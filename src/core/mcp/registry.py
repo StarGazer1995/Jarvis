@@ -6,16 +6,17 @@ for managing MCP (Model Context Protocol) tools. It handles tool
 registration, discovery, validation, and execution coordination.
 """
 
-import logging
 import asyncio
-from typing import Dict, List, Any, Optional, Set, Callable, Union
-from dataclasses import dataclass, field
-from enum import Enum
-import json
-import time
 import fnmatch
-from datetime import datetime
+import json
+import logging
+import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from typing import Any, Optional
 
 
 class ToolStatus(Enum):
@@ -56,9 +57,9 @@ class ToolCapability:
 
     name: str
     description: str
-    parameters: Dict[str, Any] = field(default_factory=dict)
-    required_permissions: List[str] = field(default_factory=list)
-    examples: List[str] = field(default_factory=list)
+    parameters: dict[str, Any] = field(default_factory=dict)
+    required_permissions: list[str] = field(default_factory=list)
+    examples: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -71,19 +72,19 @@ class ToolMetadata:
     status: ToolStatus = ToolStatus.AVAILABLE
     version: str = "1.0.0"
     server_name: str = "unknown"
-    provider: Optional[str] = None
-    capabilities: List[ToolCapability] = field(default_factory=list)
-    parameters: Dict[str, Any] = field(
+    provider: str | None = None
+    capabilities: list[ToolCapability] = field(default_factory=list)
+    parameters: dict[str, Any] = field(
         default_factory=dict
     )  # For backward compatibility
-    parameters_schema: Dict[str, Any] = field(default_factory=dict)
-    return_schema: Dict[str, Any] = field(default_factory=dict)
-    required_permissions: List[str] = field(default_factory=list)
-    tags: List[str] = field(default_factory=list)
+    parameters_schema: dict[str, Any] = field(default_factory=dict)
+    return_schema: dict[str, Any] = field(default_factory=dict)
+    required_permissions: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
     usage_count: int = 0
-    last_used: Optional[float] = None
+    last_used: float | None = None
     error_count: int = 0
-    last_error: Optional[str] = None
+    last_error: str | None = None
     average_execution_time: float = 0.0
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
@@ -101,7 +102,7 @@ class ToolMetadata:
             return datetime.fromtimestamp(value)
         return datetime.now()
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert tool metadata to dictionary."""
         return {
             "name": self.name,
@@ -140,7 +141,7 @@ class ToolMetadata:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ToolMetadata":
+    def from_dict(cls, data: dict[str, Any]) -> "ToolMetadata":
         """Create ToolMetadata instance from dictionary."""
         # Handle category conversion
         category = data.get("category", "general")
@@ -201,26 +202,26 @@ class ToolFilter:
 
     def __init__(
         self,
-        categories: Optional[List[Union[ToolCategory, str]]] = None,
-        status: Optional[Union[ToolStatus, str]] = None,
-        provider: Optional[str] = None,
-        tags: Optional[List[str]] = None,
-        name_pattern: Optional[str] = None,
-        description_pattern: Optional[str] = None,
-        min_usage_count: Optional[int] = None,
-        max_error_rate: Optional[float] = None,
-        servers: Optional[List[str]] = None,
+        categories: list[ToolCategory | str] | None = None,
+        status: ToolStatus | str | None = None,
+        provider: str | None = None,
+        tags: list[str] | None = None,
+        name_pattern: str | None = None,
+        description_pattern: str | None = None,
+        min_usage_count: int | None = None,
+        max_error_rate: float | None = None,
+        servers: list[str] | None = None,
     ):
         """Initialize a filter with optional parameters."""
-        self.categories: Set[ToolCategory] = set()
-        self.statuses: Set[ToolStatus] = set()
-        self.tags: Set[str] = set()
-        self.servers: Set[str] = set()
-        self.name_pattern: Optional[str] = name_pattern
-        self.description_pattern: Optional[str] = description_pattern
-        self.min_usage_count: Optional[int] = min_usage_count
-        self.max_error_rate: Optional[float] = max_error_rate
-        self.provider: Optional[str] = provider
+        self.categories: set[ToolCategory] = set()
+        self.statuses: set[ToolStatus] = set()
+        self.tags: set[str] = set()
+        self.servers: set[str] = set()
+        self.name_pattern: str | None = name_pattern
+        self.description_pattern: str | None = description_pattern
+        self.min_usage_count: int | None = min_usage_count
+        self.max_error_rate: float | None = max_error_rate
+        self.provider: str | None = provider
 
         # Process categories
         if categories:
@@ -252,18 +253,18 @@ class ToolFilter:
             self.servers.update(servers)
 
     @property
-    def status(self) -> Optional[ToolStatus]:
+    def status(self) -> ToolStatus | None:
         """Get the first status for backward compatibility."""
         return next(iter(self.statuses)) if self.statuses else None
 
-    def add_category(self, category: Union[ToolCategory, str]) -> "ToolFilter":
+    def add_category(self, category: ToolCategory | str) -> "ToolFilter":
         """Add category filter."""
         if isinstance(category, str):
             category = ToolCategory(category)
         self.categories.add(category)
         return self
 
-    def add_status(self, status: Union[ToolStatus, str]) -> "ToolFilter":
+    def add_status(self, status: ToolStatus | str) -> "ToolFilter":
         """Add status filter."""
         if isinstance(status, str):
             status = ToolStatus(status)
@@ -356,7 +357,7 @@ class ToolDiscoveryProvider(ABC):
     @abstractmethod
     async def discover_tools(
         self, tool_filter: Optional["ToolFilter"] = None
-    ) -> List[ToolMetadata]:
+    ) -> list[ToolMetadata]:
         """
         Discover available tools.
 
@@ -369,7 +370,7 @@ class ToolDiscoveryProvider(ABC):
         pass
 
     @abstractmethod
-    async def get_tool_details(self, tool_name: str) -> Optional[ToolMetadata]:
+    async def get_tool_details(self, tool_name: str) -> ToolMetadata | None:
         """
         Get detailed information about a specific tool.
 
@@ -398,7 +399,7 @@ class MCPToolDiscoveryProvider(ToolDiscoveryProvider):
 
     async def discover_tools(
         self, tool_filter: Optional["ToolFilter"] = None
-    ) -> List[ToolMetadata]:
+    ) -> list[ToolMetadata]:
         """Discover tools from MCP servers."""
         tools = []
 
@@ -426,7 +427,7 @@ class MCPToolDiscoveryProvider(ToolDiscoveryProvider):
 
         return tools
 
-    async def get_tool_details(self, tool_name: str) -> Optional[ToolMetadata]:
+    async def get_tool_details(self, tool_name: str) -> ToolMetadata | None:
         """Get detailed information about an MCP tool."""
         try:
             tools = await self.mcp_client.list_tools()
@@ -439,7 +440,7 @@ class MCPToolDiscoveryProvider(ToolDiscoveryProvider):
         return None
 
     def _create_tool_metadata(
-        self, tool_name: str, tool_info: Dict[str, Any]
+        self, tool_name: str, tool_info: dict[str, Any]
     ) -> ToolMetadata:
         """Create tool metadata from MCP tool information."""
         # Extract basic information
@@ -581,7 +582,7 @@ class MCPToolDiscoveryProvider(ToolDiscoveryProvider):
 
         return ToolCategory.GENERAL
 
-    def _generate_tags(self, tool_name: str, description: str) -> List[str]:
+    def _generate_tags(self, tool_name: str, description: str) -> list[str]:
         """Generate tags based on tool name and description."""
         tags = []
 
@@ -627,12 +628,12 @@ class FileToolDiscoveryProvider(ToolDiscoveryProvider):
 
     async def discover_tools(
         self, tool_filter: Optional["ToolFilter"] = None
-    ) -> List[ToolMetadata]:
+    ) -> list[ToolMetadata]:
         """Discover tools from JSON file."""
         try:
             import json
 
-            with open(self.file_path, "r") as f:
+            with open(self.file_path) as f:
                 data = json.load(f)
 
             tools = []
@@ -666,7 +667,7 @@ class FileToolDiscoveryProvider(ToolDiscoveryProvider):
             self.logger.error(f"Failed to read tools from file {self.file_path}: {e}")
             return []
 
-    async def get_tool_details(self, tool_name: str) -> Optional[ToolMetadata]:
+    async def get_tool_details(self, tool_name: str) -> ToolMetadata | None:
         """Get details for a specific tool from the file."""
         tools = await self.discover_tools()
         for tool in tools:
@@ -688,14 +689,14 @@ class ARKToolRegistry:
         self.logger = logging.getLogger("jarvis.tool_registry")
 
         # Tool storage
-        self.tools: Dict[str, ToolMetadata] = {}
-        self.discovery_providers: List[ToolDiscoveryProvider] = []
+        self.tools: dict[str, ToolMetadata] = {}
+        self.discovery_providers: list[ToolDiscoveryProvider] = []
 
         # Event callbacks
-        self.on_tool_registered: List[Callable] = []
-        self.on_tool_unregistered: List[Callable] = []
-        self.on_tool_executed: List[Callable] = []
-        self.on_tool_error: List[Callable] = []
+        self.on_tool_registered: list[Callable] = []
+        self.on_tool_unregistered: list[Callable] = []
+        self.on_tool_executed: list[Callable] = []
+        self.on_tool_error: list[Callable] = []
 
         # Configuration
         self.auto_discovery_enabled = True
@@ -703,11 +704,11 @@ class ARKToolRegistry:
         self.max_tools = 1000
 
         # Tool execution tracking
-        self.tool_execution_history: Dict[str, List[Dict[str, Any]]] = {}
-        self.execution_stats: Dict[str, Dict[str, Any]] = {}
+        self.tool_execution_history: dict[str, list[dict[str, Any]]] = {}
+        self.execution_stats: dict[str, dict[str, Any]] = {}
 
         # Background tasks
-        self._discovery_task: Optional[asyncio.Task] = None
+        self._discovery_task: asyncio.Task | None = None
         self._running = False
 
         # Providers property for backward compatibility
@@ -749,9 +750,7 @@ class ARKToolRegistry:
         self.discovery_providers.append(provider)
         self.logger.info(f"Added discovery provider: {provider.__class__.__name__}")
 
-    def remove_discovery_provider(
-        self, provider: Union[ToolDiscoveryProvider, str]
-    ) -> None:
+    def remove_discovery_provider(self, provider: ToolDiscoveryProvider | str) -> None:
         """
         Remove a tool discovery provider.
 
@@ -776,8 +775,8 @@ class ARKToolRegistry:
                 )
 
     async def discover_tools(
-        self, tool_filter: Optional[ToolFilter] = None, force_refresh: bool = False
-    ) -> List[ToolMetadata]:
+        self, tool_filter: ToolFilter | None = None, force_refresh: bool = False
+    ) -> list[ToolMetadata]:
         """
         Discover tools from all providers.
 
@@ -881,7 +880,7 @@ class ARKToolRegistry:
 
         return False
 
-    def get_tool(self, tool_name: str) -> Optional[ToolMetadata]:
+    def get_tool(self, tool_name: str) -> ToolMetadata | None:
         """
         Get tool metadata by name.
 
@@ -893,7 +892,7 @@ class ARKToolRegistry:
         """
         return self.tools.get(tool_name)
 
-    def get_all_tools(self) -> List[ToolMetadata]:
+    def get_all_tools(self) -> list[ToolMetadata]:
         """
         Get all registered tools.
 
@@ -902,7 +901,7 @@ class ARKToolRegistry:
         """
         return list(self.tools.values())
 
-    def search_tools(self, filter: ToolFilter) -> List[ToolMetadata]:
+    def search_tools(self, filter: ToolFilter) -> list[ToolMetadata]:
         """
         Search tools using filter criteria.
 
@@ -920,9 +919,7 @@ class ARKToolRegistry:
 
         return matching_tools
 
-    def get_tools_by_category(
-        self, category: Union[ToolCategory, str]
-    ) -> List[ToolMetadata]:
+    def get_tools_by_category(self, category: ToolCategory | str) -> list[ToolMetadata]:
         """
         Get tools by category.
 
@@ -937,7 +934,7 @@ class ARKToolRegistry:
 
         return [tool for tool in self.tools.values() if tool.category == category]
 
-    def get_tools_by_server(self, server_name: str) -> List[ToolMetadata]:
+    def get_tools_by_server(self, server_name: str) -> list[ToolMetadata]:
         """
         Get tools by server name.
 
@@ -949,7 +946,7 @@ class ARKToolRegistry:
         """
         return [tool for tool in self.tools.values() if tool.server_name == server_name]
 
-    def get_popular_tools(self, limit: int = 10) -> List[ToolMetadata]:
+    def get_popular_tools(self, limit: int = 10) -> list[ToolMetadata]:
         """
         Get most popular tools by usage count.
 
@@ -964,7 +961,7 @@ class ARKToolRegistry:
         )
         return sorted_tools[:limit]
 
-    def get_recent_tools(self, limit: int = 10) -> List[ToolMetadata]:
+    def get_recent_tools(self, limit: int = 10) -> list[ToolMetadata]:
         """
         Get recently used tools.
 
@@ -987,7 +984,7 @@ class ARKToolRegistry:
         tool_name: str,
         execution_time: float,
         success: bool,
-        error: Optional[str] = None,
+        error: str | None = None,
     ) -> None:
         """
         Record tool execution statistics.
@@ -1047,7 +1044,7 @@ class ARKToolRegistry:
             stats["failed_executions"] += 1
             stats["last_error"] = error
 
-    def get_registry_stats(self) -> Dict[str, Any]:
+    def get_registry_stats(self) -> dict[str, Any]:
         """
         Get registry statistics.
 
@@ -1138,9 +1135,7 @@ class ARKToolRegistry:
             raise KeyError(f"Tool '{tool_name}' not found")
         return self.tools[tool_name]
 
-    def list_tools(
-        self, tool_filter: Optional[ToolFilter] = None
-    ) -> List[ToolMetadata]:
+    def list_tools(self, tool_filter: ToolFilter | None = None) -> list[ToolMetadata]:
         """List tools with optional filtering. Alias for search_tools."""
         if tool_filter is None:
             return self.get_all_tools()
@@ -1151,7 +1146,7 @@ class ARKToolRegistry:
         tool_name: str,
         success: bool,
         execution_time: float,
-        error: Optional[str] = None,
+        error: str | None = None,
     ) -> None:
         """Record tool execution. Alias for record_tool_execution."""
         self.record_tool_execution(tool_name, execution_time, success, error)
@@ -1161,20 +1156,20 @@ class ARKToolRegistry:
         self.tools.clear()
         self.logger.info("All tools cleared from registry")
 
-    def get_tool_count(self, tool_filter: Optional[ToolFilter] = None) -> int:
+    def get_tool_count(self, tool_filter: ToolFilter | None = None) -> int:
         """Get count of tools, optionally filtered."""
         if tool_filter is None:
             return len(self.tools)
         return len(self.search_tools(tool_filter))
 
-    def get_categories(self) -> Set[ToolCategory]:
+    def get_categories(self) -> set[ToolCategory]:
         """Get all categories of registered tools."""
         categories = set()
         for tool in self.tools.values():
             categories.add(tool.category)
         return categories
 
-    def get_providers(self) -> Set[str]:
+    def get_providers(self) -> set[str]:
         """Get all providers of registered tools."""
         providers = set()
         for tool in self.tools.values():
@@ -1182,7 +1177,7 @@ class ARKToolRegistry:
                 providers.add(tool.provider)
         return providers
 
-    def validate_tool(self, tool: ToolMetadata) -> tuple[bool, List[str]]:
+    def validate_tool(self, tool: ToolMetadata) -> tuple[bool, list[str]]:
         """
         Validate a tool metadata object.
 
@@ -1205,11 +1200,11 @@ class ARKToolRegistry:
 
         return len(errors) == 0, errors
 
-    def get_execution_stats(self, tool_name: str) -> Optional[Dict[str, Any]]:
+    def get_execution_stats(self, tool_name: str) -> dict[str, Any] | None:
         """Get execution statistics for a specific tool."""
         return self.execution_stats.get(tool_name, None)
 
-    def get_all_execution_stats(self) -> Dict[str, Dict[str, Any]]:
+    def get_all_execution_stats(self) -> dict[str, dict[str, Any]]:
         """Get execution statistics for all tools."""
         return self.execution_stats.copy()
 

@@ -7,15 +7,14 @@ It provides a command-line interface for running the agent and
 demonstrates basic usage of the ARK-powered conversational system.
 """
 
-import asyncio
 import argparse
+import asyncio
 import logging
-import sys
 import signal
-from typing import Optional
+import sys
 
-from .jarvis_agent import JarvisAgent, JarvisConfig
 from .core.config.server import SimpleMCPServerConfig
+from .jarvis_agent import JarvisAgent, JarvisConfig
 
 
 class JarvisApp:
@@ -28,7 +27,7 @@ class JarvisApp:
 
     def __init__(self):
         """Initialize the Jarvis application."""
-        self.agent: Optional[JarvisAgent] = None
+        self.agent: JarvisAgent | None = None
         self.running = False
         self.logger = logging.getLogger("jarvis.app")
 
@@ -125,7 +124,7 @@ Examples:
             try:
                 import json
 
-                with open(args.config_file, "r") as f:
+                with open(args.config_file) as f:
                     config_data = json.load(f)
 
                 # Update config with file data

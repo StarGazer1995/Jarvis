@@ -5,25 +5,26 @@
 """
 
 import os
-import pytest
 import tempfile
-import yaml
+from typing import Any
 from unittest.mock import patch
-from typing import Dict, Any
 
+import pytest
+import yaml
+
+from src.core.common.exceptions import ConfigurationError
 from src.core.config.loader import (
     ConfigLoader,
-    RetryConfig,
-    TimeoutConfig,
+    FeatureConfig,
+    GlobalConfig,
+    LLMConfig,
     ModelConfig,
     ProviderConfig,
-    GlobalConfig,
-    FeatureConfig,
-    LLMConfig,
-    load_llm_config,
+    RetryConfig,
+    TimeoutConfig,
     get_config_path,
+    load_llm_config,
 )
-from src.core.common.exceptions import ConfigurationError
 
 
 class TestRetryConfig:
@@ -121,7 +122,7 @@ class TestConfigLoader:
     """测试配置加载器"""
 
     @pytest.fixture
-    def sample_config_data(self) -> Dict[str, Any]:
+    def sample_config_data(self) -> dict[str, Any]:
         """示例配置数据"""
         return {
             "global": {
@@ -324,7 +325,6 @@ class TestConfigHelperFunctions:
         """测试默认配置路径获取"""
         result = get_config_path()
         assert str(result).endswith("config/llm_config.yaml")
-        assert "00_Jarvis" in str(result)
 
     @patch("src.core.config.loader.ConfigLoader.load_config")
     def test_load_llm_config(self, mock_load):

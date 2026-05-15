@@ -1,8 +1,10 @@
-import pytest
 import os
-from unittest.mock import patch, MagicMock, AsyncMock
-from src.web.agent_factory import create_agent, get_llm_config
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 import src.web.agent_factory
+from src.web.agent_factory import create_agent, get_llm_config
 
 
 @pytest.fixture

@@ -14,12 +14,12 @@ Jarvis AI代理完整演示脚本
     python examples/complete_demo.py
 """
 
-import sys
 import asyncio
-import logging
 import json
-from pathlib import Path
+import logging
+import sys
 from datetime import datetime
+from pathlib import Path
 
 # 添加项目根目录到Python路径
 project_root = Path(__file__).parent.parent
@@ -221,12 +221,12 @@ async def demonstrate_jarvis_capabilities():
 
         print("🎉 Jarvis AI代理功能演示完成！")
         print("\n📋 演示总结:")
-        print(f"  ✅ 成功启动代理")
+        print("  ✅ 成功启动代理")
         print(f"  ✅ 完成 {conversation_count} 轮对话测试")
-        print(f"  ✅ 系统状态检查正常")
-        print(f"  ✅ 健康检查通过")
-        print(f"  ✅ 用户偏好设置成功")
-        print(f"  ✅ 对话历史导出成功")
+        print("  ✅ 系统状态检查正常")
+        print("  ✅ 健康检查通过")
+        print("  ✅ 用户偏好设置成功")
+        print("  ✅ 对话历史导出成功")
 
         print("\n💡 接下来你可以:")
         print("  1. 运行 python examples/conversation_demo.py 进行交互式对话")

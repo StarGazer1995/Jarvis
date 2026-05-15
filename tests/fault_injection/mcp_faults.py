@@ -5,12 +5,12 @@ Provides convenient factory functions for common MCP failure patterns
 that can be used directly as mock side_effects.
 """
 
-from typing import Any, Callable, Dict, Optional, Tuple
+from collections.abc import Callable
+from typing import Any
 
 from src.core.common.exceptions import MCPError, ToolError
 
-from .base import FaultConfig, FaultInjector, FaultPattern, build_side_effect
-
+from .base import FaultPattern, build_side_effect
 
 # ── Connection-level faults ────────────────────────────────────────
 

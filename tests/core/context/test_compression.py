@@ -1,7 +1,9 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
+
+from src.core.config.loader import GlobalConfig, LLMConfig, ProviderConfig
 from src.core.context.manager import ConversationContext, ConversationTurn
-from src.core.config.loader import LLMConfig, ProviderConfig, GlobalConfig
 
 
 @pytest.fixture

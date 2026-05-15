@@ -4,17 +4,18 @@
 测试配置管理器的各种功能和配置源优先级。
 """
 
-import pytest
 import os
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from src.core.llm.client import LLMProvider
 from src.core.llm.utils.config_manager import (
     ConfigManager,
-    get_config_manager,
     create_llm_config,
+    get_config_manager,
 )
 from src.core.llm.utils.error_handler import LLMConfigurationError
 
@@ -210,7 +211,7 @@ openai:
             assert Path(template_path).exists()
 
             # 验证内容
-            with open(template_path, "r") as f:
+            with open(template_path) as f:
                 content = f.read()
                 assert "global:" in content
                 assert "openai:" in content

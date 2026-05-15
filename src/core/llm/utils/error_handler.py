@@ -5,7 +5,7 @@ LLM错误处理模块
 """
 
 import logging
-from typing import Optional, Dict, Any
+from typing import Any
 
 try:
     import openai
@@ -23,8 +23,8 @@ class LLMError(Exception):
     def __init__(
         self,
         message: str,
-        error_code: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        error_code: str | None = None,
+        details: dict[str, Any] | None = None,
     ):
         """
         初始化LLM错误
@@ -50,8 +50,8 @@ class LLMAPIError(LLMError):
     def __init__(
         self,
         message: str,
-        status_code: Optional[int] = None,
-        response_data: Optional[Dict[str, Any]] = None,
+        status_code: int | None = None,
+        response_data: dict[str, Any] | None = None,
     ):
         """
         初始化API错误
@@ -73,7 +73,7 @@ class LLMRateLimitError(LLMError):
     当API调用超过速率限制时抛出此异常。
     """
 
-    def __init__(self, message: str, retry_after: Optional[int] = None):
+    def __init__(self, message: str, retry_after: int | None = None):
         """
         初始化速率限制错误
 
@@ -110,7 +110,7 @@ class LLMTimeoutError(LLMError):
     """
 
     def __init__(
-        self, message: str = "请求超时", timeout_duration: Optional[float] = None
+        self, message: str = "请求超时", timeout_duration: float | None = None
     ):
         """
         初始化超时错误
@@ -130,7 +130,7 @@ class LLMConfigurationError(LLMError):
     当配置无效或缺失时抛出此异常。
     """
 
-    def __init__(self, message: str, config_field: Optional[str] = None):
+    def __init__(self, message: str, config_field: str | None = None):
         """
         初始化配置错误
 
@@ -176,7 +176,7 @@ def handle_openai_error(error: Exception) -> LLMError:
         return LLMError(f"OpenAI未知错误: {str(error)}")
 
 
-def log_llm_error(error: LLMError, logger: Optional[logging.Logger] = None) -> None:
+def log_llm_error(error: LLMError, logger: logging.Logger | None = None) -> None:
     """
     记录LLM错误日志
 

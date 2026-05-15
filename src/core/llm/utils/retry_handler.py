@@ -5,19 +5,20 @@
 """
 
 import asyncio
+import inspect
 import logging
 import time
-import inspect
-from typing import Callable, Any, Optional, Type, Union, List
+from collections.abc import Callable
 from functools import wraps
+from typing import Any
 
 from tenacity import (
+    after_log,
+    before_sleep_log,
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
-    before_sleep_log,
-    after_log,
 )
 
 from .error_handler import LLMAPIError, LLMRateLimitError, LLMTimeoutError
@@ -36,8 +37,8 @@ class RetryHandler:
         min_wait: float = 1.0,
         max_wait: float = 60.0,
         multiplier: float = 2.0,
-        retry_on_exceptions: Optional[List[Type[Exception]]] = None,
-        logger: Optional[logging.Logger] = None,
+        retry_on_exceptions: list[type[Exception]] | None = None,
+        logger: logging.Logger | None = None,
     ):
         """
         初始化重试处理器
@@ -122,8 +123,8 @@ def with_retry(
     min_wait: float = 1.0,
     max_wait: float = 60.0,
     multiplier: float = 2.0,
-    retry_on_exceptions: Optional[List[Type[Exception]]] = None,
-    logger: Optional[logging.Logger] = None,
+    retry_on_exceptions: list[type[Exception]] | None = None,
+    logger: logging.Logger | None = None,
 ):
     """
     重试装饰器工厂函数
@@ -185,7 +186,7 @@ class RateLimitHandler:
     处理API速率限制，实现智能等待和重试。
     """
 
-    def __init__(self, logger: Optional[logging.Logger] = None):
+    def __init__(self, logger: logging.Logger | None = None):
         """
         初始化速率限制处理器
 
@@ -196,9 +197,7 @@ class RateLimitHandler:
         self._last_request_time = 0.0
         self._min_interval = 0.1  # 最小请求间隔（秒）
 
-    async def wait_if_needed(
-        self, retry_after: Optional[Union[int, float]] = None
-    ) -> None:
+    async def wait_if_needed(self, retry_after: int | float | None = None) -> None:
         """
         根据速率限制等待
 

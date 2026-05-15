@@ -1,8 +1,8 @@
 import asyncio
 
+import mcp.types as types
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-import mcp.types as types
 
 # Create server
 app = Server("Demo Server")

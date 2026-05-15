@@ -12,24 +12,28 @@ import asyncio
 import logging
 import os
 import sys
-from typing import Dict, Any
+from typing import Any
 
 # Ensure project root is in path
 sys.path.append(os.getcwd())
 
-from src.core.config.loader import load_llm_config as load_yaml_config
-from src.core.config.loader import (
-    LLMConfig as YamlLLMConfig,
-    ModelConfig,
-)
-from src.core.llm.types import LLMConfig as ClientLLMConfig, LLMProvider, LLMMessage
-from src.core.llm.client import LLMManager
 from langchain_core.messages import HumanMessage
-from src.core.ark.graph import create_supervisor_graph
-from src.core.ark.utils import AgentSpec, create_agent_node
-from src.core.ark.state import MultiAgentState
+
 from src.capabilities.refinement.loop import RefinementLoop
 from src.capabilities.web_research import WebResearcher
+from src.core.ark.graph import create_supervisor_graph
+from src.core.ark.state import MultiAgentState
+from src.core.ark.utils import AgentSpec, create_agent_node
+from src.core.config.loader import (
+    LLMConfig as YamlLLMConfig,
+)
+from src.core.config.loader import (
+    ModelConfig,
+)
+from src.core.config.loader import load_llm_config as load_yaml_config
+from src.core.llm.client import LLMManager
+from src.core.llm.types import LLMConfig as ClientLLMConfig
+from src.core.llm.types import LLMMessage, LLMProvider
 
 # Configure logging
 logging.basicConfig(
@@ -95,7 +99,7 @@ async def main():
 
     # --- Agent A: Researcher ---
     # This agent performs web research.
-    async def researcher_logic(state: MultiAgentState) -> Dict[str, Any]:
+    async def researcher_logic(state: MultiAgentState) -> dict[str, Any]:
         task = get_user_task(state["messages"])
 
         logger.info(f"[Researcher] Received task: {task}")
@@ -126,7 +130,7 @@ async def main():
 
     # --- Agent B: Writer ---
     # This agent writes content based on research.
-    async def writer_logic(state: MultiAgentState) -> Dict[str, Any]:
+    async def writer_logic(state: MultiAgentState) -> dict[str, Any]:
         task = get_user_task(state["messages"])
 
         # Check for shared data
@@ -150,7 +154,7 @@ async def main():
 
     # --- Agent C: QualityAssurance (Refinement Loop) ---
     # This agent refines the content using the RefinementLoop capability.
-    async def qa_logic(state: MultiAgentState) -> Dict[str, Any]:
+    async def qa_logic(state: MultiAgentState) -> dict[str, Any]:
         task = get_user_task(state["messages"])
 
         # Ideally, we refine the *Draft* from the Writer.

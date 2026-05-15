@@ -14,9 +14,9 @@ capabilities of the ARK system, including:
 Run from project root: python examples/security_validation_demo.py --verbose
 """
 
+import argparse
 import asyncio
 import logging
-import argparse
 import sys
 import time
 from pathlib import Path
@@ -25,15 +25,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from core.security_manager import (
-    SecurityLevel,
-    PermissionType,
-    SecurityPolicy,
-    SecurityContext,
-    ValidationRequest,
-    RateLimiter,
-    InputValidator,
-    AuditLogger,
     ARKSecurityManager,
+    AuditLogger,
+    InputValidator,
+    PermissionType,
+    RateLimiter,
+    SecurityContext,
+    SecurityLevel,
+    SecurityPolicy,
+    ValidationRequest,
 )
 
 
@@ -238,7 +238,7 @@ async def demonstrate_rate_limiting():
         },
     ]
 
-    print(f"\n🧪 Testing rate limiting scenarios:")
+    print("\n🧪 Testing rate limiting scenarios:")
 
     for scenario in test_scenarios:
         print(f"\n📝 Scenario: {scenario['description']}")
@@ -404,7 +404,7 @@ async def demonstrate_input_validation():
 
     # Show validation statistics
     accuracy = correct_predictions / len(validation_test_cases)
-    print(f"\n📊 Validation Statistics:")
+    print("\n📊 Validation Statistics:")
     print(f"   Total tests: {len(validation_test_cases)}")
     print(f"   Safe inputs: {safe_count}")
     print(f"   Unsafe inputs: {unsafe_count}")
@@ -535,10 +535,10 @@ async def demonstrate_audit_logging():
             risk_level=event["risk_level"],
         )
 
-        print(f"   Status: ✅ Logged")
+        print("   Status: ✅ Logged")
 
     # Generate audit report
-    print(f"\n📈 Generating Audit Report:")
+    print("\n📈 Generating Audit Report:")
 
     # Count events by type
     event_counts = {}
@@ -551,11 +551,11 @@ async def demonstrate_audit_logging():
         event_counts[event_type] = event_counts.get(event_type, 0) + 1
         risk_counts[risk_level] += 1
 
-    print(f"   Events by Type:")
+    print("   Events by Type:")
     for event_type, count in event_counts.items():
         print(f"     - {event_type}: {count}")
 
-    print(f"   Events by Risk Level:")
+    print("   Events by Risk Level:")
     for risk_level, count in risk_counts.items():
         print(f"     - {risk_level}: {count}")
 
@@ -719,7 +719,7 @@ async def demonstrate_comprehensive_security_workflow():
         avg_risk_score = total_risk_score / len(operation["steps"])
         success_rate = successful_steps / len(operation["steps"])
 
-        print(f"   Summary:")
+        print("   Summary:")
         print(
             f"     - Success rate: {success_rate:.1%} ({successful_steps}/{len(operation['steps'])})"
         )
