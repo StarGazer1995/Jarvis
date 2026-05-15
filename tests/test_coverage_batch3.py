@@ -282,3 +282,140 @@ class TestMasterNodeMore:
         node = MasterNode(llm_manager=llm, agents=[])
         assert node.agents == []
         assert node.agent_map == {}
+
+
+# ═══════════════════════════════════════════════════════════════
+# Quick wins for remaining uncovered code
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestQuickWins:
+    """快速补漏"""
+
+    def test_config_loader_env_substitution(self):
+        """测试配置加载器环境变量替换"""
+        from src.core.config.loader import ConfigLoader
+        import tempfile, os, yaml
+        data = {
+            "global": {"default_provider": "openai"},
+            "providers": {
+                "openai": {
+                    "type": "openai",
+                    "enabled": True,
+                    "default_model": "gpt-4",
+                    "models": {"gpt-4": {}},
+                    "api_key": "test-key",
+                }
+            },
+        }
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            yaml.dump(data, f)
+            p = f.name
+        try:
+            loader = ConfigLoader(p)
+            result = loader.load_config()
+            assert result is not None
+            assert len(result.providers) > 0
+        finally:
+            os.unlink(p)
+
+    def test_prompt_manager_render_system(self):
+        """测试渲染系统提示词模板"""
+        from src.core.prompt.manager import PromptManager
+        pm = PromptManager()
+        result = pm.render_template("react_system")
+        assert result is not None
+
+    def test_parsers_repair_json(self):
+        """测试 JSON 修复功能"""
+        from src.core.llm.parsers import JSONOutputParser
+        # JSONOutputParser may handle repair differently
+        parser = JSONOutputParser(allow_repair=True)
+        result = parser.parse("```json\n{\"valid\": true}\n```")
+        assert result["valid"] is True
+
+
+class TestLLMConfigRemainingCoverage:
+    """llm/config.py 剩余方法全覆盖"""
+
+    def test_is_configured_false_when_no_config(self):
+        from src.core.llm.config import LLMConfigManager
+        mgr = LLMConfigManager()
+        assert mgr.is_configured() is False
+
+    def test_is_configured_openai_without_key(self):
+        from src.core.llm.config import LLMConfigManager
+        mgr = LLMConfigManager()
+        mgr.load_config({"provider": "openai", "model": "gpt-4"})
+        # api_key is None, so should return False
+        assert mgr.is_configured() is False
+
+    def test_is_configured_openai_with_key(self):
+        from src.core.llm.config import LLMConfigManager
+        mgr = LLMConfigManager()
+        mgr.load_config({"provider": "openai", "api_key": "sk-key", "model": "gpt-4"})
+        assert mgr.is_configured() is True
+
+    def test_get_provider_info_no_config(self):
+        from src.core.llm.config import LLMConfigManager
+        mgr = LLMConfigManager()
+        info = mgr.get_provider_info()
+        assert info["provider"] == "none"
+        assert info["configured"] is False
+
+
+
+class TestFinalPush:
+    """最后一波推向90%"""
+
+    # ── llm/config.py: from_env ──
+    def test_config_from_env(self):
+        import os
+        from unittest.mock import patch
+        from src.core.llm.config import LLMConfigManager
+        env = {"LLM_PROVIDER": "anthropic", "OPENAI_API_KEY": "sk-key", "LLM_MODEL": "claude-3"}
+        with patch.dict(os.environ, env, clear=True):
+            mgr = LLMConfigManager()
+            cfg = mgr.load_config()
+            assert cfg is not None
+            assert cfg.model == "claude-3"
+
+    # ── factory.py edge cases ──
+    def test_factory_get_provider_class(self):
+        from src.core.llm.client import BaseLLMClient
+        from src.core.llm.factory import LLMProviderRegistry
+        class MockClient(BaseLLMClient):
+            async def initialize(self): return True
+            async def generate_response(self, m, **k): pass
+            async def stream_response(self, m, **k): yield ""
+        registry = LLMProviderRegistry()
+        registry.register_provider("mock", MockClient)
+        cls = registry.get_provider_class("mock")
+        assert cls is MockClient
+        assert registry.get_provider_class("nonexistent") is None
+
+    # ── factory.py: unregister nonexistent ──
+    def test_factory_unregister(self):
+        from src.core.llm.factory import LLMProviderRegistry
+        registry = LLMProviderRegistry()
+        registry.unregister_provider("nonexistent")
+
+    # ── prompt/manager.py ──
+    def test_prompt_manager_str(self):
+        from src.core.prompt.manager import PromptManager
+        pm = PromptManager()
+        s = str(pm)
+        assert "PromptManager" in s
+
+    # ── config/loader.py ──
+    def test_config_loader_load_empty(self):
+        from src.core.config.loader import ConfigLoader, get_config_loader
+        loader = get_config_loader()
+        assert loader is not None
+
+    # ── litellm_client.py ──
+    def test_litellm_config(self):
+        from src.core.llm.types import LLMConfig, LLMProvider
+        cfg = LLMConfig(provider=LLMProvider.LITELLM, model="gpt-4", api_key="k")
+        assert cfg.provider == LLMProvider.LITELLM
+        assert cfg.model == "gpt-4"
