@@ -167,3 +167,4 @@ reports/
 .vscode/
 .trae/
 chainlit.db
+config/servers/test_server.json

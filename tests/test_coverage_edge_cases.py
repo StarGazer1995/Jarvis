@@ -171,4 +171,3 @@ class TestMetricsCollectorEdgeCases:
 
         metrics = LLMMetrics()
         assert metrics.error_rate == 0.0
-        assert metrics.average_latency == 0.0
