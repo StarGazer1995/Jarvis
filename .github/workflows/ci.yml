@@ -181,7 +181,7 @@ jobs:
         run: uv sync
 
       - name: Run benchmarks
-        run: uv run pytest src/ -k "benchmark" --benchmark-only --benchmark-json=benchmark_results.json
+        run: uv run pytest src/ -k "benchmark" --benchmark-json=benchmark_results.json
 
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4
