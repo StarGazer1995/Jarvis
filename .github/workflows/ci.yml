@@ -86,12 +86,7 @@ jobs:
 
       - name: Run unit tests
         run: |
-          uv run pytest tests/ \
-            --ignore=tests/web \
-            --ignore=tests/integration \
-            --ignore=tests/test_performance.py \
-            --ignore=tests/test_observability.py \
-            --ignore=tests/test_observability_server.py \
+          uv run pytest src/ \
             -v --tb=short -q
 
   # ═══════════════════════════════════════════════════════════════
@@ -114,7 +109,7 @@ jobs:
         run: uv sync
 
       - name: Run fault injection tests
-        run: uv run pytest tests/test_fault_injection_*.py -v --tb=short -q
+        run: uv run pytest src/ -k "fault_injection" -v --tb=short -q
 
   # ═══════════════════════════════════════════════════════════════
   # Stage 5: Parallel Execution Tests
@@ -136,7 +131,7 @@ jobs:
         run: uv sync
 
       - name: Run parallel execution tests
-        run: uv run pytest tests/test_parallel_execution.py -v --tb=short -q
+        run: uv run pytest src/ -k "parallel" -v --tb=short -q
 
   # ═══════════════════════════════════════════════════════════════
   # Stage 6: Coverage
@@ -159,12 +154,7 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          uv run pytest tests/ \
-            --ignore=tests/web \
-            --ignore=tests/integration \
-            --ignore=tests/test_performance.py \
-            --ignore=tests/test_observability.py \
-            --ignore=tests/test_observability_server.py \
+          uv run pytest src/ \
             --cov=src \
             --cov-report=term-missing \
             --cov-fail-under=90 \
@@ -191,7 +181,7 @@ jobs:
         run: uv sync
 
       - name: Run benchmarks
-        run: uv run pytest tests/test_performance.py --benchmark-only --benchmark-json=benchmark_results.json
+        run: uv run pytest src/ -k "benchmark" --benchmark-only --benchmark-json=benchmark_results.json
 
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4
