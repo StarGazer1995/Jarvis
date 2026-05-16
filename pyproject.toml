@@ -52,22 +52,13 @@ dev = [
     "pytest-cov>=4.0.0",
 ]
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-asyncio_mode = "auto"
-addopts = "-v --tb=short --benchmark-disable"
-markers = [
-    "e2e: End-to-end tests for the web interface",
-]
 
 [tool.coverage.run]
 source = ["src"]
 omit = [
-    "tests/*",
     "examples/*",
+    "src/**/test/*",
+    "src/**/tests/*",
     "src/web/*",
     "src/core/observability/*",
 ]
@@ -105,7 +96,46 @@ exclude = ["examples", "cache", "docs", ".benchmarks", "*.egg-info"]
 select = ["E", "F", "I", "W", "UP"]
 ignore = ["E501"]
 
+
+
+
+
+[tool.pytest.ini_options]
+# Test discovery
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+testpaths = ["src"]
+norecursedirs = ["cache", "src/**/tests"]
+
+# Asyncio configuration
+asyncio_mode = "auto"
+
+# Output options
+addopts = [
+    "--strict-markers",
+    "-ra",
+    "--tb=short",
+]
+
+# Test markers
+markers = [
+    "unit: unit tests for single modules",
+    "integration: integration tests across modules",
+    "performance: performance and benchmark tests",
+    "fault_injection: fault injection and resilience tests",
+    "e2e: end-to-end UI or browser tests",
+    "asyncio: async/await tests",
+    "slow: slow running tests",
+]
+
+# Warning filters
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
 [tool.ruff.lint.per-file-ignores]
-"tests/test_jarvis_agent.py" = ["F811"]
-"tests/test_fault_injection_llm.py" = ["F811", "F401"]
-"tests/core/agent/test_deep_research_verification.py" = ["E402"]
+"src/test/test_jarvis_agent.py" = ["F811"]
+"src/core/llm/test/test_fault_injection_llm.py" = ["F811", "F401"]
+"src/core/agent/test/test_deep_research_verification.py" = ["E402"]

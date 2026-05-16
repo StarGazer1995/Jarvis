@@ -54,7 +54,7 @@ jobs:
         run: uv sync
 
       - name: Validate config schema
-        run: uv run pytest tests/test_config_schema.py -v --tb=short
+        run: uv run pytest src/core/config/test/test_config_schema.py -v --tb=short
 
       - name: Verify config loads
         run: |

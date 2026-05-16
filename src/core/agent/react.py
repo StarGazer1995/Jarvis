@@ -2,6 +2,9 @@
 ReAct Agent Implementation
 """
 
+import asyncio
+import inspect
+import json
 import logging
 from collections.abc import Callable
 from typing import Any
@@ -77,15 +80,17 @@ class ReActAgent(BaseAgent):
             try:
                 parsed_response = self.parser.parse(response_text)
             except ValueError as e:
-                self.logger.error(f"Failed to parse JSON response: {e}")
-                messages.append(LLMMessage(role="assistant", content=response_text))
-                messages.append(
-                    LLMMessage(
-                        role="user",
-                        content=f"Error: Invalid JSON output. Please output valid JSON matching the schema. Error: {e}",
+                parsed_response = self._parse_legacy_response(response_text)
+                if parsed_response is None:
+                    self.logger.error(f"Failed to parse JSON response: {e}")
+                    messages.append(LLMMessage(role="assistant", content=response_text))
+                    messages.append(
+                        LLMMessage(
+                            role="user",
+                            content=f"Error: Invalid JSON output. Please output valid JSON matching the schema. Error: {e}",
+                        )
                     )
-                )
-                continue
+                    continue
 
             thought = parsed_response.get("thought", "")
             msg_type = parsed_response.get("type", "answer")
@@ -129,6 +134,51 @@ class ReActAgent(BaseAgent):
                             content="Error: Tool call content must be a JSON object.",
                         )
                     )
+            elif msg_type == "tool_calls":
+                if isinstance(content, list):
+                    results = await asyncio.gather(
+                        *[
+                            self.execute_tool(
+                                tool_call.get("name"),
+                                tool_call.get("arguments", {}),
+                            )
+                            for tool_call in content
+                        ],
+                        return_exceptions=True,
+                    )
+                    observations: list[str] = []
+                    for tool_call, result in zip(content, results, strict=False):
+                        tool_name = tool_call.get("name")
+                        tool_args = tool_call.get("arguments", {})
+                        observation = (
+                            f"Error executing tool: {result}"
+                            if isinstance(result, Exception)
+                            else str(result)
+                        )
+                        observations.append(
+                            f"{tool_name}({tool_args}) => {observation}"
+                        )
+                        steps.append(
+                            AgentStep(
+                                thought=thought,
+                                action=tool_name,
+                                action_input=tool_args,
+                                observation=observation,
+                            )
+                        )
+                    messages.append(
+                        LLMMessage(
+                            role="user",
+                            content="Observation: " + "\n".join(observations),
+                        )
+                    )
+                else:
+                    messages.append(
+                        LLMMessage(
+                            role="user",
+                            content="Error: Parallel tool calls must be a JSON array.",
+                        )
+                    )
             else:
                 self.logger.warning(f"Unknown message type: {msg_type}")
                 # Treat as continue?
@@ -146,7 +196,22 @@ class ReActAgent(BaseAgent):
         Parses JSON during streaming.
         """
         handler = StreamTokenHandler(callbacks)
-        return await handler.process_stream(self.llm_manager.stream_response(messages))
+        stream_method = getattr(self.llm_manager, "stream_response", None)
+        if callable(stream_method):
+            stream_result = stream_method(messages)
+            if inspect.isawaitable(stream_result):
+                stream_result = await stream_result
+            if inspect.isasyncgen(stream_result):
+                return await handler.process_stream(stream_result)
+
+        generate_method = getattr(self.llm_manager, "generate_response", None)
+        if callable(generate_method):
+            response = await generate_method(messages)
+            if hasattr(response, "content"):
+                return str(response.content)
+            return str(response)
+
+        raise RuntimeError("LLM manager does not provide a usable response method")
 
     def _build_initial_messages(self, user_input: str) -> list[LLMMessage]:
         """Build the initial prompt messages."""
@@ -163,3 +228,44 @@ class ReActAgent(BaseAgent):
         """Get the system prompt. Override in subclasses."""
         messages = self.prompt_manager.render_template("react_system")
         return messages
+
+    def _parse_legacy_response(self, response_text: str) -> dict[str, Any] | None:
+        """Parse older markdown-style ReAct outputs used by legacy tests."""
+        response_body = response_text
+        thought = ""
+
+        if "## Response" in response_text:
+            before, after = response_text.split("## Response", 1)
+            response_body = after.strip()
+            if "## Reasoning" in before:
+                thought = before.split("## Reasoning", 1)[1].strip()
+        elif response_text.startswith("## Response"):
+            response_body = response_text[len("## Response") :].strip()
+
+        if not response_body:
+            return {"thought": thought, "type": "answer", "content": ""}
+
+        try:
+            parsed_body = json.loads(response_body)
+        except json.JSONDecodeError:
+            return {
+                "thought": thought,
+                "type": "answer",
+                "content": response_body,
+            }
+
+        if isinstance(parsed_body, list):
+            return {
+                "thought": thought,
+                "type": "tool_calls",
+                "content": parsed_body,
+            }
+
+        if isinstance(parsed_body, dict) and "name" in parsed_body:
+            return {
+                "thought": thought,
+                "type": "tool_call",
+                "content": parsed_body,
+            }
+
+        return {"thought": thought, "type": "answer", "content": parsed_body}
