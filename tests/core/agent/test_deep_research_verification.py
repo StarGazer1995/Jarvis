@@ -101,3 +101,74 @@ async def test_file_parser_routing():
         result_docx = await tools.parse_file(["test.docx"])
         assert "DOCX Content" in result_docx
         docx.Document.assert_called_with("test.docx")
+
+
+class TestDeepResearchExecuteTool:
+    """测试 DeepResearchAgent.execute_tool 的边界情况"""
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_unknown(self):
+        """测试执行未知工具"""
+        agent = DeepResearchAgent({"llm": {"provider": "mock"}})
+        agent.tools = MagicMock()
+        result = await agent.execute_tool("unknown_tool", {})
+        assert "Error: Unknown tool" in result
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_exception(self):
+        """测试工具执行抛出异常"""
+        agent = DeepResearchAgent({"llm": {"provider": "mock"}})
+        agent.tools = MagicMock()
+        agent.tools.search = AsyncMock(side_effect=Exception("Search failed"))
+        result = await agent.execute_tool("search", {"query": ["test"]})
+        assert "Error executing tool" in result
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_python_interpreter_no_code(self):
+        """测试 PythonInterpreter 缺少 code 参数"""
+        agent = DeepResearchAgent({"llm": {"provider": "mock"}})
+        agent.tools = MagicMock()
+        result = await agent.execute_tool("PythonInterpreter", {})
+        assert "must provide 'code' argument" in result
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_python_interpreter_success(self):
+        """测试 PythonInterpreter 执行成功"""
+        agent = DeepResearchAgent({"llm": {"provider": "mock"}})
+        agent.tools = MagicMock()
+        agent.tools.python_interpreter = AsyncMock(return_value="Execution result")
+        result = await agent.execute_tool(
+            "PythonInterpreter", {"code": "print('hello')"}
+        )
+        assert "Execution result" in result
+        agent.tools.python_interpreter.assert_called_once_with("print('hello')")
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_visit(self):
+        """测试 visit 工具"""
+        agent = DeepResearchAgent({"llm": {"provider": "mock"}})
+        agent.tools = MagicMock()
+        agent.tools.visit = AsyncMock(return_value="Page content")
+        result = await agent.execute_tool(
+            "visit", {"url": ["http://example.com"], "goal": "test"}
+        )
+        assert "Page content" in result
+        agent.tools.visit.assert_called_once_with(["http://example.com"], "test")
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_google_scholar(self):
+        """测试 google_scholar 工具"""
+        agent = DeepResearchAgent({"llm": {"provider": "mock"}})
+        agent.tools = MagicMock()
+        agent.tools.google_scholar = AsyncMock(return_value="Scholar results")
+        result = await agent.execute_tool("google_scholar", {"query": ["AI"]})
+        assert "Scholar results" in result
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_parse_file(self):
+        """测试 parse_file 工具"""
+        agent = DeepResearchAgent({"llm": {"provider": "mock"}})
+        agent.tools = MagicMock()
+        agent.tools.parse_file = AsyncMock(return_value="File content")
+        result = await agent.execute_tool("parse_file", {"files": ["test.pdf"]})
+        assert "File content" in result

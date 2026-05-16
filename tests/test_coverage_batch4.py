@@ -2,16 +2,13 @@
 第一梯队覆盖补全 - llm/config, prompt/manager, nodes/tools, ark/utils
 """
 
-import json
 import os
-from unittest.mock import MagicMock, patch
-
-import pytest
-
+from unittest.mock import MagicMock
 
 # ═══════════════════════════════════════════════════════════════
 # src/core/llm/config.py
 # ═══════════════════════════════════════════════════════════════
+
 
 class TestLLMConfigTier1:
     """llm/config.py 全覆盖"""
@@ -27,15 +24,20 @@ class TestLLMConfigTier1:
         from src.core.llm.config import LLMConfigManager
 
         mgr = LLMConfigManager()
-        mgr.load_config({"provider": "anthropic", "api_key": "sk-ant", "model": "claude-3"})
+        mgr.load_config(
+            {"provider": "anthropic", "api_key": "sk-ant", "model": "claude-3"}
+        )
         info = mgr.get_provider_info()
         assert info["configured"] is True
         assert info["model"] == "claude-3"
 
     def test_convert_to_client_config(self):
+        import tempfile
+
+        import yaml
+
         from src.core.config.loader import load_llm_config as load_yaml
         from src.core.llm.config import convert_to_client_config
-        import tempfile, yaml
 
         data = {
             "global": {"default_provider": "openai"},
@@ -49,7 +51,7 @@ class TestLLMConfigTier1:
                 }
             },
         }
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             yaml.dump(data, f)
             p = f.name
         try:
@@ -66,11 +68,13 @@ class TestLLMConfigTier1:
 # src/core/prompt/manager.py
 # ═══════════════════════════════════════════════════════════════
 
+
 class TestPromptManagerTier1:
     """prompt/manager.py 全覆盖"""
 
     def test_add_and_get_template(self):
         from langchain_core.prompts import ChatPromptTemplate
+
         from src.core.prompt.manager import PromptManager
 
         pm = PromptManager()
@@ -84,7 +88,10 @@ class TestPromptManagerTier1:
         from src.core.prompt.manager import PromptManager
 
         pm = PromptManager()
-        history = [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi"}]
+        history = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi"},
+        ]
         messages = pm.build_conversation_messages("test input", history, {})
         assert len(messages) >= 2
 
@@ -101,11 +108,11 @@ class TestPromptManagerTier1:
 # src/core/ark/nodes/tools.py
 # ═══════════════════════════════════════════════════════════════
 
+
 class TestToolsNodeTier1:
     """ToolsNode 全覆盖"""
 
     def test_tools_node_creation_defaults(self):
-        from unittest.mock import MagicMock
         from src.core.ark.nodes.tools import ToolsNode
 
         mcp = MagicMock()
@@ -118,12 +125,13 @@ class TestToolsNodeTier1:
 # src/core/ark/utils.py
 # ═══════════════════════════════════════════════════════════════
 
+
 class TestArkUtilsTier1:
     """ark/utils.py 全覆盖"""
 
     def test_create_agent_node(self):
-        from src.core.ark.utils import create_agent_node
         from src.core.ark.state import MultiAgentState
+        from src.core.ark.utils import create_agent_node
 
         async def simple_agent(state: MultiAgentState):
             return "Hello from agent"

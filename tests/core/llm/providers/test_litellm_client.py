@@ -127,3 +127,99 @@ class TestLiteLLMClient:
 
             call_kwargs = mock_litellm.acompletion.call_args.kwargs
             assert call_kwargs["stream"] is True
+
+    @pytest.mark.asyncio
+    async def test_build_params_with_timeout_dict(self, litellm_client):
+        """测试 _build_params 使用 dict 类型 timeout"""
+        litellm_client.config.timeout = {"connect": 10.0, "read": 30.0, "total": 60.0}
+        params = litellm_client._build_params(
+            [LLMMessage(role="user", content="Hi")], stream=False
+        )
+        assert params["timeout"] == 60.0
+
+    @pytest.mark.asyncio
+    async def test_build_params_with_extra_kwargs(self, litellm_client):
+        """测试 _build_params 传递额外 kwargs"""
+        params = litellm_client._build_params(
+            [LLMMessage(role="user", content="Hi")],
+            stream=False,
+            extra_param="value",
+            temperature=0.7,
+        )
+        assert params["extra_param"] == "value"
+        assert params["temperature"] == 0.7
+
+    @pytest.mark.asyncio
+    async def test_build_params_no_timeout(self, litellm_client):
+        """测试 _build_params timeout 为 None"""
+        litellm_client.config.timeout = None
+        params = litellm_client._build_params(
+            [LLMMessage(role="user", content="Hi")], stream=False
+        )
+        assert "timeout" not in params
+
+    @pytest.mark.asyncio
+    async def test_build_params_none_values_filtered(self, litellm_client):
+        """测试 _build_params 过滤 None 值"""
+        litellm_client.config.base_url = None
+        litellm_client.config.api_key = None
+        params = litellm_client._build_params(
+            [LLMMessage(role="user", content="Hi")], stream=False
+        )
+        assert "api_key" not in params
+        assert "base_url" not in params
+
+    @pytest.mark.asyncio
+    async def test_generate_response_uninitialized(self, litellm_client):
+        """测试未初始化时 generate_response"""
+        messages = [LLMMessage(role="user", content="Hello")]
+        with pytest.raises(RuntimeError, match="LiteLLM客户端未初始化"):
+            await litellm_client.generate_response(messages)
+
+    @pytest.mark.asyncio
+    async def test_stream_response_uninitialized(self, litellm_client):
+        """测试未初始化时 stream_response"""
+        messages = [LLMMessage(role="user", content="Hello")]
+        with pytest.raises(RuntimeError, match="LiteLLM客户端未初始化"):
+            async for _ in litellm_client.stream_response(messages):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_generate_response_exception(self, litellm_client):
+        """测试 generate_response 发生异常"""
+        litellm_client._initialized = True
+        mock_litellm = MagicMock()
+        mock_litellm.acompletion = AsyncMock(side_effect=Exception("API Error"))
+
+        from tenacity import RetryError
+
+        with patch.dict(sys.modules, {"litellm": mock_litellm}):
+            messages = [LLMMessage(role="user", content="Hello")]
+            with pytest.raises(RetryError):
+                await litellm_client.generate_response(messages)
+
+    @pytest.mark.asyncio
+    async def test_stream_response_exception(self, litellm_client):
+        """测试 stream_response 发生异常"""
+        litellm_client._initialized = True
+        mock_litellm = MagicMock()
+        mock_litellm.acompletion = AsyncMock(side_effect=Exception("Stream Error"))
+
+        from src.core.llm.utils.error_handler import LLMAPIError
+
+        with patch.dict(sys.modules, {"litellm": mock_litellm}):
+            messages = [LLMMessage(role="user", content="Hello")]
+            with pytest.raises(LLMAPIError, match="LiteLLM流式调用失败"):
+                async for _ in litellm_client.stream_response(messages):
+                    pass
+
+    @pytest.mark.asyncio
+    async def test_initialize_exception(self, litellm_client):
+        """测试初始化时发生其他异常"""
+        litellm_client._initialized = False
+        with patch(
+            "builtins.__import__",
+            side_effect=Exception("Unexpected import error"),
+        ):
+            result = await litellm_client.initialize()
+            assert result is False

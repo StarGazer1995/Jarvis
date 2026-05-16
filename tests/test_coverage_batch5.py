@@ -2,21 +2,19 @@
 最后一波推向90% - nodes, parsers, tasks, utils, litellm
 """
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-
 
 # ═══════════════════════════════════════════════════════════════
 # src/core/ark/nodes/tools.py
 # ═══════════════════════════════════════════════════════════════
 
+
 class TestToolsNodeFinal:
     """ToolsNode 最后覆盖"""
 
     def test_tools_node_custom_concurrency(self):
-        from unittest.mock import MagicMock
         from src.core.ark.nodes.tools import ToolsNode
 
         mcp = MagicMock()
@@ -28,11 +26,11 @@ class TestToolsNodeFinal:
 # src/core/ark/nodes/master.py
 # ═══════════════════════════════════════════════════════════════
 
+
 class TestMasterNodeFinal:
     """MasterNode 最后覆盖"""
 
     def test_master_node_empty_agents(self):
-        from unittest.mock import MagicMock
         from src.core.ark.nodes.master import MasterNode
 
         llm = MagicMock()
@@ -41,7 +39,6 @@ class TestMasterNodeFinal:
         assert node.agent_map == {}
 
     def test_master_node_with_agents(self):
-        from unittest.mock import MagicMock
         from src.core.ark.nodes.master import MasterNode
 
         llm = MagicMock()
@@ -53,12 +50,13 @@ class TestMasterNodeFinal:
 # src/core/ark/utils.py
 # ═══════════════════════════════════════════════════════════════
 
+
 class TestArkUtilsFinal:
     """ark/utils.py 最后覆盖"""
 
     def test_create_agent_node_str_result(self):
-        from src.core.ark.utils import create_agent_node
         from src.core.ark.state import MultiAgentState
+        from src.core.ark.utils import create_agent_node
 
         def simple_agent(state: MultiAgentState):
             return "Hello from agent"
@@ -70,6 +68,7 @@ class TestArkUtilsFinal:
 # ═══════════════════════════════════════════════════════════════
 # src/core/llm/parsers.py
 # ═══════════════════════════════════════════════════════════════
+
 
 class TestParsersFinal:
     """parsers.py 最后覆盖"""
@@ -99,6 +98,7 @@ class TestParsersFinal:
 # src/core/ark/tasks.py
 # ═══════════════════════════════════════════════════════════════
 
+
 class TestTasksFinal:
     """tasks.py 最后覆盖"""
 
@@ -120,6 +120,7 @@ class TestTasksFinal:
 # ═══════════════════════════════════════════════════════════════
 # src/core/llm/providers/litellm_client.py
 # ═══════════════════════════════════════════════════════════════
+
 
 class TestLiteLLMFinal:
     """LiteLLM 最后覆盖"""

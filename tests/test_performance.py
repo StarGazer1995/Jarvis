@@ -194,7 +194,11 @@ class TestConfigLoadingBenchmarks:
 
     def test_config_loading(self, benchmark):
         """Time to load the full production config file."""
+        from src.core.config import loader as config_loader
         from src.core.config.loader import load_llm_config
+
+        # Reset global loader to use default config path
+        config_loader._config_loader = None
 
         # First load to warm cache, then benchmark with reload
         load_llm_config(reload=True)

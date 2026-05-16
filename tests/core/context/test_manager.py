@@ -173,7 +173,6 @@ class TestConversationTurnDetailed:
         assert d["raw_response"] == '{"answer": "World"}'
 
     def test_from_dict(self):
-        from datetime import datetime
 
         d = {
             "user_input": "Hi",
@@ -340,6 +339,7 @@ class TestConversationContextDetailed:
         ctx.add_exchange("Hello", "Hi")
         exported = ctx.export_conversation(export_format="json")
         import json
+
         data = json.loads(exported)
         assert data["session_metadata"]["session_id"] == "export-test"
         assert len(data["conversation_history"]) == 1
@@ -370,6 +370,7 @@ class TestConversationContextRemaining:
 
     def test_update_memory_debug_log(self, caplog):
         import logging
+
         caplog.set_level(logging.DEBUG)
         ctx = ConversationContext()
         ctx.update_memory("key", "value")
@@ -377,6 +378,7 @@ class TestConversationContextRemaining:
 
     def test_clear_memory_debug_log(self, caplog):
         import logging
+
         caplog.set_level(logging.DEBUG)
         ctx = ConversationContext()
         ctx.update_memory("k", "v")
@@ -385,6 +387,7 @@ class TestConversationContextRemaining:
 
     def test_update_user_preference_debug_log(self, caplog):
         import logging
+
         caplog.set_level(logging.DEBUG)
         ctx = ConversationContext()
         ctx.update_user_preference("theme", "dark")
@@ -420,6 +423,7 @@ class TestConversationContextRemaining:
         ctx.add_exchange("U2", "A2")
         # threshold=20, so should not compress at all
         import asyncio
+
         asyncio.run(ctx.compress_history(threshold=20))
         assert len(ctx) == 2
 
@@ -427,7 +431,7 @@ class TestConversationContextRemaining:
         """R1可以清空全部消息的情况"""
         ctx = ConversationContext()
         ctx.add_exchange("reset", "OK")  # R1: reset command clears everything before it
-        # "reset" is at index 0, after R1: messages after reset = [OK], 
+        # "reset" is at index 0, after R1: messages after reset = [OK],
         # but "OK" has content, so it stays
         history = ctx.get_cleaned_history()
         # Wait: messages are [Human("reset"), AI("OK")]

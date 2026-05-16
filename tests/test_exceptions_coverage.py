@@ -4,8 +4,6 @@
 使用已验证的 API 进行测试。
 """
 
-import pytest
-
 
 class TestExceptionsCoverage:
     """Jarvis 异常类的全面测试"""
@@ -91,3 +89,79 @@ class TestExceptionsCoverage:
 
         e = ToolError("tool execution failed")
         assert "tool" in str(e).lower()
+
+    def test_tool_error_with_name(self):
+        from src.core.common.exceptions import ToolError
+
+        e = ToolError("tool error", tool_name="search")
+        assert e.tool_name == "search"
+
+    def test_mcp_error(self):
+        from src.core.common.exceptions import MCPError
+
+        e = MCPError("mcp connection failed")
+        assert "mcp" in str(e).lower()
+
+    def test_mcp_error_with_server(self):
+        from src.core.common.exceptions import MCPError
+
+        e = MCPError("server error", server_name="test-server")
+        assert e.server_name == "test-server"
+
+    def test_capability_error(self):
+        from src.core.common.exceptions import CapabilityError
+
+        e = CapabilityError("capability error")
+        assert "capability" in str(e).lower()
+
+    def test_capability_error_with_name(self):
+        from src.core.common.exceptions import CapabilityError
+
+        e = CapabilityError("error", capability="research")
+        assert e.capability == "research"
+
+    def test_retry_exhausted_error(self):
+        from src.core.common.exceptions import RetryExhaustedError
+
+        e = RetryExhaustedError("max retries reached", max_attempts=3)
+        assert "max retries" in str(e)
+        assert e.max_attempts == 3
+
+    def test_retry_exhausted_with_last_error(self):
+        from src.core.common.exceptions import RetryExhaustedError
+
+        e = RetryExhaustedError("failed", last_error=ValueError("bad value"))
+        assert isinstance(e.last_error, ValueError)
+        assert str(e.last_error) == "bad value"
+
+    def test_model_not_found_error(self):
+        from src.core.common.exceptions import ModelNotFoundError
+
+        e = ModelNotFoundError("model gpt-5 not found")
+        assert "model" in str(e).lower()
+
+    def test_rate_limit_error_with_retry_after(self):
+        from src.core.common.exceptions import RateLimitError
+
+        e = RateLimitError("rate limited", provider="openai", retry_after=30)
+        assert e.retry_after == 30
+        assert e.details.get("retry_after") == 30
+
+    def test_timeout_error_with_duration(self):
+        from src.core.common.exceptions import TimeoutError
+
+        e = TimeoutError("request timed out", timeout_duration=30.0)
+        assert e.timeout_duration == 30.0
+
+    def test_validation_error_with_field(self):
+        from src.core.common.exceptions import ValidationError
+
+        e = ValidationError("invalid", field="name", value="bad")
+        assert e.field == "name"
+        assert e.value == "bad"
+
+    def test_javis_error_empty_details(self):
+        from src.core.common.exceptions import JarvisError
+
+        e = JarvisError("test")
+        assert e.details == {}

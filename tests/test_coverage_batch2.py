@@ -5,9 +5,7 @@
 exceptions.py, tasks.py, config.py 等模块的未覆盖边界。
 """
 
-import logging
-import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -86,7 +84,9 @@ class TestSecurityDetailedCoverage:
         from src.core.security.manager import RateLimiter
 
         limiter = RateLimiter()
-        result = await limiter.check_rate_limit("user1", "tool1", per_minute_limit=60, per_hour_limit=1000)
+        result = await limiter.check_rate_limit(
+            "user1", "tool1", per_minute_limit=60, per_hour_limit=1000
+        )
         assert result is True
 
     @pytest.mark.asyncio
@@ -96,9 +96,13 @@ class TestSecurityDetailedCoverage:
         limiter = RateLimiter()
         # Exceed per-minute limit
         for _ in range(5):
-            await limiter.check_rate_limit("user1", "tool1", per_minute_limit=3, per_hour_limit=100)
+            await limiter.check_rate_limit(
+                "user1", "tool1", per_minute_limit=3, per_hour_limit=100
+            )
         # Should be False now
-        result = await limiter.check_rate_limit("user1", "tool1", per_minute_limit=3, per_hour_limit=100)
+        result = await limiter.check_rate_limit(
+            "user1", "tool1", per_minute_limit=3, per_hour_limit=100
+        )
         assert result is False
 
     def test_audit_logger_redact_sensitive_dict(self):
@@ -209,7 +213,7 @@ class TestTaskDetailedCoverage:
     """Task 补充测试"""
 
     def test_task_with_result(self):
-        from src.core.ark.tasks import Task, TaskStatus
+        from src.core.ark.tasks import Task
 
         task = Task(id="t1", description="test", result="done")
         assert task.result == "done"
@@ -276,9 +280,8 @@ class TestFactoryDetailedCoverage:
     """LLM Factory 补充测试"""
 
     def test_provider_info_str(self):
-        from unittest.mock import MagicMock
-        from src.core.llm.factory import ProviderInfo, ProviderType
         from src.core.config.loader import ProviderConfig
+        from src.core.llm.factory import ProviderInfo, ProviderType
 
         config = ProviderConfig(type="mock", enabled=True)
         info = ProviderInfo(
@@ -314,7 +317,6 @@ class TestToolsNodeDetailedCoverage:
     """ToolsNode 边界测试"""
 
     def test_tools_node_create_with_mock(self):
-        from unittest.mock import MagicMock
         from src.core.ark.nodes.tools import ToolsNode
 
         mcp = MagicMock()
@@ -391,12 +393,17 @@ class TestFactoryMoreCoverage:
         from src.core.llm.types import LLMConfig, LLMProvider
 
         class MockClient(BaseLLMClient):
-            async def initialize(self): return True
-            async def generate_response(self, messages, **kwargs): pass
-            async def stream_response(self, messages, **kwargs): yield ""
+            async def initialize(self):
+                return True
+
+            async def generate_response(self, messages, **kwargs):
+                pass
+
+            async def stream_response(self, messages, **kwargs):
+                yield ""
 
         config = LLMConfig(provider=LLMProvider.OPENAI, model="gpt-4")
-        client = MockClient(config)
+        MockClient(config)
 
         registry = LLMProviderRegistry()
         registry.register_provider("mock", MockClient)
@@ -408,12 +415,16 @@ class TestFactoryMoreCoverage:
     def test_list_providers_returns_correctly(self):
         from src.core.llm.client import BaseLLMClient
         from src.core.llm.factory import LLMProviderRegistry
-        from src.core.llm.types import LLMConfig, LLMProvider
 
         class MockClient(BaseLLMClient):
-            async def initialize(self): return True
-            async def generate_response(self, messages, **kwargs): pass
-            async def stream_response(self, messages, **kwargs): yield ""
+            async def initialize(self):
+                return True
+
+            async def generate_response(self, messages, **kwargs):
+                pass
+
+            async def stream_response(self, messages, **kwargs):
+                yield ""
 
         registry = LLMProviderRegistry()
         registry.register_provider("mock", MockClient)
@@ -431,7 +442,6 @@ class TestMasterNodeCoverage:
     """MasterNode 边界测试"""
 
     def test_master_node_creation(self):
-        from unittest.mock import MagicMock
         from src.core.ark.nodes.master import MasterNode
 
         llm = MagicMock()
@@ -490,6 +500,7 @@ class TestConvertersMoreCoverage:
 
     def test_convert_funtion_message(self):
         from langchain_core.messages import FunctionMessage
+
         from src.core.llm.converters import convert_langchain_to_llm_messages
 
         msg = FunctionMessage(content="result", name="func1")
@@ -500,6 +511,7 @@ class TestConvertersMoreCoverage:
 
     def test_convert_tool_message(self):
         from langchain_core.messages import ToolMessage
+
         from src.core.llm.converters import convert_langchain_to_llm_messages
 
         msg = ToolMessage(content="tool output", tool_call_id="call1")
@@ -528,7 +540,7 @@ class TestParsersMoreCoverage:
         from src.core.llm.parsers import JSONOutputParser
 
         parser = JSONOutputParser()
-        result = parser.parse("```json\n{\"key\": \"value\"}\n```")
+        result = parser.parse('```json\n{"key": "value"}\n```')
         assert result["key"] == "value"
 
 
@@ -552,9 +564,14 @@ class TestFactoryRemainingCoverage:
         from src.core.llm.factory import LLMProviderRegistry
 
         class MockClient(BaseLLMClient):
-            async def initialize(self): return True
-            async def generate_response(self, m, **k): pass
-            async def stream_response(self, m, **k): yield ""
+            async def initialize(self):
+                return True
+
+            async def generate_response(self, m, **k):
+                pass
+
+            async def stream_response(self, m, **k):
+                yield ""
 
         registry = LLMProviderRegistry()
         registry.register_provider("test_client", MockClient)
@@ -572,7 +589,6 @@ class TestToolsNodeMethods:
     """ToolsNode 方法测试"""
 
     def test_tools_node_creation(self):
-        from unittest.mock import MagicMock
         from src.core.ark.nodes.tools import ToolsNode
 
         mcp = MagicMock()
@@ -658,7 +674,11 @@ class TestSecurityManagerRemaining:
     """Security Manager 剩余测试"""
 
     def test_add_policy(self):
-        from src.core.security.manager import ARKSecurityManager, SecurityLevel, SecurityPolicy
+        from src.core.security.manager import (
+            ARKSecurityManager,
+            SecurityLevel,
+            SecurityPolicy,
+        )
 
         mgr = ARKSecurityManager()
         policy = SecurityPolicy(

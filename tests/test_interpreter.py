@@ -87,3 +87,85 @@ def test_e2b_placeholder():
     interpreter = PythonInterpreter(execution_mode="e2b")
     result = interpreter.execute("print('test')")
     assert "E2B Execution Placeholder" in result
+
+
+def test_docker_client_not_initialized():
+    """测试 Docker 客户端未初始化时执行"""
+    interpreter = PythonInterpreter(execution_mode="docker")
+    interpreter.docker_client = None
+    result = interpreter.execute("print('test')")
+    assert "Docker client is not initialized" in result
+
+
+def test_docker_image_not_found(mock_docker_client):
+    """测试 Docker 镜像未找到"""
+    interpreter = PythonInterpreter(execution_mode="docker")
+
+    with patch("src.capabilities.interpreter.docker") as mock_docker_module:
+        mock_client = MagicMock()
+        mock_docker_module.from_env.return_value = mock_client
+
+        # Mock ImageNotFound error
+        class MockImageNotFound(Exception):
+            pass
+
+        mock_docker_module.errors = MagicMock()
+        mock_docker_module.errors.ImageNotFound = MockImageNotFound
+        mock_docker_module.errors.ContainerError = type(
+            "ContainerError", (Exception,), {}
+        )
+        mock_client.containers.run.side_effect = MockImageNotFound()
+
+        interpreter = PythonInterpreter(execution_mode="docker")
+        interpreter.docker_client = mock_client
+        result = interpreter.execute("print('test')")
+        assert "ImageNotFound" in result or "Execution Error" in result
+
+
+def test_docker_no_sdk():
+    """测试 Docker SDK 未安装"""
+    with patch("src.capabilities.interpreter.docker", None):
+        interpreter = PythonInterpreter(execution_mode="docker")
+        result = interpreter.execute("print('hello')")
+        assert "Docker client is not initialized" in result
+
+
+def test_e2b_no_api_key():
+    """测试 E2B 无 API key 时初始化"""
+    interpreter = PythonInterpreter(execution_mode="e2b", sandbox_config={})
+    # Should not raise, just log warning
+    assert interpreter.execution_mode == "e2b"
+
+
+def test_init_with_docker_config():
+    """测试带自定义 Docker 配置初始化"""
+    with patch("src.capabilities.interpreter.docker") as mock_docker:
+        mock_client = MagicMock()
+        mock_docker.DockerClient.return_value = mock_client
+        mock_docker.from_env.return_value = mock_client
+
+        # Test with custom base_url
+        PythonInterpreter(
+            execution_mode="docker",
+            docker_config={
+                "base_url": "tcp://192.168.1.1:2375",
+                "image": "python:3.11",
+            },
+        )
+        mock_docker.DockerClient.assert_called_with(base_url="tcp://192.168.1.1:2375")
+
+        # Test with default config (from_env)
+        mock_docker.reset_mock()
+        PythonInterpreter(execution_mode="docker")
+        mock_docker.from_env.assert_called_once()
+
+
+def test_docker_connection_failure():
+    """测试 Docker 连接失败"""
+    with patch("src.capabilities.interpreter.docker") as mock_docker:
+        mock_client = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+        mock_client.ping.side_effect = Exception("Cannot connect to Docker daemon")
+
+        interpreter = PythonInterpreter(execution_mode="docker")
+        assert interpreter.docker_client is None
