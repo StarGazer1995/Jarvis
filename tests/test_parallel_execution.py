@@ -854,33 +854,13 @@ class TestToolsNodeAdditionalPaths:
     @pytest.mark.asyncio
     async def test_sequential_fallback_returns_tool_errors(self):
         """Sequential fallback should return stringified tool errors."""
-        from langchain_core.messages import AIMessage
-
         mock_mcp = AsyncMock()
         node = ToolsNode(mcp_client=mock_mcp)
-
-        async def broken_run(*args, **kwargs):
-            raise RuntimeError("parallel failed")
 
         async def broken_execute(name: str, args: dict) -> str:
             raise ValueError("tool failed")
 
         mock_mcp.execute_tool = broken_execute
-        node._run_parallel = broken_run  # type: ignore[attr-defined]
-
-        state: JarvisState = {
-            "messages": [
-                AIMessage(
-                    content="run failing tool",
-                    tool_calls=[{"name": "boom", "args": {}, "id": "call_0"}],
-                )
-            ],
-            "todo_list": [],
-            "available_tools": {},
-            "user_input": "test",
-            "scratchpad": {},
-            "sender": "master",
-        }
 
         result = await node._run_sequential(
             [ToolCall(name="boom", arguments={}, id="call_0")],

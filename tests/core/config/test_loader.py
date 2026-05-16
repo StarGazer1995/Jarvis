@@ -8,12 +8,11 @@ import os
 import tempfile
 from typing import Any
 from unittest.mock import patch
-from typing import Dict, Any
-import src.core.config.loader as loader_module
 
 import pytest
 import yaml
 
+import src.core.config.loader as loader_module
 from src.core.common.exceptions import ConfigurationError
 from src.core.config.loader import (
     ConfigLoader,
