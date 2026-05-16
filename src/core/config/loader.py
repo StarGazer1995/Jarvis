@@ -576,7 +576,26 @@ _config_loader: ConfigLoader | None = None
 def get_config_loader(config_path: str | Path | None = None) -> ConfigLoader:
     """获取全局配置加载器实例"""
     global _config_loader
-    if _config_loader is None or config_path is not None:
+
+    def _normalize_path(path: str | Path) -> Path:
+        """Normalize config paths so cached loaders can be compared safely."""
+        return Path(path).expanduser().resolve(strict=False)
+
+    requested_path = (
+        _normalize_path(config_path) if config_path is not None else get_config_path()
+    )
+
+    current_path = (
+        _normalize_path(_config_loader.config_path)
+        if _config_loader is not None
+        else None
+    )
+
+    # Do not reuse a loader created for a different config path.
+    # In particular, calls without `config_path` should always map back to the
+    # default project config instead of inheriting a temporary path from a
+    # previous test.
+    if _config_loader is None or current_path != requested_path:
         _config_loader = ConfigLoader(config_path)
     return _config_loader
 

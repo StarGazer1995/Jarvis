@@ -181,11 +181,16 @@ You MUST output your response in the following JSON format:
     "description": "You MUST output ONLY a valid JSON object. No markdown, no code blocks, no other text.",
     "schema": {{
       "thought": "Step-by-step reasoning...",
-      "type": "answer | tool_call",
-      "content": "Final answer string OR {{ 'name': 'tool_name', 'arguments': {{...}} }}"
+      "type": "answer | tool_call | tool_calls",
+      "content": "Final answer string OR {{ 'name': 'tool_name', 'arguments': {{...}} }} OR [{{ 'name': 'tool_name', 'arguments': {{...}}, 'depends_on': ['optional_tool_call_id'] }}]"
     }},
     "constraint": "CRITICAL: The 'thought' field MUST be the first field in the JSON object."
   }},
+  "parallel_tool_rules": [
+    "If multiple independent tools are needed, prefer a single 'tool_calls' response so they can run in parallel.",
+    "Use 'tool_call' only when exactly one tool is needed.",
+    "Only add 'depends_on' when one tool truly needs the output of another tool."
+  ],
   "examples": [
     {{
       "thought": "The user is asking for a joke. I should generate a funny one.",
@@ -201,6 +206,24 @@ You MUST output your response in the following JSON format:
           "city": "Beijing"
         }}
       }}
+    }},
+    {{
+      "thought": "The user needs the weather and local time, and these tools are independent, so I should request both in one response.",
+      "type": "tool_calls",
+      "content": [
+        {{
+          "name": "get_weather",
+          "arguments": {{
+            "city": "Beijing"
+          }}
+        }},
+        {{
+          "name": "get_time",
+          "arguments": {{
+            "timezone": "Asia/Shanghai"
+          }}
+        }}
+      ]
     }}
   ]
 }}""")
@@ -221,7 +244,8 @@ You MUST output your response in the following JSON format:
     "Analyze the user's request.",
     "Break it down into a list of tasks using 'manage_tasks' if needed.",
     "Schedule execution by delegating to Worker Agents or using Tools.",
-    "Execute tasks one by one.",
+    "When multiple independent tools are needed, emit them together so they can run in parallel.",
+    "Use 'depends_on' only when a later tool requires the output of an earlier tool.",
     "Update task status as you progress.",
     "When finished, provide a Final Answer."
   ],
@@ -230,11 +254,16 @@ You MUST output your response in the following JSON format:
     "description": "You MUST output ONLY a valid JSON object. No markdown, no code blocks, no other text.",
     "schema": {{
       "thought": "Analyze the request, check status, and determine the next step...",
-      "type": "answer | tool_call",
-      "content": "Final answer string OR {{ 'name': 'tool_name', 'arguments': {{...}} }}"
+      "type": "answer | tool_call | tool_calls",
+      "content": "Final answer string OR {{ 'name': 'tool_name', 'arguments': {{...}} }} OR [{{ 'name': 'tool_name', 'arguments': {{...}}, 'depends_on': ['optional_tool_call_id'] }}]"
     }},
     "constraint": "CRITICAL: The 'thought' field MUST be the first field in the JSON object."
   }},
+  "parallel_tool_rules": [
+    "Prefer 'tool_calls' when two or more independent tool invocations can be started immediately.",
+    "Use 'tool_call' for a single tool invocation.",
+    "If a tool needs another tool's output, include 'depends_on' with the earlier tool call id."
+  ],
   "examples": [
     {{
       "thought": "I have completed all tasks and generated the final report.",
@@ -250,6 +279,24 @@ You MUST output your response in the following JSON format:
           "tasks": [{{ "id": "1", "content": "Research X", "status": "pending" }}]
         }}
       }}
+    }},
+    {{
+      "thought": "The user needs a web search and the current time, and they are independent, so I should trigger both tools together.",
+      "type": "tool_calls",
+      "content": [
+        {{
+          "name": "web_search",
+          "arguments": {{
+            "query": "AI orchestration patterns"
+          }}
+        }},
+        {{
+          "name": "get_time",
+          "arguments": {{
+            "timezone": "Asia/Shanghai"
+          }}
+        }}
+      ]
     }}
   ]
 }}""")
@@ -266,8 +313,8 @@ You MUST output your response in the following JSON format:
     "description": "You MUST output ONLY a valid JSON object. No markdown, no code blocks, no other text.",
     "schema": {{
       "thought": "Step-by-step reasoning...",
-      "type": "answer | tool_call",
-      "content": "Final answer string OR {{ 'name': 'tool_name', 'arguments': {{...}} }}"
+      "type": "answer | tool_call | tool_calls",
+      "content": "Final answer string OR {{ 'name': 'tool_name', 'arguments': {{...}} }} OR [{{ 'name': 'tool_name', 'arguments': {{...}}, 'depends_on': ['optional_tool_call_id'] }}]"
     }},
     "constraint": "CRITICAL: The 'thought' field MUST be the first field in the JSON object."
   }},
