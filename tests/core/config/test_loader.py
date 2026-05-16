@@ -8,6 +8,8 @@ import os
 import tempfile
 from typing import Any
 from unittest.mock import patch
+from typing import Dict, Any
+import src.core.config.loader as loader_module
 
 import pytest
 import yaml
@@ -356,6 +358,44 @@ class TestConfigHelperFunctions:
         # 验证调用了load_config
         mock_load.assert_called_once_with(None, False)
         assert result == mock_config
+
+    def test_get_config_loader_default_path_does_not_reuse_temp_loader(self):
+        """测试默认加载不会复用上一次的临时配置路径。"""
+        original_loader = loader_module._config_loader
+        temp_path = None
+
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".yaml", delete=False
+            ) as temp_file:
+                temp_file.write(
+                    """
+global:
+  default_provider: openai
+providers:
+  openai:
+    type: openai
+    enabled: true
+    api_key: test-key
+    default_model: gpt-4
+    models:
+      gpt-4: {}
+features: {}
+"""
+                )
+                temp_path = temp_file.name
+
+            temp_loader = loader_module.get_config_loader(temp_path)
+            assert str(temp_loader.config_path) == temp_path
+
+            default_loader = loader_module.get_config_loader()
+
+            assert str(default_loader.config_path) == str(get_config_path())
+            assert str(default_loader.config_path) != temp_path
+        finally:
+            loader_module._config_loader = original_loader
+            if temp_path and os.path.exists(temp_path):
+                os.unlink(temp_path)
 
 
 class TestConfigLoaderEdgeCases:

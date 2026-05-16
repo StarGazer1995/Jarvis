@@ -165,7 +165,7 @@ class TestLLMProviderFactory:
             "global": {
                 "default_provider": "mock",
                 "retry": {"max_attempts": 3},
-                "timeout": {"connect": 30.0, "read": 60.0, "total": 90.0},
+                "timeout": {"total": 180.0},
                 "logging": {"level": "INFO"},
             },
             "providers": {
