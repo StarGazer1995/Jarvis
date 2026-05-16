@@ -87,3 +87,53 @@ class TestRefinementLoop:
             assert "# Research Report" in content_written
             assert "My Task" in content_written
             assert "Content" in content_written
+
+    def test_save_result_error(self, loop):
+        """测试保存结果时发生写入错误"""
+        with (
+            patch("builtins.open", side_effect=Exception("Disk full")),
+            patch("os.makedirs"),
+            patch("os.getcwd", return_value="/tmp"),
+        ):
+            path = loop.save_result("Content")
+            assert path == ""  # Error returns empty string
+
+    def test_save_result_custom_directory(self, loop):
+        """测试保存到自定义目录"""
+        m_open = mock_open()
+        with (
+            patch("builtins.open", m_open),
+            patch("os.makedirs") as mock_makedirs,
+            patch("os.getcwd", return_value="/tmp"),
+        ):
+            path = loop.save_result("Content", directory="my_reports", prefix="custom")
+            assert "my_reports" in path
+            assert "custom_" in path
+            mock_makedirs.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_run_sync_funcs(self):
+        """测试同步 generator 和 reviewer"""
+
+        def sync_gen(prompt):
+            return f"Generated: {prompt}"
+
+        def sync_reviewer(content):
+            return "PASS"
+
+        loop = RefinementLoop(generator=sync_gen, reviewer=sync_reviewer)
+        result = await loop.run("Test")
+        assert result == "Generated: Test"
+
+    @pytest.mark.asyncio
+    async def test_run_only_retry_no_pass(self):
+        """测试 reviewer 始终返回 RETRY"""
+
+        def always_retry(content):
+            return "RETRY: Fix it"
+
+        gen = AsyncMock(side_effect=["V1", "V2", "V3"])
+        loop = RefinementLoop(generator=gen, reviewer=always_retry, max_retries=2)
+        result = await loop.run("Prompt")
+        assert result == "V3"  # Returns last content after max retries
+        assert gen.call_count == 3

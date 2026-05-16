@@ -4,11 +4,9 @@
 针对低覆盖率的文件添加正确的边界情况测试。
 """
 
-import logging
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
-
 
 # ── src/core/execution/engine.py ──────────────────────────────────────────
 
@@ -42,7 +40,9 @@ class TestExecutionEngineEdgeCoverage:
         """测试引用查找：字段名"""
         from src.core.execution.engine import ParallelExecutor
 
-        result = ParallelExecutor._lookup_ref("tool_1.field_x", {"tool_1": {"field_x": "hello"}})
+        result = ParallelExecutor._lookup_ref(
+            "tool_1.field_x", {"tool_1": {"field_x": "hello"}}
+        )
         assert result == "hello"
 
     def test_lookup_ref_missing(self):

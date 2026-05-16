@@ -4,7 +4,6 @@ Task 模块单元测试
 测试 Task 数据类、tasks_from_dicts、tasks_to_dicts、execute_manage_tasks 等函数。
 """
 
-
 from src.core.ark.tasks import (
     Task,
     TaskStatus,
@@ -130,3 +129,93 @@ class TestExecuteManageTasks:
     def test_unknown_action(self):
         result = execute_manage_tasks({"action": "unknown"}, [])
         assert "Unknown" in result or "unknown" in result
+
+
+class TestParseTaskArgs:
+    """测试 parse_task_args 函数"""
+
+    def test_parse_dict(self):
+        from src.core.ark.tasks import parse_task_args
+
+        result = parse_task_args({"action": "add"})
+        assert result == {"action": "add"}
+
+    def test_parse_valid_json_string(self):
+        from src.core.ark.tasks import parse_task_args
+
+        result = parse_task_args('{"action": "add", "description": "test"}')
+        assert result == {"action": "add", "description": "test"}
+
+    def test_parse_invalid_json_string(self):
+        from src.core.ark.tasks import parse_task_args
+
+        result = parse_task_args('{"action": add}')
+        assert result is None
+
+    def test_parse_non_dict_json_string(self):
+        from src.core.ark.tasks import parse_task_args
+
+        result = parse_task_args('["a", "b"]')
+        assert result is None
+
+    def test_parse_invalid_type(self):
+        from src.core.ark.tasks import parse_task_args
+
+        result = parse_task_args(123)
+        assert result is None
+
+    def test_parse_none(self):
+        from src.core.ark.tasks import parse_task_args
+
+        result = parse_task_args(None)
+        assert result is None
+
+
+class TestApplyManageTasksEdgeCases:
+    """测试 apply_manage_tasks 的边缘情况"""
+
+    def test_add_task_no_description(self):
+        from src.core.ark.tasks import execute_manage_tasks
+
+        result = execute_manage_tasks({"action": "add"}, [])
+        assert "Description required" in result
+
+    def test_update_with_task_id_field(self):
+        from src.core.ark.tasks import execute_manage_tasks
+
+        todo = [{"id": "t1", "description": "Task", "status": "pending"}]
+        # Use 'task_id' instead of 'id'
+        result = execute_manage_tasks(
+            {"action": "update", "task_id": "t1", "status": "completed"}, todo
+        )
+        assert "updated" in result
+        assert todo[0]["status"] == "completed"
+
+    def test_update_with_result(self):
+        from src.core.ark.tasks import execute_manage_tasks
+
+        todo = [{"id": "t1", "description": "Task", "status": "pending"}]
+        result = execute_manage_tasks(
+            {"action": "update", "id": "t1", "result": "Done"}, todo
+        )
+        assert "updated" in result
+        assert todo[0]["result"] == "Done"
+
+    def test_complete_with_result(self):
+        from src.core.ark.tasks import execute_manage_tasks
+
+        todo = [{"id": "t1", "description": "Task", "status": "pending"}]
+        result = execute_manage_tasks(
+            {"action": "complete", "id": "t1", "result": "Completed successfully"}, todo
+        )
+        assert "completed" in result
+        assert todo[0]["result"] == "Completed successfully"
+        assert todo[0]["status"] == "completed"
+
+    def test_invalid_params_message(self):
+        from src.core.ark.tasks import execute_manage_tasks
+
+        result = execute_manage_tasks(
+            "bad data", [], invalid_params_message="Custom error message"
+        )
+        assert result == "Custom error message"
