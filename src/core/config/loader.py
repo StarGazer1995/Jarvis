@@ -577,7 +577,7 @@ def get_config_loader(config_path: str | Path | None = None) -> ConfigLoader:
     """获取全局配置加载器实例"""
     global _config_loader
 
-    def _normalize_path(path: Union[str, Path]) -> Path:
+    def _normalize_path(path: str | Path) -> Path:
         """Normalize config paths so cached loaders can be compared safely."""
         return Path(path).expanduser().resolve(strict=False)
 
