@@ -51,9 +51,9 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --only-dev
 
-      - name: Validate config schema
+      - name: Run config schema tests
         run: uv run pytest src/core/config/test/test_config_schema.py -v --tb=short
 
       - name: Verify config loads
