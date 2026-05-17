@@ -87,6 +87,7 @@ jobs:
       - name: Run unit tests
         run: |
           uv run pytest src/ \
+            -m "not e2e" \
             -v --tb=short -q
 
   # ═══════════════════════════════════════════════════════════════
@@ -155,6 +156,7 @@ jobs:
       - name: Run tests with coverage
         run: |
           uv run pytest src/ \
+            -m "not e2e" \
             --cov=src \
             --cov-report=term-missing \
             --cov-fail-under=90 \
