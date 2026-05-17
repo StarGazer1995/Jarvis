@@ -58,6 +58,12 @@ uv run pytest
 # Run with coverage
 uv run pytest --cov
 
+# Run only diff-related tests locally
+bash scripts/run_diff_tests.sh
+
+# Run diff-related tests with 100% diff coverage
+bash scripts/run_diff_tests.sh --coverage
+
 # Run specific test file
 uv run pytest tests/core/ark/test_engine.py -v
 
@@ -73,7 +79,8 @@ Every agent MUST adhere to these standards when writing or modifying code:
 2. **Use the existing mock fixtures** (`MockLLMClient`, `MockMCPClient`, `MockContextManager`) from `tests/conftest.py`. Never hit real APIs in unit tests.
 3. **All async tests must use `pytest-asyncio`** with `asyncio_mode = "auto"` (already configured).
 4. **Test both success and failure paths** — include tests for rate limits, timeouts, malformed responses.
-5. **Coverage target**: ≥90% for new code, measured via `pytest-cov`.
+5. **Coverage target**: Effective immediately, all newly added or modified lines in the current diff must reach **100% diff coverage**.
+6. **No coverage gaming**: Do not add contrived, implementation-shaped, or behavior-free test cases solely to raise coverage numbers. Every new test must validate a meaningful runtime behavior, contract, edge case, or failure mode.
 
 ---
 
