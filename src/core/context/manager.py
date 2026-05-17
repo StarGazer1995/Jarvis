@@ -125,6 +125,13 @@ class ConversationContext:
         self.session_metadata: dict[str, Any] = {}
         self.current_context: dict[str, Any] = {}
         self.ark_logger = logging.getLogger("ark.context")
+        self.ark_parent_logger = logging.getLogger("ark")
+        # Reset leaked logger state from earlier tests, but preserve an explicit
+        # DEBUG level already configured by caplog for this logger.
+        if self.ark_logger.level != logging.DEBUG:
+            self.ark_logger.setLevel(logging.NOTSET)
+        if self.ark_parent_logger.level != logging.DEBUG:
+            self.ark_parent_logger.setLevel(logging.NOTSET)
 
         # Initialize session
         self.session_start = datetime.now()

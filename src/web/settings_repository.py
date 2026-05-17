@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -85,7 +85,7 @@ class UserSettingsRepository:
             return
 
         payload = normalize_settings(settings)
-        updated_at = datetime.now(UTC).isoformat()
+        updated_at = datetime.now(timezone.utc).isoformat()
 
         with self._connect() as connection:
             connection.execute(
