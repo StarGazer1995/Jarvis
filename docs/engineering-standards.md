@@ -1,6 +1,6 @@
 # Harness Engineering Standards
 
-*Version 1.0 — Last Updated: May 15, 2026*
+*Version 1.1 — Last Updated: May 17, 2026*
 
 This document defines the **harness engineering standards** for Project Jarvis. It serves as the authoritative reference for how the system is designed, tested, observed, and operated as an integrated engineering harness.
 
@@ -49,7 +49,8 @@ A well-engineered harness means the difference between a demo that works on a la
 | **Mock Coverage** | Every external dependency (LLM provider, MCP server, database) must have a mock fixture in `tests/conftest.py` | Code review — grep for `Mock(spec=` |
 | **Fault Injection** | Every retry-able operation must have tests that simulate: timeout, rate limit, malformed response, and service unavailable | Check `test_retry_handler.py` and equivalent per-module tests |
 | **Determinism** | Tests must not depend on real network calls, real API keys, or wall-clock timing | Run `pytest --offline` (planned) |
-| **Coverage Floor** | New code must maintain ≥90% line coverage | `pytest --cov --cov-fail-under=90` |
+| **Coverage Floor** | Effective immediately, newly added or modified lines in the current diff must maintain 100% diff coverage | `diff-cover coverage.xml --compare-branch=origin/main --fail-under=100` |
+| **Coverage Integrity** | Tests must not be invented solely to inflate coverage; every case must validate a meaningful behavior, contract, edge case, or failure mode | Code review of test intent and assertions |
 | **Async Correctness** | All async tests must use `pytest-asyncio` with proper event loop management | CI check |
 
 #### Mock Architecture
@@ -256,7 +257,7 @@ User Input
 
 When adding any new feature or component, verify against this checklist:
 
-- [ ] **Test Harness**: Mock fixtures created? Fault injection tests written? Coverage ≥90%?
+- [ ] **Test Harness**: Mock fixtures created? Fault injection tests written? Current diff at 100% diff coverage? Test cases reflect real behavior instead of coverage-padding?
 - [ ] **Integration Harness**: Does it use MCP or `LLMManager`? Lifecycle methods defined? Graceful degradation handled?
 - [ ] **Configuration Harness**: Parameters externalized? Schema validation? Environment variable support?
 - [ ] **Security Harness**: Tool validation path? Rate limits? Audit logging? Input validation?
@@ -275,6 +276,7 @@ Code reviews must evaluate:
 4. **Does this change skip error handling for known failure modes?** → Reject
 5. **Does this change operate without structured logging or metrics?** → Request changes
 6. **Does this change lack tests for failure paths?** → Request changes
+7. **Does this change add tests that exist only to boost coverage without validating real behavior?** → Reject
 
 ---
 

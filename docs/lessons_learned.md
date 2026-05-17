@@ -36,8 +36,8 @@ This document summarizes the key experiences, architectural decisions, and lesso
 ## 3. Testing & Quality Assurance
 
 ### Test-Driven Culture
-*   **Lesson:** High test coverage is the safety net that enables aggressive refactoring.
-*   **Evidence:** The project maintained a strict "100% coverage" goal. We see massive refactors (like the recent file reorganization) that were safe to execute because of the comprehensive test suite (`tests/`).
+*   **Lesson:** High test coverage is the safety net that enables aggressive refactoring, but only when the tests reflect real behavior.
+*   **Evidence:** The project benefited from a long-running emphasis on very high coverage. We also learned that coverage only protects refactors when the underlying tests exercise meaningful paths instead of synthetic assertions written just to satisfy a metric.
 *   **Benefit:** We could confidently delete 1500+ lines of obsolete tests (`test_ark_engine.py`) and replace them with more focused tests, knowing we weren't breaking functionality.
 
 ### Mocking Strategy
@@ -68,7 +68,7 @@ As the project grew from a single-agent demo to a multi-provider, multi-tool AI 
 
 ### Key Changes Introduced
 
-1.  **Systematized Test Harness:** While we already had strong test coverage, the harness framework formalized mock requirements (every external dependency must have a mock), added fault injection patterns, and established a coverage floor of ≥90%.
+1.  **Systematized Test Harness:** While we already had strong test coverage, the harness framework formalized mock requirements (every external dependency must have a mock), added fault injection patterns, and now requires 100% diff coverage for newly added or modified lines together with an explicit ban on coverage-padding test cases.
 2.  **MCP-First Integration Policy:** All new tool integrations must use the Model Context Protocol. This replaced earlier ad-hoc HTTP/gRPC direct calls and made tool integration standardized and swappable.
 3.  **Three-Tier Configuration Model:** Building on our existing YAML config system, we formalized the three-tier model (YAML defaults → environment variables → runtime overrides) with schema validation at load time.
 4.  **Observability Baseline:** Metrics collection and structured logging were elevated from "nice to have" to mandatory for all new features.
@@ -92,7 +92,7 @@ As the project grew from a single-agent demo to a multi-provider, multi-tool AI 
 ## 7. Recommendations for Future Development
 
 *   **Continue Modularization:** As new features (e.g., RAG, multimodal) are added, ensure they follow the established pattern of dedicated sub-modules.
-*   **Maintain Test Discipline:** Never compromise on the testing standards; the current velocity is enabled by the high trust in the test suite.
+*   **Maintain Test Discipline:** Never compromise on the testing standards; the current velocity is enabled by high trust in the test suite, which now means both 100% diff coverage for newly added or modified lines and zero tolerance for contrived coverage-only tests.
 *   **Monitor Complexity:** The recent refactoring showed that we must be willing to pay down technical debt (renaming files, moving directories) regularly to keep the project healthy.
 *   **Extend Fault Injection Coverage:** Expand fault injection tests to cover the security layer, configuration loader, and web interface.
 *   **Add Performance Baselines:** Establish performance benchmarks for LLM call latency, tool execution time, and end-to-end conversation response time to detect regressions early.

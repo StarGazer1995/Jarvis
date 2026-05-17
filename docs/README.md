@@ -42,7 +42,7 @@ The `main.py` file provides:
 
 This project follows **harness engineering** principles. The six pillars are:
 
-1. **Test Harness** — Mocks for every dependency, fault injection testing, ≥90% coverage
+1. **Test Harness** — Mocks for every dependency, fault injection testing, 100% diff coverage for newly added or modified lines, and no coverage-padding test cases
 2. **Integration Harness** — MCP-first tool integration, abstraction layers, graceful degradation
 3. **Configuration Harness** — Three-tier config (YAML + env vars + runtime overrides)
 4. **Security Harness** — Tool validation, rate limiting, sandboxed execution, audit logging
@@ -93,6 +93,7 @@ All testing follows the **Test Harness** standard:
 - **Test both success AND failure paths** — include rate limits, timeouts, malformed responses
 - **Write fault injection tests** — verify retry logic handles partial failures correctly
 - **Write descriptive test names** that document the scenario being tested
-- **Maintain ≥90% line coverage** on all new code
+- **Maintain 100% diff coverage** on all newly added or modified lines in the current change set
+- **Do not add contrived coverage-padding tests** — every test must validate a meaningful behavior, contract, edge case, or failure mode
 
 See [`engineering-standards.md`](engineering-standards.md#21-test-harness) for detailed test harness standards.

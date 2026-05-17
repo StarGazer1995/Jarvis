@@ -138,11 +138,13 @@ jobs:
   # Stage 6: Coverage
   # ═══════════════════════════════════════════════════════════════
   coverage:
-    name: Coverage Gate (≥90%)
+    name: Diff Coverage Gate (100%)
     runs-on: ubuntu-latest
     needs: [unit-tests, fault-injection, parallel-execution]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -159,8 +161,26 @@ jobs:
             -m "not e2e" \
             --cov=src \
             --cov-report=term-missing \
-            --cov-fail-under=90 \
+            --cov-report=xml \
             -v --tb=short -q
+
+      - name: Resolve diff base
+        id: diff-base
+        shell: bash
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            git fetch origin "${GITHUB_BASE_REF}" --depth=1
+            echo "ref=origin/${GITHUB_BASE_REF}" >> "$GITHUB_OUTPUT"
+          else
+            git fetch origin main --depth=1
+            echo "ref=origin/main" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Enforce diff coverage
+        run: |
+          uv run diff-cover coverage.xml \
+            --compare-branch="${{ steps.diff-base.outputs.ref }}" \
+            --fail-under=100
 
   # ═══════════════════════════════════════════════════════════════
   # Stage 7: Performance Benchmark (optional)
