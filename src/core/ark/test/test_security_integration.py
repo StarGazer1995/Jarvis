@@ -321,6 +321,107 @@ class TestToolsNodeSecurityIntegration:
         assert len(result["messages"]) == 1
         assert result["messages"][0].content == "local_result"
 
+    @pytest.mark.asyncio
+    async def test_rate_limited_with_retry_after(
+        self, tools_node, mock_security_manager
+    ):
+        """RATE_LIMITED with retry_after should include the retry time."""
+        mock_security_manager.validate_tool_execution.return_value = ValidationResponse(
+            result=ValidationResult.RATE_LIMITED,
+            policy_applied="medium",
+            message="Rate limit exceeded",
+            retry_after=120.0,
+        )
+
+        last_message = AIMessage(
+            content="search",
+            tool_calls=[{"name": "web_search", "args": {"query": "x"}, "id": "call_1"}],
+        )
+        state = {"messages": [last_message], "todo_list": [], "sender": "master"}
+
+        with patch.object(tools_node.mcp_client, "execute_tool") as mock_exec:
+            result = await tools_node(state, config=None)
+            mock_exec.assert_not_called()
+            assert "120" in result["messages"][0].content
+
+    @pytest.mark.asyncio
+    async def test_approval_required_with_policy(
+        self, tools_node, mock_security_manager
+    ):
+        """REQUIRES_APPROVAL should mention the tool name."""
+        mock_security_manager.validate_tool_execution.return_value = ValidationResponse(
+            result=ValidationResult.REQUIRES_APPROVAL,
+            policy_applied="high",
+            message="Requires approval",
+        )
+
+        last_message = AIMessage(
+            content="write",
+            tool_calls=[
+                {
+                    "name": "write_file",
+                    "args": {"file_path": "/tmp/f", "content": "data"},
+                    "id": "call_1",
+                }
+            ],
+        )
+        state = {"messages": [last_message], "todo_list": [], "sender": "master"}
+
+        with patch.object(tools_node.mcp_client, "execute_tool") as mock_exec:
+            result = await tools_node(state, config=None)
+            mock_exec.assert_not_called()
+            assert "approval" in result["messages"][0].content.lower()
+            assert "write_file" in result["messages"][0].content
+
+    @pytest.mark.asyncio
+    async def test_security_validation_exception_caught(
+        self, tools_node, mock_security_manager
+    ):
+        """When security validation raises, the tool should be denied gracefully."""
+        mock_security_manager.validate_tool_execution.side_effect = RuntimeError(
+            "Unexpected validation crash"
+        )
+
+        last_message = AIMessage(
+            content="search",
+            tool_calls=[{"name": "web_search", "args": {"query": "x"}, "id": "call_1"}],
+        )
+        state = {"messages": [last_message], "todo_list": [], "sender": "master"}
+
+        with patch.object(tools_node.mcp_client, "execute_tool") as mock_exec:
+            result = await tools_node(state, config=None)
+            mock_exec.assert_not_called()
+            # Should return a validation error message
+            assert "validation error" in result["messages"][0].content.lower()
+
+    @pytest.mark.asyncio
+    async def test_parallel_execution_fallback_on_error(
+        self, tools_node, mock_security_manager
+    ):
+        """When ParallelExecutor.run() fails, should fall back to sequential."""
+        mock_security_manager.validate_tool_execution.return_value = ValidationResponse(
+            result=ValidationResult.ALLOWED,
+            policy_applied="low",
+            message="Allowed",
+        )
+
+        last_message = AIMessage(
+            content="search",
+            tool_calls=[{"name": "web_search", "args": {"query": "x"}, "id": "call_1"}],
+        )
+        state = {"messages": [last_message], "todo_list": [], "sender": "master"}
+
+        # Patch ParallelExecutor.run to raise an exception
+        with patch(
+            "src.core.ark.nodes.tools.ParallelExecutor.run",
+            new=AsyncMock(side_effect=RuntimeError("Executor crashed")),
+        ):
+            result = await tools_node(state, config=None)
+            # Should still produce a result via sequential fallback
+            assert len(result["messages"]) == 1
+            # The tool should have been executed via sequential path
+            assert result["messages"][0].name == "web_search"
+
 
 class TestSecurityHelperMethods:
     """Unit tests for the security helper methods."""
@@ -419,3 +520,89 @@ class TestSecurityHelperMethods:
         """Unknown tools should map to 'low' policy."""
         policy = ToolsNode._policy_for_tool("unknown")
         assert policy == "low"
+
+    # ── Additional security manager path coverage ─────────────────
+
+    def test_infer_permissions_exec_args(self):
+        """Arguments with exec-like keys should add EXECUTE permission."""
+        perms = ARKSecurityManager.infer_permissions_from_tool(
+            "run_script", {"command": "ls -la"}
+        )
+        assert PermissionType.EXECUTE in perms
+
+    def test_infer_permissions_shell_args(self):
+        """Arguments with shell/bash keys should add SYSTEM permission."""
+        perms = ARKSecurityManager.infer_permissions_from_tool(
+            "run_script", {"shell": "/bin/bash", "command": "ls"}
+        )
+        assert PermissionType.SYSTEM in perms
+        assert PermissionType.EXECUTE in perms
+
+    def test_extract_resources_url_in_url_key(self):
+        """URL keys with http value should produce https:// resource."""
+        resources = ARKSecurityManager.extract_resources_from_args(
+            "fetch", {"endpoint": "https://api.example.com/data"}
+        )
+        assert any("https://api.example.com/data" in r for r in resources)
+
+    def test_extract_resources_url_key_with_domain(self):
+        """URL keys with domain value should produce https:// resource."""
+        resources = ARKSecurityManager.extract_resources_from_args(
+            "fetch", {"url": "example.com/api"}
+        )
+        assert any("https://example.com/api" in r for r in resources)
+
+    def test_extract_resources_embedded_url(self):
+        """Arbitrary string value starting with http:// should be detected as URL."""
+        # Use a key not in file_path_keys or url_keys so we reach the URL-scanning branch
+        resources = ARKSecurityManager.extract_resources_from_args(
+            "process",
+            {"description": "https://example.com/data"},
+        )
+        assert any("https://example.com/data" in r for r in resources)
+
+    def test_extract_resources_absolute_file_path_value(self):
+        """Arbitrary string value starting with / should be detected as file path."""
+        resources = ARKSecurityManager.extract_resources_from_args(
+            "process",
+            {"note": "/etc/config.yaml"},
+        )
+        # "note" is not in file_path_keys, so the value-starting-with-/ branch applies
+        assert any("file:///etc/config.yaml" in r for r in resources)
+
+    def test_extract_resources_relative_path(self):
+        """A value starting with ./ should be detected as a file path."""
+        resources = ARKSecurityManager.extract_resources_from_args(
+            "read", {"path": "./local/file.txt"}
+        )
+        assert any("file://./local/file.txt" in r for r in resources)
+
+    def test_extract_resources_absolute_path(self):
+        """Arbitrary string value starting with / should be detected as file."""
+        resources = ARKSecurityManager.extract_resources_from_args(
+            "read", {"target": "/var/log/system.log"}
+        )
+        assert any("file:///var/log/system.log" in r for r in resources)
+
+    def test_extract_resources_non_string_arg(self):
+        """Non-string argument values should be skipped without error."""
+        resources = ARKSecurityManager.extract_resources_from_args(
+            "analyze", {"count": 42, "items": [1, 2, 3]}
+        )
+        assert resources == []
+
+    def test_extract_resources_key_ending_with_path(self):
+        """Keys ending with _path should be treated as file paths."""
+        resources = ARKSecurityManager.extract_resources_from_args(
+            "custom", {"output_path": "./results.txt"}
+        )
+        assert any("file://./results.txt" in r for r in resources)
+
+    def test_extract_resources_file_path_with_dot(self):
+        """File path key with value containing a dot but no leading slash should match regex."""
+        resources = ARKSecurityManager.extract_resources_from_args(
+            "read", {"filename": "data.file.csv"}
+        )
+        # "filename" is in file_path_keys, value doesn't start with / or ./
+        # but contains "." -> should match the regex branch
+        assert any("file://data.file.csv" in r for r in resources)

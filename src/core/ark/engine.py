@@ -152,10 +152,7 @@ class ARKEngine(ReActAgent):
             self._initialize_performance_metrics()
 
             # Mark engine as ready in observability
-            try:
-                MetricsRegistry.mark_engine_ready()
-            except Exception:
-                pass
+            MetricsRegistry.mark_engine_ready()
 
             self.state = ARKState.READY
             available_tool_count = len(self.available_tools)
@@ -231,10 +228,7 @@ class ARKEngine(ReActAgent):
                     "session_id": session_id,
                 },
             )
-            try:
-                MetricsRegistry.graph_iterations_total.labels(node="master").inc()
-            except Exception:
-                pass
+            MetricsRegistry.graph_iterations_total.labels(node="master").inc()
 
             run_config = (
                 RunnableConfig(configurable={"callbacks": callbacks})
@@ -315,12 +309,9 @@ class ARKEngine(ReActAgent):
                     "session_id": session_id,
                 },
             )
-            try:
-                MetricsRegistry.record_error(
-                    component="ark.engine", error_type=type(e).__name__
-                )
-            except Exception:
-                pass
+            MetricsRegistry.record_error(
+                component="ark.engine", error_type=type(e).__name__
+            )
             import traceback
 
             self.ark_logger.error(traceback.format_exc())

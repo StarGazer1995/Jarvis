@@ -1,6 +1,6 @@
 # Harness Engineering Standards
 
-*Version 1.1 — Last Updated: May 17, 2026*
+*Version 1.2 — Last Updated: May 20, 2026*
 
 This document defines the **harness engineering standards** for Project Jarvis. It serves as the authoritative reference for how the system is designed, tested, observed, and operated as an integrated engineering harness.
 
