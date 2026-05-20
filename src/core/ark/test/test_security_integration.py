@@ -13,6 +13,7 @@ from langchain_core.messages import AIMessage, ToolMessage
 
 from src.core.ark.nodes.tools import ToolsNode
 from src.core.mcp.client import ARKMCPClient
+from src.core.observability import MetricsRegistry
 from src.core.security.manager import (
     ARKSecurityManager,
     PermissionType,
@@ -393,6 +394,98 @@ class TestToolsNodeSecurityIntegration:
             mock_exec.assert_not_called()
             # Should return a validation error message
             assert "validation error" in result["messages"][0].content.lower()
+
+    @pytest.mark.asyncio
+    async def test_unknown_validation_result(self, tools_node, mock_security_manager):
+        """An unknown ValidationResult should produce a validation error message."""
+
+        # Create a custom result object that has a .value but is not one of the
+        # known ValidationResult enum members. Use a simple class to avoid
+        # MagicMock's auto-equal behavior.
+        class _CustomResult:
+            value = "custom_value"
+
+            def __eq__(self, other):
+                return False  # Not equal to any enum member
+
+            def __ne__(self, other):
+                return True  # Not equal to any enum member
+
+            def __hash__(self):
+                return 0
+
+        mock_resp = ValidationResponse(
+            result=_CustomResult(),  # type: ignore
+            policy_applied="test_policy",
+            message="Custom result",
+        )
+        mock_security_manager.validate_tool_execution = AsyncMock(
+            return_value=mock_resp
+        )
+
+        last_message = AIMessage(
+            content="test",
+            tool_calls=[{"name": "web_search", "args": {"query": "x"}, "id": "call_1"}],
+        )
+        state = {"messages": [last_message], "todo_list": [], "sender": "master"}
+
+        with patch.object(tools_node.mcp_client, "execute_tool") as mock_exec:
+            result = await tools_node(state, config=None)
+            mock_exec.assert_not_called()
+            # Should return a validation error message (the else branch)
+            assert "validation error" in result["messages"][0].content.lower()
+
+    @pytest.mark.asyncio
+    async def test_tool_error_results_in_error_status(
+        self, tools_node, mock_security_manager
+    ):
+        """When MCP tool execution raises, metric status should be 'error'."""
+        mock_security_manager.validate_tool_execution.return_value = ValidationResponse(
+            result=ValidationResult.ALLOWED,
+            policy_applied="low",
+            message="Allowed",
+        )
+        # Make MCP client raise an exception so the tool result starts with "Error:"
+        tools_node.mcp_client.execute_tool = AsyncMock(
+            side_effect=RuntimeError("Connection failed")
+        )
+        last_message = AIMessage(
+            content="search",
+            tool_calls=[{"name": "web_search", "args": {"query": "x"}, "id": "call_1"}],
+        )
+        state = {"messages": [last_message], "todo_list": [], "sender": "master"}
+        result = await tools_node(state, config=None)
+        assert len(result["messages"]) == 1
+        assert "Error" in result["messages"][0].content
+        assert result["messages"][0].name == "web_search"
+        # Verify the error metric was recorded
+        error_count = MetricsRegistry.tool_calls_total.labels(
+            tool_name="web_search", server="mcp", status="error"
+        )._value.get()
+        assert error_count >= 1
+
+    @pytest.mark.asyncio
+    async def test_metrics_exception_does_not_crash(
+        self, tools_node, mock_security_manager
+    ):
+        """When MetricsRegistry raises, the node should handle it gracefully."""
+        mock_security_manager.validate_tool_execution.return_value = ValidationResponse(
+            result=ValidationResult.ALLOWED,
+            policy_applied="low",
+            message="Allowed",
+        )
+        last_message = AIMessage(
+            content="search",
+            tool_calls=[{"name": "web_search", "args": {"query": "x"}, "id": "call_1"}],
+        )
+        state = {"messages": [last_message], "todo_list": [], "sender": "master"}
+        with patch.object(
+            MetricsRegistry,
+            "record_tool_call",
+            side_effect=RuntimeError("Metrics failed"),
+        ):
+            result = await tools_node(state, config=None)
+            assert len(result["messages"]) == 1
 
     @pytest.mark.asyncio
     async def test_parallel_execution_fallback_on_error(
