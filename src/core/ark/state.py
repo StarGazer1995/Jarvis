@@ -27,6 +27,14 @@ class JarvisState(TypedDict):
     # The last node that executed (useful for routing)
     sender: str
 
+    # ── Graph Guardrails ────────────────────────────────────────────
+
+    # Current iteration count (incremented each time master runs)
+    iteration_count: int
+
+    # Graph termination reason (set when graph stops)
+    termination_reason: str | None
+
 
 class MultiAgentState(JarvisState):
     """

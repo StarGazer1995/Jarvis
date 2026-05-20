@@ -14,18 +14,25 @@ Jarvis/
 │   ├── core/               # Core framework components
 │   │   ├── agent/          # Agent implementations (ReAct)
 │   │   ├── ark/            # Autonomous Reasoning Kernel (LangGraph)
+│   │   │   └── test/       # Tests for ARK engine, graph, tools, tasks
 │   │   ├── config/         # Configuration management
 │   │   ├── context/        # Context and memory management
+│   │   │   └── test/       # Tests for context management
 │   │   ├── llm/            # LLM providers and utilities
+│   │   │   └── test/       # Tests for LLM clients, converters
 │   │   ├── mcp/            # Model Context Protocol client/registry
+│   │   │   └── test/       # Tests for MCP client and registry
+│   │   ├── observability/  # Prometheus metrics and monitoring
+│   │   │   └── test/       # Tests for metrics collection
 │   │   ├── prompt/         # Prompt engineering and management
 │   │   └── security/       # Security and validation
+│   │       └── test/       # Tests for security manager
 │   ├── web/                # Web interface (Chainlit)
 │   ├── jarvis_agent.py     # Main agent entry point
 │   └── main.py             # CLI entry point
 ├── config/                 # Configuration files
 ├── examples/               # Usage examples and demos
-├── tests/                  # Comprehensive test suite
+├── tests/                  # Legacy test suite (being migrated)
 ├── docs/                   # Documentation
 ├── .chainlit/              # Chainlit configuration
 └── pyproject.toml          # Project dependencies and metadata
@@ -91,10 +98,24 @@ uv run python examples/langgraph_example.py
 
 ### Running Tests
 
+Tests are co-located with source code under `src/**/test/` directories.  
 Execute the test suite using pytest:
 
 ```bash
 uv run pytest
+```
+
+Run specific test modules:
+
+```bash
+# ARK engine tests
+uv run pytest src/core/ark/test/ -v
+
+# Security manager tests
+uv run pytest src/core/security/test/ -v
+
+# Observability tests
+uv run pytest src/core/observability/test/ -v
 ```
 
 With coverage report:

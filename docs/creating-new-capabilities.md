@@ -118,5 +118,5 @@ if __name__ == "__main__":
 ## Testing Your Capability
 
 1.  **Unit Tests**: Test your tool logic in isolation.
-2.  **Integration Tests**: Use `ARKMCPClient` to connect to your server and call tools programmatically (see `tests/core/mcp/test_demo_integration.py` for an example).
+2.  **Integration Tests**: Use `ARKMCPClient` to connect to your server and call tools programmatically (see `src/core/mcp/test/test_demo_integration.py` for an example).
 3.  **E2E Tests**: Verify that Jarvis can use the tool in a conversation.

@@ -996,6 +996,212 @@ class ARKSecurityManager:
                 message=f"Validation error: {str(e)}",
             )
 
+    # ── Permission Inference Helpers ─────────────────────────────────────
+
+    @staticmethod
+    def infer_permissions_from_tool(
+        tool_name: str, arguments: dict[str, Any] | None = None
+    ) -> set[PermissionType]:
+        """
+        Infer required permissions from tool name and arguments.
+
+        Maps tool names and their argument patterns to the permissions
+        needed for execution. This is used to build ``ValidationRequest``
+        objects automatically.
+
+        Args:
+            tool_name: The name of the tool being called.
+            arguments: Optional dictionary of tool arguments.
+
+        Returns:
+            A set of PermissionType values required by this tool.
+        """
+        permissions: set[PermissionType] = set()
+
+        # ── Local / internal tool name mapping ────────────────────────
+        _TOOL_PERMISSION_MAP: dict[str, set[PermissionType]] = {
+            "manage_tasks": {PermissionType.READ, PermissionType.WRITE},
+            "web_search": {PermissionType.NETWORK, PermissionType.EXTERNAL_API},
+            "web_fetch": {PermissionType.NETWORK, PermissionType.EXTERNAL_API},
+            "execute_command": {PermissionType.SYSTEM, PermissionType.EXECUTE},
+            "read_file": {PermissionType.FILESYSTEM, PermissionType.READ},
+            "write_file": {PermissionType.FILESYSTEM, PermissionType.WRITE},
+            "list_dir": {PermissionType.FILESYSTEM, PermissionType.READ},
+            "run_code": {PermissionType.EXECUTE, PermissionType.FILESYSTEM},
+            "read_notebook": {PermissionType.FILESYSTEM, PermissionType.READ},
+            "create_file": {PermissionType.FILESYSTEM, PermissionType.WRITE},
+            "edit_file": {PermissionType.FILESYSTEM, PermissionType.WRITE},
+            "network_request": {PermissionType.NETWORK, PermissionType.EXTERNAL_API},
+            "database_query": {PermissionType.EXECUTE, PermissionType.READ},
+            "github_api": {PermissionType.NETWORK, PermissionType.EXTERNAL_API},
+            "mcp_tool": {PermissionType.EXECUTE, PermissionType.EXTERNAL_API},
+        }
+
+        # 1. Direct match against known tool names
+        if tool_name in _TOOL_PERMISSION_MAP:
+            permissions |= _TOOL_PERMISSION_MAP[tool_name]
+        else:
+            # Default: assume read + external API for unknown tools
+            permissions = {PermissionType.READ, PermissionType.EXTERNAL_API}
+
+        # 2. Refine based on argument patterns (if provided)
+        if arguments:
+            arg_keys = set(arguments.keys())
+            # File-related arguments
+            file_like_keys = {
+                "file_path",
+                "filepath",
+                "path",
+                "filename",
+                "file",
+                "dir",
+                "directory",
+            }
+            if arg_keys & file_like_keys:
+                permissions.add(PermissionType.FILESYSTEM)
+
+            # URL / network related arguments
+            url_like_keys = {"url", "uri", "endpoint", "host", "domain", "link"}
+            if arg_keys & url_like_keys:
+                permissions.add(PermissionType.NETWORK)
+                permissions.add(PermissionType.EXTERNAL_API)
+
+            # Payload / write related arguments
+            write_like_keys = {"content", "data", "body", "payload", "code"}
+            if arg_keys & write_like_keys:
+                permissions.add(PermissionType.WRITE)
+
+            # Command / execution related arguments
+            exec_like_keys = {"command", "cmd", "script", "exec", "code"}
+            if arg_keys & exec_like_keys:
+                permissions.add(PermissionType.EXECUTE)
+                if "shell" in arg_keys or "bash" in arg_keys:
+                    permissions.add(PermissionType.SYSTEM)
+
+        return permissions
+
+    @staticmethod
+    def extract_resources_from_args(
+        tool_name: str, arguments: dict[str, Any]
+    ) -> list[str]:
+        """
+        Extract resource identifiers (file paths, URLs) from tool arguments.
+
+        Scans argument values for patterns that look like file paths or URLs
+        and returns them as a list of resource strings suitable for
+        ``ValidationRequest.target_resources``.
+
+        Args:
+            tool_name: The name of the tool (used for context).
+            arguments: Tool arguments dictionary.
+
+        Returns:
+            A list of resource URI strings (e.g. ``file:///path``, ``https://...``).
+        """
+        import re
+
+        resources: list[str] = []
+
+        # Known argument keys that typically contain file paths
+        file_path_keys = {
+            "file_path",
+            "filepath",
+            "path",
+            "filename",
+            "file",
+            "dir",
+            "directory",
+            "source",
+            "destination",
+            "dest",
+            "src",
+            "target",
+        }
+
+        # Known argument keys that typically contain URLs
+        url_keys = {"url", "uri", "endpoint", "link", "source_url", "api_url"}
+
+        for key, value in arguments.items():
+            if not isinstance(value, str):
+                continue
+
+            key_lower = key.lower()
+
+            # File path detection
+            if key_lower in file_path_keys or key_lower.endswith("_path"):
+                if (
+                    value.startswith("/")
+                    or value.startswith("./")
+                    or value.startswith("~/")
+                ):
+                    resources.append(f"file://{value}")
+                elif re.match(r"^[a-zA-Z0-9_\-/.]+$", value) and "." in value:
+                    resources.append(f"file://{value}")
+
+            # URL detection
+            elif key_lower in url_keys or key_lower.endswith("_url"):
+                if value.startswith("http://") or value.startswith("https://"):
+                    resources.append(value)
+                elif "." in value and "/" in value:
+                    resources.append(f"https://{value}")
+
+            # Scan arbitrary string values for embedded URLs/domains
+            elif value.startswith("http://") or value.startswith("https://"):
+                resources.append(value)
+
+            elif value.startswith("/") and not key_lower.endswith("_depends_on"):
+                # Looks like a file path
+                resources.append(f"file://{value}")
+
+        return resources
+
+    @staticmethod
+    def build_validation_request(
+        user_id: str,
+        session_id: str,
+        execution_id: str,
+        tool_name: str,
+        arguments: dict[str, Any],
+    ) -> ValidationRequest:
+        """
+        Build a ``ValidationRequest`` from tool call metadata.
+
+        This is the primary helper for converting an incoming tool call
+        into the security validation format expected by
+        ``validate_tool_execution``.
+
+        Args:
+            user_id: User identifier.
+            session_id: Session identifier.
+            execution_id: Execution / turn identifier.
+            tool_name: Name of the tool being called.
+            arguments: Tool arguments dictionary.
+
+        Returns:
+            A fully populated ValidationRequest.
+        """
+        context = SecurityContext(
+            user_id=user_id or "anonymous",
+            session_id=session_id or "unknown",
+            tool_name=tool_name,
+            tool_version="1.0.0",
+            execution_id=execution_id or f"exec_{time.time_ns()}",
+            timestamp=time.time(),
+        )
+
+        permissions = ARKSecurityManager.infer_permissions_from_tool(
+            tool_name, arguments
+        )
+        resources = ARKSecurityManager.extract_resources_from_args(tool_name, arguments)
+
+        return ValidationRequest(
+            context=context,
+            tool_parameters=arguments,
+            requested_permissions=permissions,
+            input_data=arguments,
+            target_resources=resources,
+        )
+
     async def get_security_status(self) -> dict[str, Any]:
         """
         Get current security manager status.

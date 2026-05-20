@@ -59,7 +59,7 @@ To add new capabilities to your Jarvis agent:
 
 1. Create new modules in the `src/` directory
 2. Extend the `JarvisAgent` class or create new components
-3. Add corresponding tests (with mocks from `tests/conftest.py`)
+3. Add corresponding tests (with mocks from the root `conftest.py`)
 4. Update this documentation
 
 ### Example Extension
@@ -89,7 +89,7 @@ class EnhancedJarvisAgent(JarvisAgent):
 
 All testing follows the **Test Harness** standard:
 
-- **Every external dependency MUST have a mock** — use `MockLLMClient`, `MockMCPClient`, etc. from `tests/conftest.py`
+- **Every external dependency MUST have a mock** — use `MockLLMClient`, `MockMCPClient`, etc. from the root `conftest.py`
 - **Test both success AND failure paths** — include rate limits, timeouts, malformed responses
 - **Write fault injection tests** — verify retry logic handles partial failures correctly
 - **Write descriptive test names** that document the scenario being tested

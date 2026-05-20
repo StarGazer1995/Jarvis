@@ -30,10 +30,10 @@ jobs:
         run: uv sync
 
       - name: Run full test suite
-        run: uv run pytest tests/ --ignore=tests/web --ignore=tests/integration -v --tb=short -q
+        run: uv run pytest src/ --ignore=src/web -v --tb=short -q
 
       - name: Run observability tests
-        run: uv run pytest tests/test_observability.py -v --tb=short -q
+        run: uv run pytest src/core/observability/test/ -v --tb=short -q
 
   # ═══════════════════════════════════════════════════════════════
   # Benchmark comparison with stored baseline
@@ -54,4 +54,4 @@ jobs:
         run: uv sync
 
       - name: Run benchmarks with comparison
-        run: uv run pytest tests/test_performance.py --benchmark-only --benchmark-autosave --benchmark-compare=0001 --benchmark-compare-fail=min:10%
+        run: uv run pytest src/ -k "performance" --benchmark-only --benchmark-autosave --benchmark-compare=0001 --benchmark-compare-fail=min:10%

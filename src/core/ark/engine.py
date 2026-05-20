@@ -7,6 +7,7 @@ and decision-making capabilities.
 """
 
 import logging
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -21,7 +22,13 @@ from ..context.manager import ConversationContext
 from ..llm.client import LLMManager
 from ..llm.config import load_llm_config
 from ..mcp.client import ARKMCPClient
+
+# Observability
+from ..observability import MetricsRegistry
 from ..prompt.manager import PromptManager
+
+# Security
+from ..security.manager import ARKSecurityManager
 
 # LangGraph imports
 from .graph import create_ark_graph
@@ -69,9 +76,13 @@ class ARKEngine(ReActAgent):
             max_history=self.config.get("max_conversation_history", 100)
         )
 
+        # Security manager
+        self.security_manager = ARKSecurityManager()
+
         # ARK-specific attributes
         self.tool_usage_stats: dict[str, int] = {}
         self.todo_list: list[Task] = []
+        self._engine_start_time: float = time.time()
 
         # Configuration
         self.max_tool_chain_length = self.config.get("max_tool_chain_length", 5)
@@ -128,8 +139,11 @@ class ARKEngine(ReActAgent):
             # Initialize LangGraph
             self.ark_logger.info("ARK: Initializing LangGraph workflow")
 
-            # Create ToolsNode explicitly to allow tool registration
-            self.tools_node = ToolsNode(self.mcp_client)
+            # Create ToolsNode with security manager
+            self.tools_node = ToolsNode(
+                self.mcp_client,
+                security_manager=self.security_manager,
+            )
             self.graph = create_ark_graph(
                 self.llm_manager, self.mcp_client, tools_node_instance=self.tools_node
             )
@@ -137,16 +151,36 @@ class ARKEngine(ReActAgent):
             # Initialize performance tracking
             self._initialize_performance_metrics()
 
+            # Mark engine as ready in observability
+            try:
+                MetricsRegistry.mark_engine_ready()
+            except Exception:
+                pass
+
             self.state = ARKState.READY
             available_tool_count = len(self.available_tools)
             self.ark_logger.info(
-                f"ARK: Initialization complete - {available_tool_count} tools available"
+                f"ARK: Initialization complete - {available_tool_count} tools available",
+                extra={
+                    "component": "ark.engine",
+                    "event": "initialization_complete",
+                    "status": "success",
+                    "tool_count": available_tool_count,
+                },
             )
             return True
 
         except Exception as e:
             self.state = ARKState.ERROR
-            self.ark_logger.error(f"ARK: Initialization failed: {e}")
+            self.ark_logger.error(
+                f"ARK: Initialization failed: {e}",
+                extra={
+                    "component": "ark.engine",
+                    "event": "initialization_failed",
+                    "status": "error",
+                    "error": str(e),
+                },
+            )
             # Log stack trace for debugging
             import traceback
 
@@ -179,6 +213,8 @@ class ARKEngine(ReActAgent):
             "available_tools": self.available_tools,
             "scratchpad": {},
             "sender": "user",
+            "iteration_count": 0,
+            "termination_reason": None,
         }
 
         try:
@@ -186,12 +222,36 @@ class ARKEngine(ReActAgent):
             if not self.graph:
                 return "Error: LangGraph not initialized."
 
+            self.ark_logger.info(
+                "ARK: Starting graph execution",
+                extra={
+                    "component": "ark.engine",
+                    "event": "graph_execution_start",
+                    "status": "started",
+                    "session_id": session_id,
+                },
+            )
+            try:
+                MetricsRegistry.graph_iterations_total.labels(node="master").inc()
+            except Exception:
+                pass
+
             run_config = (
                 RunnableConfig(configurable={"callbacks": callbacks})
                 if callbacks
                 else {}
             )
             final_state = await self.graph.ainvoke(initial_state, config=run_config)
+
+            self.ark_logger.info(
+                "ARK: Graph execution completed",
+                extra={
+                    "component": "ark.engine",
+                    "event": "graph_execution_complete",
+                    "status": "success",
+                    "session_id": session_id,
+                },
+            )
 
             # 3. Update internal state (todo list)
             new_todo_list_dicts = final_state.get("todo_list", [])
@@ -245,7 +305,22 @@ class ARKEngine(ReActAgent):
             return response
 
         except Exception as e:
-            self.ark_logger.error(f"ARK: Graph execution failed: {e}")
+            self.ark_logger.error(
+                f"ARK: Graph execution failed: {e}",
+                extra={
+                    "component": "ark.engine",
+                    "event": "graph_execution_failed",
+                    "status": "error",
+                    "error": str(e),
+                    "session_id": session_id,
+                },
+            )
+            try:
+                MetricsRegistry.record_error(
+                    component="ark.engine", error_type=type(e).__name__
+                )
+            except Exception:
+                pass
             import traceback
 
             self.ark_logger.error(traceback.format_exc())
@@ -322,6 +397,8 @@ class ARKEngine(ReActAgent):
             "state": self.state.value,
             "available_tools": len(self.available_tools),
             "todo_count": len(self.todo_list),
+            "security_policies": list(self.security_manager.policies.keys()),
+            "engine_uptime_seconds": time.time() - self._engine_start_time,
         }
 
     def get_engine_status(self) -> dict[str, Any]:
@@ -337,6 +414,9 @@ class ARKEngine(ReActAgent):
                 "max_tool_chain_length": self.max_tool_chain_length,
                 "confidence_threshold": self.confidence_threshold,
                 "enable_tool_chaining": self.enable_tool_chaining,
+                "graph_iteration_limit": self.graph.get_graph(xray=True).nodes.keys()
+                if self.graph
+                else 0,
             },
         }
 

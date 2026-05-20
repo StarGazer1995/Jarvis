@@ -46,7 +46,7 @@ A well-engineered harness means the difference between a demo that works on a la
 
 | Standard | Requirement | Verification |
 |----------|-------------|--------------|
-| **Mock Coverage** | Every external dependency (LLM provider, MCP server, database) must have a mock fixture in `tests/conftest.py` | Code review — grep for `Mock(spec=` |
+| **Mock Coverage** | Every external dependency (LLM provider, MCP server, database) must have a mock fixture in the root `conftest.py` | Code review — grep for `Mock(spec=` |
 | **Fault Injection** | Every retry-able operation must have tests that simulate: timeout, rate limit, malformed response, and service unavailable | Check `test_retry_handler.py` and equivalent per-module tests |
 | **Determinism** | Tests must not depend on real network calls, real API keys, or wall-clock timing | Run `pytest --offline` (planned) |
 | **Coverage Floor** | Effective immediately, newly added or modified lines in the current diff must maintain 100% diff coverage | `diff-cover coverage.xml --compare-branch=origin/main --fail-under=100` |
@@ -56,7 +56,7 @@ A well-engineered harness means the difference between a demo that works on a la
 #### Mock Architecture
 
 ```
-tests/conftest.py provides:
+conftest.py (project root) provides:
 ├── MockLLMClient        → Simulates any LLM provider response
 ├── MockMCPClient        → Simulates MCP server interactions
 ├── MockContextManager   → Simulates conversation state

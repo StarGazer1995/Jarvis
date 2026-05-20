@@ -1,0 +1,421 @@
+"""
+Tests for security integration in ToolsNode.
+
+Verifies that tool calls are validated through the security manager
+before execution, and that denied / rate-limited / approval-required
+calls return normalised messages instead of executing.
+"""
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from langchain_core.messages import AIMessage, ToolMessage
+
+from src.core.ark.nodes.tools import ToolsNode
+from src.core.mcp.client import ARKMCPClient
+from src.core.security.manager import (
+    ARKSecurityManager,
+    PermissionType,
+    ValidationResponse,
+    ValidationResult,
+)
+
+
+@pytest.fixture
+def mock_mcp_client():
+    """Create a mock MCP client."""
+    client = MagicMock(spec=ARKMCPClient)
+    client.execute_tool = AsyncMock(return_value="mcp_result")
+    return client
+
+
+@pytest.fixture
+def mock_security_manager():
+    """Create a mock security manager that allows everything by default."""
+    mgr = MagicMock(spec=ARKSecurityManager)
+    mgr.validate_tool_execution = AsyncMock(
+        return_value=ValidationResponse(
+            result=ValidationResult.ALLOWED,
+            policy_applied="low",
+            message="Allowed",
+        )
+    )
+    return mgr
+
+
+@pytest.fixture
+def tools_node(mock_mcp_client, mock_security_manager):
+    """Create a ToolsNode with mocked dependencies."""
+    node = ToolsNode(
+        mcp_client=mock_mcp_client,
+        security_manager=mock_security_manager,
+    )
+    return node
+
+
+class TestToolsNodeSecurityIntegration:
+    """Security validation integration tests for ToolsNode."""
+
+    @pytest.mark.asyncio
+    async def test_allowed_tool_execution(self, tools_node, mock_mcp_client):
+        """A tool that passes security validation should execute normally."""
+        # Simulate LLM response with a tool call
+        last_message = AIMessage(
+            content="Let me search.",
+            tool_calls=[
+                {
+                    "name": "web_search",
+                    "args": {"query": "test"},
+                    "id": "call_1",
+                }
+            ],
+        )
+
+        state = {
+            "messages": [last_message],
+            "todo_list": [],
+            "sender": "master",
+        }
+
+        result = await tools_node(state, config=None)
+
+        # Tool should have been executed
+        mock_mcp_client.execute_tool.assert_called_once_with(
+            "web_search", {"query": "test"}
+        )
+
+        # Result should be a ToolMessage
+        assert len(result["messages"]) == 1
+        msg = result["messages"][0]
+        assert isinstance(msg, ToolMessage)
+        assert msg.name == "web_search"
+        assert msg.content == "mcp_result"
+
+    @pytest.mark.asyncio
+    async def test_denied_tool_execution(self, tools_node, mock_security_manager):
+        """A denied tool should return a security message without executing."""
+        mock_security_manager.validate_tool_execution.return_value = ValidationResponse(
+            result=ValidationResult.DENIED,
+            policy_applied="high",
+            message="Denied: missing permission",
+        )
+
+        last_message = AIMessage(
+            content="Let me execute.",
+            tool_calls=[
+                {
+                    "name": "execute_command",
+                    "args": {"command": "rm -rf /"},
+                    "id": "call_1",
+                }
+            ],
+        )
+
+        state = {
+            "messages": [last_message],
+            "todo_list": [],
+            "sender": "master",
+        }
+
+        with patch.object(tools_node.mcp_client, "execute_tool") as mock_exec:
+            result = await tools_node(state, config=None)
+
+            # Tool should NOT have been executed
+            mock_exec.assert_not_called()
+
+            # Result should be a security denial message
+            assert len(result["messages"]) == 1
+            msg = result["messages"][0]
+            assert isinstance(msg, ToolMessage)
+            assert "Security:" in msg.content
+            assert "denied" in msg.content.lower()
+            assert "execute_command" in msg.content
+
+    @pytest.mark.asyncio
+    async def test_rate_limited_tool(self, tools_node, mock_security_manager):
+        """A rate-limited tool should return a retry message."""
+        mock_security_manager.validate_tool_execution.return_value = ValidationResponse(
+            result=ValidationResult.RATE_LIMITED,
+            policy_applied="medium",
+            message="Rate limit exceeded",
+            retry_after=30.0,
+        )
+
+        last_message = AIMessage(
+            content="Let me search.",
+            tool_calls=[
+                {
+                    "name": "web_search",
+                    "args": {"query": "test"},
+                    "id": "call_1",
+                }
+            ],
+        )
+
+        state = {
+            "messages": [last_message],
+            "todo_list": [],
+            "sender": "master",
+        }
+
+        with patch.object(tools_node.mcp_client, "execute_tool") as mock_exec:
+            result = await tools_node(state, config=None)
+
+            mock_exec.assert_not_called()
+            assert len(result["messages"]) == 1
+            msg = result["messages"][0]
+            assert "rate limited" in msg.content.lower()
+            assert "30" in msg.content
+
+    @pytest.mark.asyncio
+    async def test_approval_required_tool(self, tools_node, mock_security_manager):
+        """An approval-required tool should return an approval message."""
+        mock_security_manager.validate_tool_execution.return_value = ValidationResponse(
+            result=ValidationResult.REQUIRES_APPROVAL,
+            policy_applied="high",
+            message="Requires approval",
+        )
+
+        last_message = AIMessage(
+            content="Let me write.",
+            tool_calls=[
+                {
+                    "name": "write_file",
+                    "args": {"file_path": "/tmp/test.txt", "content": "data"},
+                    "id": "call_1",
+                }
+            ],
+        )
+
+        state = {
+            "messages": [last_message],
+            "todo_list": [],
+            "sender": "master",
+        }
+
+        with patch.object(tools_node.mcp_client, "execute_tool") as mock_exec:
+            result = await tools_node(state, config=None)
+
+            mock_exec.assert_not_called()
+            assert len(result["messages"]) == 1
+            msg = result["messages"][0]
+            assert "approval" in msg.content.lower()
+
+    @pytest.mark.asyncio
+    async def test_mixed_parallel_allowed_and_denied(
+        self, tools_node, mock_security_manager
+    ):
+        """In parallel execution, allowed tools run and denied tools are skipped."""
+
+        # Return different responses based on tool name
+        async def validate_side_effect(request, policy_name="medium"):
+            if request.context.tool_name == "web_search":
+                return ValidationResponse(
+                    result=ValidationResult.ALLOWED,
+                    policy_applied="low",
+                    message="Allowed",
+                )
+            return ValidationResponse(
+                result=ValidationResult.DENIED,
+                policy_applied="high",
+                message="Denied",
+            )
+
+        mock_security_manager.validate_tool_execution = AsyncMock(
+            side_effect=validate_side_effect
+        )
+
+        last_message = AIMessage(
+            content="Do multiple things.",
+            tool_calls=[
+                {
+                    "name": "web_search",
+                    "args": {"query": "safe"},
+                    "id": "call_1",
+                },
+                {
+                    "name": "execute_command",
+                    "args": {"command": "rm -rf /"},
+                    "id": "call_2",
+                },
+            ],
+        )
+
+        state = {
+            "messages": [last_message],
+            "todo_list": [],
+            "sender": "master",
+        }
+
+        with patch.object(tools_node.mcp_client, "execute_tool") as mock_exec:
+            mock_exec.return_value = "search_result"
+            result = await tools_node(state, config=None)
+
+            # Only web_search should have executed
+            mock_exec.assert_called_once_with("web_search", {"query": "safe"})
+
+            # Both tools should have messages
+            assert len(result["messages"]) == 2
+
+            # First message: allowed tool result
+            assert result["messages"][0].content == "search_result"
+
+            # Second message: denied security message
+            assert "Security:" in result["messages"][1].content
+
+    @pytest.mark.asyncio
+    async def test_no_tool_calls(self, tools_node, mock_mcp_client):
+        """When there are no tool calls, ToolsNode should return early."""
+        last_message = AIMessage(content="Just a thought.")
+
+        state = {
+            "messages": [last_message],
+            "todo_list": [],
+            "sender": "master",
+        }
+
+        result = await tools_node(state, config=None)
+
+        mock_mcp_client.execute_tool.assert_not_called()
+        assert result["sender"] == "tools"
+
+    @pytest.mark.asyncio
+    async def test_local_tool_security_check(self, tools_node, mock_security_manager):
+        """Local tools should also be validated through security."""
+
+        # Register a local tool
+        async def my_local_tool(**kwargs):
+            return "local_result"
+
+        tools_node.register_tool("my_local_tool", my_local_tool)
+
+        mock_security_manager.validate_tool_execution.return_value = ValidationResponse(
+            result=ValidationResult.ALLOWED,
+            policy_applied="low",
+            message="Allowed",
+        )
+
+        last_message = AIMessage(
+            content="Use local tool.",
+            tool_calls=[
+                {
+                    "name": "my_local_tool",
+                    "args": {"param": "value"},
+                    "id": "call_1",
+                }
+            ],
+        )
+
+        state = {
+            "messages": [last_message],
+            "todo_list": [],
+            "sender": "master",
+        }
+
+        result = await tools_node(state, config=None)
+
+        # Should have called security validation
+        mock_security_manager.validate_tool_execution.assert_called()
+
+        # Should have executed the tool
+        assert len(result["messages"]) == 1
+        assert result["messages"][0].content == "local_result"
+
+
+class TestSecurityHelperMethods:
+    """Unit tests for the security helper methods."""
+
+    def test_infer_permissions_read_tool(self):
+        """infer_permissions_from_tool should return READ for read_file."""
+        perms = ARKSecurityManager.infer_permissions_from_tool("read_file")
+        assert PermissionType.FILESYSTEM in perms
+        assert PermissionType.READ in perms
+
+    def test_infer_permissions_write_tool(self):
+        """infer_permissions_from_tool should return WRITE for write_file."""
+        perms = ARKSecurityManager.infer_permissions_from_tool("write_file")
+        assert PermissionType.FILESYSTEM in perms
+        assert PermissionType.WRITE in perms
+
+    def test_infer_permissions_network_tool(self):
+        """infer_permissions_from_tool should return NETWORK for web_search."""
+        perms = ARKSecurityManager.infer_permissions_from_tool("web_search")
+        assert PermissionType.NETWORK in perms
+        assert PermissionType.EXTERNAL_API in perms
+
+    def test_infer_permissions_unknown_tool_default(self):
+        """Unknown tools should get READ + EXTERNAL_API default."""
+        perms = ARKSecurityManager.infer_permissions_from_tool("unknown_tool")
+        assert PermissionType.READ in perms
+        assert PermissionType.EXTERNAL_API in perms
+
+    def test_infer_permissions_file_args(self):
+        """Arguments with file-like keys should add FILESYSTEM permission."""
+        perms = ARKSecurityManager.infer_permissions_from_tool(
+            "process_data", {"file_path": "/tmp/data.csv"}
+        )
+        assert PermissionType.FILESYSTEM in perms
+
+    def test_infer_permissions_url_args(self):
+        """Arguments with URL-like keys should add NETWORK permission."""
+        perms = ARKSecurityManager.infer_permissions_from_tool(
+            "fetch_data", {"url": "https://example.com"}
+        )
+        assert PermissionType.NETWORK in perms
+        assert PermissionType.EXTERNAL_API in perms
+
+    def test_infer_permissions_write_args(self):
+        """Arguments with write-like keys should add WRITE permission."""
+        perms = ARKSecurityManager.infer_permissions_from_tool(
+            "save_data", {"content": "some data"}
+        )
+        assert PermissionType.WRITE in perms
+
+    def test_extract_resources_file_path(self):
+        """extract_resources_from_args should detect file paths."""
+        resources = ARKSecurityManager.extract_resources_from_args(
+            "read_file", {"file_path": "/etc/passwd"}
+        )
+        assert any("file:///etc/passwd" in r for r in resources)
+
+    def test_extract_resources_url(self):
+        """extract_resources_from_args should detect URLs."""
+        resources = ARKSecurityManager.extract_resources_from_args(
+            "web_fetch", {"url": "https://example.com"}
+        )
+        assert any("https://example.com" in r for r in resources)
+
+    def test_build_validation_request(self):
+        """build_validation_request should produce a valid request."""
+        request = ARKSecurityManager.build_validation_request(
+            user_id="user1",
+            session_id="session1",
+            execution_id="exec1",
+            tool_name="read_file",
+            arguments={"file_path": "/tmp/test.txt"},
+        )
+
+        assert request.context.user_id == "user1"
+        assert request.context.tool_name == "read_file"
+        assert PermissionType.FILESYSTEM in request.requested_permissions
+        assert any("file:///tmp/test.txt" in r for r in request.target_resources)
+
+    def test_policy_for_tool_low_risk(self):
+        """Low-risk tools should map to 'low' policy."""
+        policy = ToolsNode._policy_for_tool("web_search")
+        assert policy == "low"
+
+    def test_policy_for_tool_medium_risk(self):
+        """Medium-risk tools should map to 'medium' policy."""
+        policy = ToolsNode._policy_for_tool("read_file")
+        assert policy == "medium"
+
+    def test_policy_for_tool_high_risk(self):
+        """High-risk tools should map to 'high' policy."""
+        policy = ToolsNode._policy_for_tool("execute_command")
+        assert policy == "high"
+
+    def test_policy_for_tool_unknown(self):
+        """Unknown tools should map to 'low' policy."""
+        policy = ToolsNode._policy_for_tool("unknown")
+        assert policy == "low"

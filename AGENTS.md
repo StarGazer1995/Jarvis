@@ -27,7 +27,7 @@ UI/CLI → Agent → ARK Engine → LLM Providers + MCP Tools
 
 ### Design Principles
 
-1. **Every external dependency MUST have a mock counterpart** in `tests/conftest.py` — this is non-negotiable for test harness integrity.
+1. **Every external dependency MUST have a mock counterpart** in `conftest.py` — this is non-negotiable for test harness integrity.
 2. **Configuration is always externalized** — never hardcode API keys, model names, or thresholds.
 3. **All LLM interaction goes through `LLMManager`** — never call a provider SDK directly from business logic.
 4. **All tool execution goes through `ARKMCPClient`** — never call external tools directly.
@@ -65,7 +65,7 @@ bash scripts/run_diff_tests.sh
 bash scripts/run_diff_tests.sh --coverage
 
 # Run specific test file
-uv run pytest tests/core/ark/test_engine.py -v
+uv run pytest src/core/ark/test/test_engine.py -v
 
 # Run linter
 uv run ruff check .
@@ -75,12 +75,13 @@ uv run ruff check .
 
 Every agent MUST adhere to these standards when writing or modifying code:
 
-1. **Every new feature MUST include tests** — unit tests for logic, integration tests for MCP/LLM boundaries.
-2. **Use the existing mock fixtures** (`MockLLMClient`, `MockMCPClient`, `MockContextManager`) from `tests/conftest.py`. Never hit real APIs in unit tests.
-3. **All async tests must use `pytest-asyncio`** with `asyncio_mode = "auto"` (already configured).
-4. **Test both success and failure paths** — include tests for rate limits, timeouts, malformed responses.
-5. **Coverage target**: Effective immediately, all newly added or modified lines in the current diff must reach **100% diff coverage**.
-6. **No coverage gaming**: Do not add contrived, implementation-shaped, or behavior-free test cases solely to raise coverage numbers. Every new test must validate a meaningful runtime behavior, contract, edge case, or failure mode.
+1. **Tests are co-located** with source code under `src/**/test/` directories. Write tests alongside the module being tested (e.g., `src/core/ark/nodes/tools.py` → `src/core/ark/nodes/test/test_tools.py`).
+2. **Every new feature MUST include tests** — unit tests for logic, integration tests for MCP/LLM boundaries.
+3. **Use the existing mock fixtures** (`MockLLMClient`, `MockMCPClient`, `MockContextManager`) from the root `conftest.py`. Never hit real APIs in unit tests.
+4. **All async tests must use `pytest-asyncio`** with `asyncio_mode = "auto"` (already configured).
+5. **Test both success and failure paths** — include tests for rate limits, timeouts, malformed responses.
+6. **Coverage target**: Effective immediately, all newly added or modified lines in the current diff must reach **100% diff coverage**.
+7. **No coverage gaming**: Do not add contrived, implementation-shaped, or behavior-free test cases solely to raise coverage numbers. Every new test must validate a meaningful runtime behavior, contract, edge case, or failure mode.
 
 ---
 
@@ -99,11 +100,10 @@ Every agent MUST adhere to these standards when writing or modifying code:
 | `src/core/prompt/` | Prompt templates and management |
 | `src/capabilities/` | Tool/server implementations |
 | `src/web/` | Chainlit web UI |
-| `tests/` | Mirrors `src/` structure |
 
 ### Harness Engineering Standards
 
-When adding or modifying any component:
+When adding or modifying any component, follow these five standards (see `docs/engineering-standards.md` for the full six-pillar framework):
 
 1. **Test Harness First**: Write the mock and test fixture before implementing the real component.
 2. **Fault Injection**: Include tests that simulate failures (timeouts, bad responses, crashes) — not just happy paths.
@@ -123,10 +123,12 @@ When adding or modifying any component:
 
 | File | What it covers |
 |------|----------------|
-| `docs/engineering-standards.md` | Full harness engineering standards |
+| `docs/engineering-standards.md` | Full harness engineering standards (six pillars) |
 | `docs/ai-agent-architecture.md` | ARK + LangGraph architecture deep-dive |
 | `docs/creating-new-capabilities.md` | Adding MCP tools and servers |
 | `docs/prompt_engineering_insights.md` | Prompt design and management |
 | `docs/lessons_learned.md` | Historical decisions and learnings |
 | `config/llm_config.yaml` | LLM provider and model configuration |
 | `pyproject.toml` | Build, test, and lint configuration |
+| `conftest.py` | Shared test fixtures and mocks |
+| `scripts/run_diff_tests.sh` | Run diff-targeted tests with coverage |
