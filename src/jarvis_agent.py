@@ -77,15 +77,67 @@ class JarvisAgent:
         self.logger.info(f"Jarvis Agent v{self.config.version} initialized")
 
     def _setup_logging(self) -> None:
-        """Setup logging configuration for Jarvis."""
+        """Setup logging configuration for Jarvis with structured format."""
         log_level = getattr(logging, self.config.log_level.upper(), logging.INFO)
 
+        # Define a structured formatter that includes extra fields
+        class StructuredFormatter(logging.Formatter):
+            """Formatter that appends structured extra fields as JSON."""
+
+            def format(self, record: logging.LogRecord) -> str:
+                base = super().format(record)
+                # Append extra fields as JSON suffix if present
+                extra_fields = {
+                    k: v
+                    for k, v in vars(record).items()
+                    if k
+                    not in (
+                        "args",
+                        "asctime",
+                        "created",
+                        "exc_info",
+                        "exc_text",
+                        "filename",
+                        "funcName",
+                        "levelname",
+                        "levelno",
+                        "lineno",
+                        "message",
+                        "module",
+                        "msecs",
+                        "msg",
+                        "name",
+                        "pathname",
+                        "process",
+                        "processName",
+                        "relativeCreated",
+                        "stack_info",
+                        "thread",
+                        "threadName",
+                    )
+                    and k.startswith(("component", "event", "status", "error"))
+                }
+                if extra_fields:
+                    import json
+
+                    base += " " + json.dumps(extra_fields)
+                return base
+
         # Configure root logger
-        logging.basicConfig(
-            level=log_level,
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
+        handler = logging.StreamHandler()
+        handler.setFormatter(
+            StructuredFormatter(
+                fmt="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
         )
+
+        root_logger = logging.getLogger()
+        root_logger.setLevel(log_level)
+        # Remove existing handlers and add our structured one
+        for h in root_logger.handlers[:]:
+            root_logger.removeHandler(h)
+        root_logger.addHandler(handler)
 
         # Set specific logger levels
         logging.getLogger("jarvis").setLevel(log_level)

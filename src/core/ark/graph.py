@@ -1,3 +1,5 @@
+import logging
+
 from langchain_core.messages import AIMessage
 from langgraph.graph import END, StateGraph
 
@@ -7,6 +9,12 @@ from .nodes.master import MasterNode
 from .nodes.tools import ToolsNode
 from .state import JarvisState, MultiAgentState
 from .utils import AgentSpec
+
+logger = logging.getLogger("ark.graph")
+
+# Default maximum number of master–tools iterations before forced termination.
+# This prevents infinite loops when the LLM keeps requesting tool calls.
+DEFAULT_GRAPH_ITERATION_LIMIT = 25
 
 
 def _get_last_ai_tool_calls(messages: list) -> list | None:
@@ -31,6 +39,7 @@ def create_ark_graph(
     llm_manager: LLMManager,
     mcp_client: ARKMCPClient,
     tools_node_instance: ToolsNode = None,
+    iteration_limit: int = DEFAULT_GRAPH_ITERATION_LIMIT,
 ):
     """
     Constructs the LangGraph for ARK engine.
@@ -40,6 +49,9 @@ def create_ark_graph(
         mcp_client: The MCP Client
         tools_node_instance: Optional pre-initialized ToolsNode.
             If None, one will be created.
+        iteration_limit: Maximum number of master–tools iterations before
+            the graph is forced to terminate with a clear message.
+            Defaults to ``DEFAULT_GRAPH_ITERATION_LIMIT`` (25).
     """
     workflow = StateGraph(JarvisState)
 
@@ -55,13 +67,22 @@ def create_ark_graph(
     workflow.set_entry_point("master")
 
     def should_continue(state: JarvisState):
+        # ── Iteration guardrail ─────────────────────────────────────
+        iteration_count = state.get("iteration_count", 0)
+        if iteration_count >= iteration_limit:
+            logger.warning(
+                f"Graph iteration limit ({iteration_limit}) reached. "
+                "Forcing termination."
+            )
+            return "__end__"
+
         if _get_last_ai_tool_calls(state["messages"]):
             return "tools"
 
         return END
 
     workflow.add_conditional_edges(
-        "master", should_continue, {"tools": "tools", END: END}
+        "master", should_continue, {"tools": "tools", END: END, "__end__": END}
     )
 
     # After tools execution, go back to master to interpret results

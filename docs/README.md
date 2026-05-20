@@ -19,16 +19,43 @@ Welcome to Project Jarvis! This documentation will help you understand and exten
 | [`ark_evolution.mmd`](ark_evolution.mmd) | Mermaid diagram of ARK engine evolution |
 | [`../AGENTS.md`](../AGENTS.md) | **Project-wide Agent Instructions** — VS Code Copilot agent guidelines for this workspace |
 
+## Project Structure
+
+```
+src/
+├── core/
+│   ├── agent/          # Base agent implementations (ReAct)
+│   ├── ark/            # ARK Engine — LangGraph orchestration
+│   │   ├── nodes/      # MasterNode (reasoning), ToolsNode (execution)
+│   │   ├── graph.py    # Graph definition with iteration guardrails
+│   │   ├── engine.py   # ARKEngine — main orchestration hub
+│   │   ├── state.py    # JarvisState with iteration tracking
+│   │   ├── tasks.py    # Task management
+│   │   └── test/       # Tests for all ARK components
+│   ├── config/         # Configuration loading (YAML + env vars)
+│   ├── context/        # Conversation history and memory
+│   ├── execution/      # Parallel execution engine (dependency resolution)
+│   ├── llm/            # Multi-provider LLM abstraction
+│   ├── mcp/            # MCP client and tool registry
+│   ├── observability/  # Prometheus metrics and monitoring server
+│   ├── prompt/         # Prompt templates and management
+│   └── security/       # Tool validation policy enforcement
+├── capabilities/       # MCP tool/server implementations
+├── web/                # Chainlit web UI
+├── jarvis_agent.py     # Main agent entry point
+└── main.py             # CLI entry point
+```
+
 ## Core Components
 
 ### JarvisAgent Class
 
 The `JarvisAgent` class is the heart of the framework. It provides:
 
-- **Initialization**: Set up the agent with a custom name
-- **Main Loop**: Interactive conversation handling
-- **Input Processing**: Extensible input/output processing
-- **Logging**: Structured logging for debugging
+- **Initialization**: Set up the agent, ARK engine, and MCP connections
+- **Security**: All tool calls validated through `SecurityManager` before execution
+- **Observability**: Prometheus metrics and structured logging throughout
+- **Graph Guardrails**: LangGraph iteration limits prevent infinite loops
 
 ### Main Entry Point
 
@@ -59,7 +86,7 @@ To add new capabilities to your Jarvis agent:
 
 1. Create new modules in the `src/` directory
 2. Extend the `JarvisAgent` class or create new components
-3. Add corresponding tests (with mocks from `tests/conftest.py`)
+3. Add corresponding tests (with mocks from the root `conftest.py`)
 4. Update this documentation
 
 ### Example Extension
@@ -89,11 +116,14 @@ class EnhancedJarvisAgent(JarvisAgent):
 
 All testing follows the **Test Harness** standard:
 
-- **Every external dependency MUST have a mock** — use `MockLLMClient`, `MockMCPClient`, etc. from `tests/conftest.py`
-- **Test both success AND failure paths** — include rate limits, timeouts, malformed responses
+- **Tests are co-located** under `src/**/test/` alongside the module being tested
+- **Every external dependency MUST have a mock** — use `MockLLMClient`, `MockMCPClient`, etc. from the root `conftest.py`
+- **Test both success AND failure paths** — include rate limits, timeouts, malformed responses, security denials, graph iteration limits
+- **Verify observability metrics** in integration tests — confirm `MetricsRegistry` counters increment on success and failure
 - **Write fault injection tests** — verify retry logic handles partial failures correctly
 - **Write descriptive test names** that document the scenario being tested
 - **Maintain 100% diff coverage** on all newly added or modified lines in the current change set
 - **Do not add contrived coverage-padding tests** — every test must validate a meaningful behavior, contract, edge case, or failure mode
+- **Avoid silent `try/except: pass`** — prefer direct calls or log exceptions rather than swallowing silently
 
 See [`engineering-standards.md`](engineering-standards.md#21-test-harness) for detailed test harness standards.

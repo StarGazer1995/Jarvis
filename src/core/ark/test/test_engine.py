@@ -81,7 +81,11 @@ class TestARKEngine(unittest.IsolatedAsyncioTestCase):
 
         # Check LangGraph initialization
         self.mock_create_graph.assert_called_once()
-        self.mock_tools_node_cls.assert_called_with(self.mock_mcp_client)
+        # ToolsNode now receives a security_manager parameter
+        self.mock_tools_node_cls.assert_called_with(
+            self.mock_mcp_client,
+            security_manager=self.engine.security_manager,
+        )
         self.assertIsNotNone(self.engine.graph)
 
     async def test_initialize_failure(self):

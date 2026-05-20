@@ -44,7 +44,9 @@ class TestMetricsRegistry:
         )
 
     def test_engine_ready_gauge(self):
-        """engine_ready gauge should start at 0."""
+        """engine_ready gauge should start at 0 and be resettable."""
+        # Reset in case other tests changed it
+        MetricsRegistry.engine_ready._value.set(0.0)
         assert MetricsRegistry.engine_ready._name == "ark_engine_ready"
         assert MetricsRegistry.engine_ready._value.get() == 0.0
 

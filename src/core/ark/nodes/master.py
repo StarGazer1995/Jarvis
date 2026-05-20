@@ -34,7 +34,13 @@ class MasterNode:
     ) -> dict[str, Any]:
         """
         Execute the master agent logic.
+
+        Increments ``iteration_count`` on each call and records
+        ``termination_reason`` when the graph should stop.
         """
+        # ── Iteration tracking ───────────────────────────────────────
+        iteration_count = state.get("iteration_count", 0) + 1
+
         # 1. Convert State Messages to LLM Messages
         messages = self._convert_messages(state["messages"])
 
@@ -99,6 +105,7 @@ class MasterNode:
                         )
                     ],
                     "sender": "master",
+                    "iteration_count": iteration_count,
                 }
 
             return {
@@ -106,6 +113,7 @@ class MasterNode:
                     AIMessage(content=f"Error: Invalid JSON response: {raw_content}")
                 ],
                 "sender": "master",
+                "iteration_count": iteration_count,
             }
 
         thought = parsed_response.get("thought", "")
@@ -135,6 +143,7 @@ class MasterNode:
                     )
                 ],
                 "sender": "master",
+                "iteration_count": iteration_count,
             }
 
         elif response_type == "tool_calls" and isinstance(content, list):
@@ -170,11 +179,21 @@ class MasterNode:
                         )
                     ],
                     "sender": "master",
+                    "iteration_count": iteration_count,
                 }
 
         # Normal response (Answer)
         final_content = content if isinstance(content, str) else str(content)
         logger.info(f"MasterNode Thought: {thought}")
+
+        # Determine termination reason
+        termination_reason = None
+        if iteration_count >= 25:  # matches default limit
+            termination_reason = "iteration_limit"
+        elif response_type == "answer":
+            termination_reason = "final_answer"
+        elif response_type == "no_tool_call":
+            termination_reason = "no_tool_call"
 
         return {
             "messages": [
@@ -184,6 +203,8 @@ class MasterNode:
                 )
             ],
             "sender": "master",
+            "iteration_count": iteration_count,
+            "termination_reason": termination_reason,
         }
 
     def _convert_messages(self, lc_messages: list[BaseMessage]) -> list[LLMMessage]:

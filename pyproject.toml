@@ -60,7 +60,9 @@ omit = [
     "src/**/test/*",
     "src/**/tests/*",
     "src/web/*",
-    "src/core/observability/*",
+    # Observability metrics definitions are tested indirectly through integration;
+    # the server module has its own tests.
+    "src/core/observability/server.py",
 ]
 
 [tool.coverage.report]
