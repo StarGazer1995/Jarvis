@@ -26,3 +26,4 @@ class AgentStep:
     action: str | None = None
     action_input: dict[str, Any] | str | None = None
     observation: str | None = None
+    observation_data: Any | None = None

@@ -152,6 +152,33 @@ class TestReActAgent(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result, "Error: Plain failure")
 
+    async def test_async_final_answer_validator_is_awaited(self):
+        """Test async final-answer validation hooks are awaited by the loop."""
+        bad_response = MagicMock()
+        bad_response.content = (
+            '{"thought": "First try", "type": "answer", "content": "wrong"}'
+        )
+        good_response = MagicMock()
+        good_response.content = (
+            '{"thought": "Second try", "type": "answer", "content": "fixed"}'
+        )
+        self.agent.llm_manager.generate_response.side_effect = [
+            bad_response,
+            good_response,
+        ]
+
+        async def validate(content, rendered_answer, steps):
+            if rendered_answer == "wrong":
+                return "Need a corrected answer."
+            return None
+
+        self.agent._validate_final_answer = validate
+
+        result = await self.agent.process_input("Check async validation")
+
+        self.assertEqual(result, "fixed")
+        self.assertEqual(self.agent.llm_manager.generate_response.call_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

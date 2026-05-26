@@ -17,7 +17,7 @@ import sys
 # Ensure project root is in path
 sys.path.append(os.getcwd())
 
-from src.capabilities.refinement import RefinementLoop
+from src.capabilities.refinement import DeepResearchAuditor, RefinementLoop
 from src.capabilities.web_research import WebResearcher
 from src.core.config.loader import (
     LLMConfig as YamlLLMConfig,
@@ -97,6 +97,7 @@ async def main():
 
     researcher = WebResearcher()
     agent.register_capabilities([researcher])
+    auditor = DeepResearchAuditor()
 
     # 2. Define Generator and Reviewer Functions
 
@@ -105,24 +106,8 @@ async def main():
         return await agent.process_message(prompt)
 
     async def reviewer_func(content: str) -> str:
-        """The reviewer validates the content."""
-        reviewer_prompt = f"""
-        You are a strict QA Reviewer. Validate the research report below.
-
-        Report:
-        {content}
-
-        Check for:
-        1. Coverage of BOTH 'OpenAI o1' AND 'Claude 3.5 Sonnet'.
-        2. Specific pricing numbers for BOTH.
-        3. Relevant source URLs listed.
-
-        Output "PASS" if good.
-        Output "RETRY: <instructions>" if missing info.
-        """
-        # We assume the same agent can role-play the reviewer
-        # In a real system, you might use a different agent or model
-        return await agent.process_message(reviewer_prompt)
+        """The reviewer validates the content using structured Deep Research audit checks."""
+        return auditor.review(content)
 
     # 3. Execute via RefinementLoop Capability
     loop = RefinementLoop(

@@ -61,9 +61,52 @@ def test_json_output_parser_schema_fail():
 
 def test_json_output_parser_deep_research_answer_protocol():
     parser = JSONOutputParser(protocol="deep_research")
-    text = '{"thought": "foo", "type": "answer", "content": "bar"}'
+    text = """
+    {
+        "thought": "foo",
+        "type": "answer",
+        "content": {
+            "summary": "OpenAI o1 appears to cost $20.",
+            "claims": [
+                {
+                    "statement": "OpenAI o1 costs $20.",
+                    "source_urls": ["https://example.com/pricing"]
+                }
+            ],
+            "sources": [
+                {
+                    "url": "https://example.com/pricing",
+                    "title": "Pricing page",
+                    "evidence": "The pricing page states that OpenAI o1 costs $20."
+                }
+            ],
+            "insufficient_evidence": false
+        }
+    }
+    """
     result = parser.parse(text)
-    assert result == {"thought": "foo", "type": "answer", "content": "bar"}
+    assert result["type"] == "answer"
+    assert result["content"]["claims"][0]["source_urls"] == [
+        "https://example.com/pricing"
+    ]
+
+
+def test_json_output_parser_deep_research_insufficient_evidence_answer_protocol():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = """
+    {
+        "thought": "Need to admit evidence gap",
+        "type": "answer",
+        "content": {
+            "summary": "Insufficient evidence to answer reliably.",
+            "claims": [],
+            "sources": [],
+            "insufficient_evidence": true
+        }
+    }
+    """
+    result = parser.parse(text)
+    assert result["content"]["insufficient_evidence"] is True
 
 
 def test_json_output_parser_deep_research_tool_call_protocol():
@@ -164,10 +207,104 @@ def test_json_output_parser_deep_research_requires_content():
         parser.parse(text)
 
 
-def test_json_output_parser_deep_research_requires_answer_string():
+def test_json_output_parser_deep_research_requires_answer_object():
     parser = JSONOutputParser(protocol="deep_research")
     text = '{"thought": "foo", "type": "answer", "content": {"bad": true}}'
-    with pytest.raises(ValueError, match="answer' content to be a string"):
+    with pytest.raises(ValueError, match="non-empty 'summary' string"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_rejects_non_object_answer_content():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = '{"thought": "foo", "type": "answer", "content": "bar"}'
+    with pytest.raises(ValueError, match="content to be an object"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_requires_claim_sources_to_match_top_level_sources():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = """
+    {
+        "thought": "foo",
+        "type": "answer",
+        "content": {
+            "summary": "Pricing summary.",
+            "claims": [
+                {
+                    "statement": "OpenAI o1 costs $20.",
+                    "source_urls": ["https://missing.example.com"]
+                }
+            ],
+            "sources": [
+                {
+                    "url": "https://example.com/pricing",
+                    "title": "Pricing page",
+                    "evidence": "The pricing page states that OpenAI o1 costs $20."
+                }
+            ],
+            "insufficient_evidence": false
+        }
+    }
+    """
+    with pytest.raises(ValueError, match="reference top-level sources"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_rejects_claims_when_insufficient():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = """
+    {
+        "thought": "foo",
+        "type": "answer",
+        "content": {
+            "summary": "Insufficient evidence to answer reliably.",
+            "claims": [
+                {
+                    "statement": "Unsupported claim",
+                    "source_urls": ["https://example.com"]
+                }
+            ],
+            "sources": [
+                {
+                    "url": "https://example.com",
+                    "title": "Example",
+                    "evidence": "Unsupported example evidence."
+                }
+            ],
+            "insufficient_evidence": true
+        }
+    }
+    """
+    with pytest.raises(ValueError, match="must not include claims"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_requires_source_evidence():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = """
+    {
+        "thought": "foo",
+        "type": "answer",
+        "content": {
+            "summary": "OpenAI o1 costs $20.",
+            "claims": [
+                {
+                    "statement": "OpenAI o1 costs $20.",
+                    "source_urls": ["https://example.com/pricing"]
+                }
+            ],
+            "sources": [
+                {
+                    "url": "https://example.com/pricing",
+                    "title": "Pricing page",
+                    "evidence": ""
+                }
+            ],
+            "insufficient_evidence": false
+        }
+    }
+    """
+    with pytest.raises(ValueError, match="non-empty 'evidence'"):
         parser.parse(text)
 
 
@@ -241,6 +378,246 @@ def test_json_output_parser_deep_research_requires_object_top_level():
     parser = JSONOutputParser(protocol="deep_research")
     with pytest.raises(ValueError, match="Expected JSON object"):
         parser.parse('[{"thought": "foo", "type": "answer", "content": "bar"}]')
+
+
+def test_json_output_parser_accepts_deep_research_audit_verdict():
+    parser = JSONOutputParser(protocol="deep_research_audit")
+    text = """
+    {
+        "supported": true,
+        "issues": [],
+        "per_source": [
+            {
+                "url": "https://example.com/pricing",
+                "supported": true,
+                "reason": "Observed evidence supports the cited excerpt."
+            }
+        ]
+    }
+    """
+    result = parser.parse(text)
+    assert result["supported"] is True
+
+
+def test_json_output_parser_deep_research_audit_requires_reason():
+    parser = JSONOutputParser(protocol="deep_research_audit")
+    text = """
+    {
+        "supported": false,
+        "issues": ["unsupported evidence"],
+        "per_source": [
+            {
+                "url": "https://example.com/pricing",
+                "supported": false,
+                "reason": ""
+            }
+        ]
+    }
+    """
+    with pytest.raises(ValueError, match="non-empty 'reason'"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_requires_claims_array():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = (
+        '{"thought": "foo", "type": "answer", "content": '
+        '{"summary": "ok", "claims": "bad", "sources": [], "insufficient_evidence": true}}'
+    )
+    with pytest.raises(ValueError, match="'claims' to be an array"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_requires_sources_array():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = (
+        '{"thought": "foo", "type": "answer", "content": '
+        '{"summary": "ok", "claims": [], "sources": "bad", "insufficient_evidence": true}}'
+    )
+    with pytest.raises(ValueError, match="'sources' to be an array"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_requires_insufficient_evidence_boolean():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = (
+        '{"thought": "foo", "type": "answer", "content": '
+        '{"summary": "ok", "claims": [], "sources": [], "insufficient_evidence": "bad"}}'
+    )
+    with pytest.raises(ValueError, match="'insufficient_evidence' to be a boolean"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_requires_source_object():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = (
+        '{"thought": "foo", "type": "answer", "content": '
+        '{"summary": "OpenAI o1 costs $20.", "claims": [{"statement": "OpenAI o1 costs $20.", '
+        '"source_urls": ["https://example.com/pricing"]}], "sources": ["bad"], '
+        '"insufficient_evidence": false}}'
+    )
+    with pytest.raises(ValueError, match="sources must be objects"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_requires_source_title():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = (
+        '{"thought": "foo", "type": "answer", "content": '
+        '{"summary": "OpenAI o1 costs $20.", "claims": [{"statement": "OpenAI o1 costs $20.", '
+        '"source_urls": ["https://example.com/pricing"]}], "sources": [{"url": "https://example.com/pricing", '
+        '"title": "", "evidence": "Price is $20."}], "insufficient_evidence": false}}'
+    )
+    with pytest.raises(ValueError, match="non-empty 'title'"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_requires_valid_source_url():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = (
+        '{"thought": "foo", "type": "answer", "content": '
+        '{"summary": "OpenAI o1 costs $20.", "claims": [], "sources": [{"url": "bad-url", '
+        '"title": "Pricing page", "evidence": "Price is $20."}], "insufficient_evidence": true}}'
+    )
+    with pytest.raises(ValueError, match="valid 'url'"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_requires_claim_object():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = (
+        '{"thought": "foo", "type": "answer", "content": '
+        '{"summary": "OpenAI o1 costs $20.", "claims": ["bad"], "sources": [{"url": "https://example.com/pricing", '
+        '"title": "Pricing page", "evidence": "Price is $20."}], "insufficient_evidence": false}}'
+    )
+    with pytest.raises(ValueError, match="claims must be objects"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_requires_claim_statement():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = (
+        '{"thought": "foo", "type": "answer", "content": '
+        '{"summary": "OpenAI o1 costs $20.", "claims": [{"statement": "", "source_urls": ["https://example.com/pricing"]}], '
+        '"sources": [{"url": "https://example.com/pricing", "title": "Pricing page", "evidence": "Price is $20."}], '
+        '"insufficient_evidence": false}}'
+    )
+    with pytest.raises(ValueError, match="non-empty 'statement'"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_requires_non_empty_claim_source_urls():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = (
+        '{"thought": "foo", "type": "answer", "content": '
+        '{"summary": "OpenAI o1 costs $20.", "claims": [{"statement": "OpenAI o1 costs $20.", "source_urls": []}], '
+        '"sources": [{"url": "https://example.com/pricing", "title": "Pricing page", "evidence": "Price is $20."}], '
+        '"insufficient_evidence": false}}'
+    )
+    with pytest.raises(ValueError, match="non-empty 'source_urls'"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_insufficient_evidence_requires_phrase():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = (
+        '{"thought": "foo", "type": "answer", "content": '
+        '{"summary": "Need more data.", "claims": [], "sources": [], "insufficient_evidence": true}}'
+    )
+    with pytest.raises(ValueError, match="must explain that evidence is insufficient"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_requires_grounded_sources():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = (
+        '{"thought": "foo", "type": "answer", "content": '
+        '{"summary": "OpenAI o1 costs $20.", "claims": [], "sources": [], "insufficient_evidence": false}}'
+    )
+    with pytest.raises(ValueError, match="at least one claim"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_requires_source_when_claims_present():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = (
+        '{"thought": "foo", "type": "answer", "content": '
+        '{"summary": "OpenAI o1 costs $20.", "claims": [{"statement": "OpenAI o1 costs $20.", '
+        '"source_urls": ["https://example.com/pricing"]}], "sources": [{"url": "https://example.com/pricing", '
+        '"title": "Pricing page", "evidence": "Price is $20."}], "insufficient_evidence": false}}'
+    )
+    parsed = parser.parse(text)
+    parsed["content"]["sources"] = []
+
+    with pytest.raises(ValueError, match="at least one source"):
+        parser._validate_deep_research_answer_content(parsed["content"])
+
+
+def test_json_output_parser_deep_research_rejects_non_string_claim_source_url():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = (
+        '{"thought": "foo", "type": "answer", "content": '
+        '{"summary": "OpenAI o1 costs $20.", "claims": [{"statement": "OpenAI o1 costs $20.", '
+        '"source_urls": [123]}], "sources": [{"url": "https://example.com/pricing", '
+        '"title": "Pricing page", "evidence": "Price is $20."}], "insufficient_evidence": false}}'
+    )
+    with pytest.raises(ValueError, match="reference top-level sources"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_audit_requires_boolean_supported():
+    parser = JSONOutputParser(protocol="deep_research_audit")
+    text = '{"supported": "bad", "issues": [], "per_source": []}'
+    with pytest.raises(ValueError, match="'supported' to be a boolean"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_audit_requires_issues_array():
+    parser = JSONOutputParser(protocol="deep_research_audit")
+    text = '{"supported": false, "issues": "bad", "per_source": []}'
+    with pytest.raises(ValueError, match="'issues' to be an array"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_audit_requires_non_empty_issue_strings():
+    parser = JSONOutputParser(protocol="deep_research_audit")
+    text = '{"supported": false, "issues": [""], "per_source": []}'
+    with pytest.raises(ValueError, match="issues must be non-empty strings"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_audit_requires_per_source_array():
+    parser = JSONOutputParser(protocol="deep_research_audit")
+    text = '{"supported": false, "issues": [], "per_source": "bad"}'
+    with pytest.raises(ValueError, match="'per_source' to be an array"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_audit_requires_source_entry_object():
+    parser = JSONOutputParser(protocol="deep_research_audit")
+    text = '{"supported": false, "issues": [], "per_source": ["bad"]}'
+    with pytest.raises(ValueError, match="source entries must be objects"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_audit_requires_valid_source_url():
+    parser = JSONOutputParser(protocol="deep_research_audit")
+    text = (
+        '{"supported": false, "issues": [], "per_source": '
+        '[{"url": "bad", "supported": false, "reason": "No support."}]}'
+    )
+    with pytest.raises(ValueError, match="valid 'url'"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_audit_requires_source_supported_boolean():
+    parser = JSONOutputParser(protocol="deep_research_audit")
+    text = (
+        '{"supported": false, "issues": [], "per_source": '
+        '[{"url": "https://example.com", "supported": "bad", "reason": "No support."}]}'
+    )
+    with pytest.raises(ValueError, match="'supported' to be a boolean"):
+        parser.parse(text)
 
 
 def test_json_output_parser_rejects_unsupported_protocol():

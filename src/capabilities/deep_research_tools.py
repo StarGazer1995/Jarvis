@@ -17,6 +17,7 @@ from src.capabilities.interpreter import PythonInterpreter
 from src.core.llm.client import LLMManager
 from src.core.llm.config import load_llm_config
 from src.core.llm.converters import convert_langchain_to_llm_messages
+from src.core.llm.parsers import JSONOutputParser
 from src.core.prompt.manager import PromptManager
 
 logger = logging.getLogger(__name__)
@@ -45,53 +46,81 @@ class DeepResearchTools:
             # Note: We assume LLM manager is initialized by the agent or we initialize it lazily
 
         self.interpreter = PythonInterpreter()
+        self.extractor_parser = JSONOutputParser()
 
-    async def search(self, query: list[str]) -> str:
+    async def search(self, query: list[str]) -> dict[str, object]:
         """
         Perform web searches for multiple queries.
         """
         if not self.tavily_client:
-            return "Error: Tavily API key not configured."
+            return {
+                "tool": "search",
+                "error": "Tavily API key not configured.",
+                "results": [],
+            }
 
-        results = []
+        results: list[dict[str, str]] = []
         for q in query:
             try:
                 response = self.tavily_client.search(
-                    query=q, search_depth="advanced", max_results=5, include_answer=True
+                    query=q,
+                    search_depth="advanced",
+                    max_results=5,
+                    include_answer=False,
                 )
 
-                query_result = f"Query: {q}\n"
-                if response.get("answer"):
-                    query_result += f"Quick Answer: {response['answer']}\n"
-
                 for res in response.get("results", []):
-                    query_result += f"Title: {res['title']}\nURL: {res['url']}\nSnippet: {res['content']}\n"
-
-                results.append(query_result)
+                    results.append(
+                        {
+                            "query": q,
+                            "title": res["title"],
+                            "url": res["url"],
+                            "snippet": res["content"],
+                        }
+                    )
             except Exception as e:
-                results.append(f"Error searching for '{q}': {str(e)}")
+                results.append(
+                    {"query": q, "title": "", "url": "", "snippet": f"Error: {str(e)}"}
+                )
 
-        return "\n=======\n".join(results)
+        return {"tool": "search", "results": results}
 
-    async def visit(self, url: list[str], goal: str) -> str:
+    async def visit(self, url: list[str], goal: str) -> dict[str, object]:
         """
         Visit webpages and extract information based on the goal.
         """
-        results = []
+        results: list[dict[str, str]] = []
         for u in url:
             try:
                 content = await self._fetch_page_content(u)
                 if content.startswith("Error"):
-                    results.append(f"URL: {u}\nResult: {content}")
+                    results.append(
+                        {
+                            "url": u,
+                            "rational": "",
+                            "evidence": "",
+                            "summary": content,
+                            "error": content,
+                        }
+                    )
                     continue
 
                 # Summarize/Extract using LLM
-                summary = await self._extract_info(content, goal)
-                results.append(f"URL: {u}\n{summary}")
+                extracted = await self._extract_info(content, goal)
+                extracted["url"] = u
+                results.append(extracted)
             except Exception as e:
-                results.append(f"URL: {u}\nError: {str(e)}")
+                results.append(
+                    {
+                        "url": u,
+                        "rational": "",
+                        "evidence": "",
+                        "summary": f"Error: {str(e)}",
+                        "error": f"Error: {str(e)}",
+                    }
+                )
 
-        return "\n=======\n".join(results)
+        return {"tool": "visit", "goal": goal, "results": results}
 
     async def _fetch_page_content(self, url: str) -> str:
         """
@@ -119,7 +148,7 @@ class DeepResearchTools:
 
         return "Error: Could not fetch page content."
 
-    async def _extract_info(self, content: str, goal: str) -> str:
+    async def _extract_info(self, content: str, goal: str) -> dict[str, str]:
         """
         Extract relevant info using LLM.
         """
@@ -135,9 +164,33 @@ class DeepResearchTools:
 
         try:
             response = await self.llm_manager.generate_response(messages)
-            return response.content
+            parsed_response = self.extractor_parser.parse(str(response.content))
+            if not isinstance(parsed_response, dict):
+                raise ValueError("Extractor response must be a JSON object.")
+
+            rational = parsed_response.get("rational", "")
+            evidence = parsed_response.get("evidence", "")
+            summary = parsed_response.get("summary", "")
+            if not all(
+                isinstance(value, str) and value.strip()
+                for value in (rational, evidence, summary)
+            ):
+                raise ValueError(
+                    "Extractor response must include non-empty rational, evidence, and summary fields."
+                )
+
+            return {
+                "rational": rational.strip(),
+                "evidence": evidence.strip(),
+                "summary": summary.strip(),
+            }
         except Exception as e:
-            return f"Error extracting info: {str(e)}"
+            return {
+                "rational": "",
+                "evidence": "",
+                "summary": f"Error extracting info: {str(e)}",
+                "error": f"Error extracting info: {str(e)}",
+            }
 
     async def python_interpreter(self, code: str) -> str:
         """
@@ -145,14 +198,18 @@ class DeepResearchTools:
         """
         return self.interpreter.execute(code)
 
-    async def google_scholar(self, query: list[str]) -> str:
+    async def google_scholar(self, query: list[str]) -> dict[str, object]:
         """
         Search Google Scholar.
         Currently falls back to generic search_knowledge if specific API not available.
         """
         # For now, reuse search with academic domains
         if not self.tavily_client:
-            return "Error: Tavily API key not configured."
+            return {
+                "tool": "google_scholar",
+                "error": "Tavily API key not configured.",
+                "results": [],
+            }
 
         knowledge_domains = [
             "scholar.google.com",
@@ -162,7 +219,7 @@ class DeepResearchTools:
             "ieee.org",
         ]
 
-        results = []
+        results: list[dict[str, str]] = []
         for q in query:
             try:
                 response = self.tavily_client.search(
@@ -171,15 +228,21 @@ class DeepResearchTools:
                     max_results=5,
                     include_domains=knowledge_domains,
                 )
-                # ... format results same as search ...
-                query_result = f"Query: {q}\n"
                 for res in response.get("results", []):
-                    query_result += f"Title: {res['title']}\nURL: {res['url']}\nSnippet: {res['content']}\n"
-                results.append(query_result)
+                    results.append(
+                        {
+                            "query": q,
+                            "title": res["title"],
+                            "url": res["url"],
+                            "snippet": res["content"],
+                        }
+                    )
             except Exception as e:
-                results.append(f"Error searching scholar for '{q}': {str(e)}")
+                results.append(
+                    {"query": q, "title": "", "url": "", "snippet": f"Error: {str(e)}"}
+                )
 
-        return "\n=======\n".join(results)
+        return {"tool": "google_scholar", "results": results}
 
     async def parse_file(self, files: list[str]) -> str:
         """

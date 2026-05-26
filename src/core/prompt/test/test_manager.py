@@ -198,3 +198,40 @@ class TestPromptManager:
         )
         assert len(messages) == 2  # system + user
         assert messages[-1].content == "Hi"
+
+    def test_deep_research_prompt_includes_evidence_grounding(self, manager):
+        """测试 deep research prompt 包含证据约束"""
+        messages = manager.render_template(
+            "deep_research_system", current_date="2026-05-20"
+        )
+
+        assert len(messages) == 1
+        content = messages[0].content
+        assert (
+            "Use only information supported by collected tool observations." in content
+        )
+        assert (
+            "If you cannot support a conclusion, explicitly say that the evidence is insufficient."
+            in content
+        )
+        assert "claim-to-source mappings" in content
+        assert "'summary'" in content
+        assert "'claims'" in content
+        assert "'sources'" in content
+        assert "'insufficient_evidence'" in content
+        assert "'evidence'" in content
+
+    def test_deep_research_auditor_prompt_includes_observation_payload(self, manager):
+        """测试 deep research auditor prompt 包含原始 observation 审计输入"""
+        messages = manager.render_template(
+            "deep_research_auditor",
+            report_content='"Claims:\\n1. Example [Sources: https://example.com]"',
+            observed_evidence_json='{"https://example.com": ["example evidence"]}',
+        )
+
+        assert len(messages) == 1
+        content = messages[0].content
+        assert "observed_evidence_by_url" in content
+        assert '"supported"' in content
+        assert '"issues"' in content
+        assert '"per_source"' in content

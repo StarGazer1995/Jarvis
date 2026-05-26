@@ -308,13 +308,20 @@ You MUST output your response in the following JSON format:
             [
                 SystemMessagePromptTemplate.from_template("""{{
   "system_description": "You are a deep research assistant. Your core function is to conduct thorough, multi-source investigations into any topic. You must handle both broad, open-domain inquiries and queries within specialized academic fields. For every request, synthesize information from credible, diverse sources to deliver a comprehensive, accurate, and objective response.",
+  "answer_requirements": [
+    "Use only information supported by collected tool observations.",
+    "Do not fill factual gaps with guesses or unstated assumptions.",
+    "If you cannot support a conclusion, explicitly say that the evidence is insufficient.",
+    "Any factual final answer must use the structured answer schema with claim-to-source mappings.",
+    "Every grounded source must include a concise 'evidence' excerpt that supports the related claims."
+  ],
   "response_format": {{
     "type": "json_schema",
     "description": "You MUST output ONLY a valid JSON object. No markdown, no code blocks, no other text.",
     "schema": {{
       "thought": "Step-by-step reasoning...",
       "type": "answer | tool_call | tool_calls | error",
-      "content": "For answer: final answer string. For tool_call: {{ 'name': 'tool_name', 'arguments': {{...}} }}. For tool_calls: [{{ 'name': 'tool_name', 'arguments': {{...}} }}]. For error: {{ 'code': 'ERROR_CODE', 'message': 'error details' }}."
+      "content": "For answer: {{ 'summary': 'overall conclusion', 'claims': [{{ 'statement': 'factual claim', 'source_urls': ['https://...'] }}], 'sources': [{{ 'url': 'https://...', 'title': 'source title', 'evidence': 'supporting excerpt from the source' }}], 'insufficient_evidence': false }}. If evidence is insufficient, set 'insufficient_evidence' to true, explain that in 'summary', and keep claims empty. For grounded answers, every source must include a non-empty 'evidence' excerpt. For tool_call: {{ 'name': 'tool_name', 'arguments': {{...}} }}. For tool_calls: [{{ 'name': 'tool_name', 'arguments': {{...}} }}]. For error: {{ 'code': 'ERROR_CODE', 'message': 'error details' }}."
     }}
   }},
   "tools": {{
@@ -439,6 +446,41 @@ You MUST output your response in the following JSON format:
       "rational": "...",
       "evidence": "...",
       "summary": "..."
+    }}
+  }}
+}}""")
+            ]
+        )
+
+        # Deep Research Auditor Prompt
+        self.templates["deep_research_auditor"] = ChatPromptTemplate.from_messages(
+            [
+                SystemMessagePromptTemplate.from_template("""{{
+  "task": "Audit whether the final Deep Research report is supported by the collected raw observations.",
+  "instructions": [
+    "Judge support using only the provided report and observed evidence grouped by source URL.",
+    "Do not invent facts, new sources, or unstated support.",
+    "A source is supported only if the observed evidence for the same URL materially supports the final 'Evidence:' excerpt and related claim usage.",
+    "Minor paraphrasing is allowed, but factual drift, unsupported specificity, or contradictory numbers must be rejected.",
+    "If any cited source is unsupported, set 'supported' to false and explain the issues clearly."
+  ],
+  "input": {{
+    "report": {report_content},
+    "observed_evidence_by_url": {observed_evidence_json}
+  }},
+  "response_format": {{
+    "type": "json_schema",
+    "description": "You MUST output ONLY a valid JSON object. No markdown, no code blocks, no other text.",
+    "schema": {{
+      "supported": true,
+      "issues": ["clear issue if unsupported"],
+      "per_source": [
+        {{
+          "url": "https://...",
+          "supported": true,
+          "reason": "Why the observed evidence supports or does not support this source usage."
+        }}
+      ]
     }}
   }}
 }}""")

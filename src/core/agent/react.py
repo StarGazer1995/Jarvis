@@ -97,7 +97,25 @@ class ReActAgent(BaseAgent):
             messages.append(LLMMessage(role="assistant", content=response_text))
 
             if msg_type == "answer":
-                return content if isinstance(content, str) else str(content)
+                final_answer = self._render_final_answer(content)
+                validation_error = self._validate_final_answer(
+                    content, final_answer, steps
+                )
+                if inspect.isawaitable(validation_error):
+                    validation_error = await validation_error
+                if validation_error:
+                    messages.append(
+                        LLMMessage(
+                            role="user",
+                            content=(
+                                "Error: "
+                                f"{validation_error} "
+                                "Please continue researching and output valid JSON."
+                            ),
+                        )
+                    )
+                    continue
+                return final_answer
 
             elif msg_type == "tool_call":
                 if isinstance(content, dict):
@@ -111,10 +129,16 @@ class ReActAgent(BaseAgent):
                     except Exception as e:
                         result = f"Error executing tool: {e}"
 
-                    self.logger.info(f"Tool result: {result}")
+                    rendered_observation = self._render_tool_observation(
+                        tool_name=tool_name, tool_args=tool_args, result=result
+                    )
+                    self.logger.info(f"Tool result: {rendered_observation}")
 
                     messages.append(
-                        LLMMessage(role="user", content=f"Observation: {result}")
+                        LLMMessage(
+                            role="user",
+                            content=f"Observation: {rendered_observation}",
+                        )
                     )
 
                     steps.append(
@@ -122,7 +146,8 @@ class ReActAgent(BaseAgent):
                             thought=thought,
                             action=tool_name,
                             action_input=tool_args,
-                            observation=str(result),
+                            observation=rendered_observation,
+                            observation_data=result,
                         )
                     )
                 else:
@@ -148,10 +173,13 @@ class ReActAgent(BaseAgent):
                     for tool_call, result in zip(content, results, strict=False):
                         tool_name = tool_call.get("name")
                         tool_args = tool_call.get("arguments", {})
-                        observation = (
+                        raw_result = (
                             f"Error executing tool: {result}"
                             if isinstance(result, Exception)
-                            else str(result)
+                            else result
+                        )
+                        observation = self._render_tool_observation(
+                            tool_name=tool_name, tool_args=tool_args, result=raw_result
                         )
                         observations.append(
                             f"{tool_name}({tool_args}) => {observation}"
@@ -162,6 +190,7 @@ class ReActAgent(BaseAgent):
                                 action=tool_name,
                                 action_input=tool_args,
                                 observation=observation,
+                                observation_data=raw_result,
                             )
                         )
                     messages.append(
@@ -246,3 +275,48 @@ class ReActAgent(BaseAgent):
             parsed_response: Normalized parsed response object.
         """
         return None
+
+    def _render_final_answer(self, content: Any) -> str:
+        """
+        Render final answer content into user-facing text.
+
+        Args:
+            content: Parsed answer content from the protocol response.
+
+        Returns:
+            String representation of the final answer.
+        """
+        return content if isinstance(content, str) else str(content)
+
+    def _validate_final_answer(
+        self, content: Any, rendered_answer: str, steps: list[AgentStep]
+    ) -> str | None | Any:
+        """
+        Validate a final answer before returning it to the caller.
+
+        Args:
+            content: Parsed final answer content from the protocol response.
+            rendered_answer: User-facing answer text.
+            steps: Completed agent steps collected during the loop.
+
+        Returns:
+            Optional validation error text or awaitable resolving to one.
+            Returns None when the answer is valid.
+        """
+        return None
+
+    def _render_tool_observation(
+        self, tool_name: str | None, tool_args: Any, result: Any
+    ) -> str:
+        """
+        Render a tool result into observation text for the LLM loop.
+
+        Args:
+            tool_name: Tool name associated with the result.
+            tool_args: Tool arguments used for execution.
+            result: Raw tool result object.
+
+        Returns:
+            String observation fed back into the reasoning loop.
+        """
+        return str(result)

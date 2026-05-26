@@ -134,6 +134,9 @@ class JSONOutputParser(BaseOutputParser):
         if self.protocol == "deep_research":
             self._validate_deep_research_response(data)
             return
+        if self.protocol == "deep_research_audit":
+            self._validate_deep_research_audit_response(data)
+            return
 
         raise ValueError(f"Unsupported parser protocol: {self.protocol}")
 
@@ -163,10 +166,7 @@ class JSONOutputParser(BaseOutputParser):
 
         content = data["content"]
         if msg_type == "answer":
-            if not isinstance(content, str):
-                raise ValueError(
-                    "Deep Research protocol requires 'answer' content to be a string"
-                )
+            self._validate_deep_research_answer_content(content)
             return
 
         if msg_type == "tool_call":
@@ -198,6 +198,115 @@ class JSONOutputParser(BaseOutputParser):
                     "Deep Research protocol requires 'error.message' to be a non-empty string"
                 )
 
+    def _validate_deep_research_answer_content(self, content: Any) -> None:
+        """
+        Validate the structured Deep Research answer payload.
+
+        Args:
+            content: Deep Research answer content payload.
+
+        Raises:
+            ValueError: If the structured answer payload is invalid.
+        """
+        if not isinstance(content, dict):
+            raise ValueError(
+                "Deep Research protocol requires 'answer' content to be an object"
+            )
+
+        summary = content.get("summary")
+        claims = content.get("claims")
+        sources = content.get("sources")
+        insufficient_evidence = content.get("insufficient_evidence")
+
+        if not isinstance(summary, str) or not summary.strip():
+            raise ValueError(
+                "Deep Research structured answers require a non-empty 'summary' string"
+            )
+        if not isinstance(claims, list):
+            raise ValueError(
+                "Deep Research structured answers require 'claims' to be an array"
+            )
+        if not isinstance(sources, list):
+            raise ValueError(
+                "Deep Research structured answers require 'sources' to be an array"
+            )
+        if not isinstance(insufficient_evidence, bool):
+            raise ValueError(
+                "Deep Research structured answers require 'insufficient_evidence' to be a boolean"
+            )
+
+        source_urls: set[str] = set()
+        for source in sources:
+            if not isinstance(source, dict):
+                raise ValueError(
+                    "Deep Research structured answer sources must be objects"
+                )
+            url = source.get("url")
+            title = source.get("title")
+            evidence = source.get("evidence")
+            if not isinstance(url, str) or not url.startswith(("http://", "https://")):
+                raise ValueError(
+                    "Deep Research structured answer sources require a valid 'url'"
+                )
+            if not isinstance(title, str) or not title.strip():
+                raise ValueError(
+                    "Deep Research structured answer sources require a non-empty 'title'"
+                )
+            if not isinstance(evidence, str) or not evidence.strip():
+                raise ValueError(
+                    "Deep Research structured answer sources require a non-empty 'evidence'"
+                )
+            source_urls.add(url)
+
+        if insufficient_evidence:
+            if claims:
+                raise ValueError(
+                    "Deep Research insufficient-evidence answers must not include claims"
+                )
+            lowered_summary = summary.lower()
+            if not any(
+                phrase in lowered_summary
+                for phrase in (
+                    "insufficient evidence",
+                    "evidence is insufficient",
+                    "insufficient information",
+                )
+            ):
+                raise ValueError(
+                    "Deep Research insufficient-evidence answers must explain that evidence is insufficient"
+                )
+            return
+
+        if not claims:
+            raise ValueError(
+                "Deep Research grounded answers require at least one claim"
+            )
+        if not sources:
+            raise ValueError(
+                "Deep Research grounded answers require at least one source"
+            )
+
+        for claim in claims:
+            if not isinstance(claim, dict):
+                raise ValueError(
+                    "Deep Research structured answer claims must be objects"
+                )
+            statement = claim.get("statement")
+            claim_source_urls = claim.get("source_urls")
+            if not isinstance(statement, str) or not statement.strip():
+                raise ValueError(
+                    "Deep Research structured answer claims require a non-empty 'statement'"
+                )
+            if not isinstance(claim_source_urls, list) or not claim_source_urls:
+                raise ValueError(
+                    "Deep Research structured answer claims require non-empty 'source_urls'"
+                )
+            for source_url in claim_source_urls:
+                if not isinstance(source_url, str) or source_url not in source_urls:
+                    raise ValueError(
+                        "Deep Research structured answer claim sources must reference top-level sources"
+                    )
+
     def _validate_tool_call(self, tool_call: Any) -> None:
         """
         Validate a Deep Research tool call object.
@@ -225,6 +334,59 @@ class JSONOutputParser(BaseOutputParser):
             raise ValueError(
                 "Deep Research protocol does not support 'depends_on' in tool calls"
             )
+
+    def _validate_deep_research_audit_response(self, data: dict[str, Any]) -> None:
+        """
+        Validate the Deep Research LLM audit verdict payload.
+
+        Args:
+            data: Parsed audit verdict object.
+
+        Raises:
+            ValueError: If the audit verdict schema is invalid.
+        """
+        supported = data.get("supported")
+        issues = data.get("issues")
+        per_source = data.get("per_source")
+
+        if not isinstance(supported, bool):
+            raise ValueError(
+                "Deep Research audit verdict requires 'supported' to be a boolean"
+            )
+        if not isinstance(issues, list):
+            raise ValueError(
+                "Deep Research audit verdict requires 'issues' to be an array"
+            )
+        for issue in issues:
+            if not isinstance(issue, str) or not issue.strip():
+                raise ValueError(
+                    "Deep Research audit verdict issues must be non-empty strings"
+                )
+
+        if not isinstance(per_source, list):
+            raise ValueError(
+                "Deep Research audit verdict requires 'per_source' to be an array"
+            )
+        for source_verdict in per_source:
+            if not isinstance(source_verdict, dict):
+                raise ValueError(
+                    "Deep Research audit verdict source entries must be objects"
+                )
+            url = source_verdict.get("url")
+            source_supported = source_verdict.get("supported")
+            reason = source_verdict.get("reason")
+            if not isinstance(url, str) or not url.startswith(("http://", "https://")):
+                raise ValueError(
+                    "Deep Research audit verdict source entries require a valid 'url'"
+                )
+            if not isinstance(source_supported, bool):
+                raise ValueError(
+                    "Deep Research audit verdict source entries require 'supported' to be a boolean"
+                )
+            if not isinstance(reason, str) or not reason.strip():
+                raise ValueError(
+                    "Deep Research audit verdict source entries require a non-empty 'reason'"
+                )
 
     def _clean_json_text(self, text: str) -> str:
         """
