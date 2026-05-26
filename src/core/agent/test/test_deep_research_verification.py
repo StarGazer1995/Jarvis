@@ -21,7 +21,7 @@ def mock_llm_manager():
 
 @pytest.mark.asyncio
 async def test_parallel_tool_execution(mock_llm_manager):
-    """Verify that multiple tool calls are executed in parallel."""
+    """Verify that a single tool_calls response executes multiple tools."""
 
     # Setup Agent
     agent = DeepResearchAgent({"llm": {"provider": "mock"}})
@@ -34,15 +34,11 @@ async def test_parallel_tool_execution(mock_llm_manager):
 
     # Mock stream_response to return JSON strings
     mock_llm_manager.stream_response.side_effect = [
-        # First response: Tool Call 1
+        # First response: parallel tool_calls
         async_gen(
-            '{"thought": "Searching 1", "type": "tool_call", "content": {"name": "search", "arguments": {"query": ["topic 1"]}}}'
+            '{"thought": "Search in parallel", "type": "tool_calls", "content": [{"name": "search", "arguments": {"query": ["topic 1"]}}, {"name": "search", "arguments": {"query": ["topic 2"]}}]}'
         ),
-        # Second response: Tool Call 2
-        async_gen(
-            '{"thought": "Searching 2", "type": "tool_call", "content": {"name": "search", "arguments": {"query": ["topic 2"]}}}'
-        ),
-        # Third response: Answer
+        # Second response: Answer
         async_gen('{"thought": "Done", "type": "answer", "content": "Done"}'),
     ]
 
@@ -54,11 +50,38 @@ async def test_parallel_tool_execution(mock_llm_manager):
     # Run
     await agent.process_input("test")
 
-    # Verify tools were called
-    # In the new sequential loop (ReAct style), tools might be called sequentially if the LLM outputs them one by one.
-    # The original test assumed parallel execution from a single response containing multiple tool calls.
-    # If the LLM outputs one tool call per step, we will have 2 calls.
+    # Verify both tool calls executed from a single protocol response.
     assert agent.tools.search.call_count == 2
+    assert (
+        agent.last_raw_response
+        == '{"thought": "Done", "type": "answer", "content": "Done"}'
+    )
+    assert len(agent.raw_response_history) == 2
+    assert agent.parsed_response_history[0]["type"] == "tool_calls"
+    assert agent.parsed_response_history[1]["type"] == "answer"
+
+
+@pytest.mark.asyncio
+async def test_error_protocol_response_short_circuits(mock_llm_manager):
+    """Verify formal error responses are surfaced consistently."""
+
+    agent = DeepResearchAgent({"llm": {"provider": "mock"}})
+    agent.llm_manager = mock_llm_manager
+    agent.state = AgentState.READY
+
+    async def async_gen(content):
+        yield content
+
+    mock_llm_manager.stream_response.return_value = async_gen(
+        '{"thought": "Invalid request", "type": "error", "content": {"code": "INVALID_TOOL_ARGUMENTS", "message": "bad args"}}'
+    )
+
+    response = await agent.process_input("test")
+
+    assert response == "Error (INVALID_TOOL_ARGUMENTS): bad args"
+    assert agent.last_parsed_response is not None
+    assert agent.last_parsed_response["type"] == "error"
+    assert agent.raw_response_history[-1].startswith('{"thought": "Invalid request"')
 
 
 @pytest.mark.asyncio

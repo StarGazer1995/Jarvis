@@ -27,12 +27,10 @@ class TestReActAgent(unittest.IsolatedAsyncioTestCase):
     async def test_react_loop_final_answer(self):
         """Test simple thought -> final answer loop."""
         response_obj = MagicMock()
-        response_obj.content = """## Reasoning
-I know the answer.
-
-## Response
-The answer is 42.
-"""
+        response_obj.content = (
+            '{"thought": "I know the answer.", "type": "answer", '
+            '"content": "The answer is 42."}'
+        )
         self.agent.llm_manager.generate_response.return_value = response_obj
 
         result = await self.agent.process_input("What is the answer?")
@@ -45,24 +43,16 @@ The answer is 42.
 
         # Step 1: Tool call
         response1 = MagicMock()
-        response1.content = """## Reasoning
-I need to calculate.
-
-## Response
-{
-  "name": "calculator",
-  "arguments": {"expr": "2+2"}
-}
-"""
+        response1.content = (
+            '{"thought": "I need to calculate.", "type": "tool_call", '
+            '"content": {"name": "calculator", "arguments": {"expr": "2+2"}}}'
+        )
 
         # Step 2: Final answer (after tool execution)
         response2 = MagicMock()
-        response2.content = """## Reasoning
-The result is 4.
-
-## Response
-4
-"""
+        response2.content = (
+            '{"thought": "The result is 4.", "type": "answer", "content": "4"}'
+        )
 
         # Configure side effects for LLM calls
         # Note: The loop calls generate_response.
@@ -85,15 +75,10 @@ The result is 4.
         self.agent.max_steps = 2
 
         response = MagicMock()
-        response.content = """## Reasoning
-Thinking...
-
-## Response
-{
-  "name": "wait",
-  "arguments": "forever"
-}
-"""
+        response.content = (
+            '{"thought": "Thinking...", "type": "tool_call", '
+            '"content": {"name": "wait", "arguments": "forever"}}'
+        )
         self.agent.llm_manager.generate_response.return_value = response
 
         result = await self.agent.process_input("Wait")
@@ -104,17 +89,14 @@ Thinking...
     async def test_parallel_tool_calls(self):
         """Test parallel tool execution."""
         response1 = MagicMock()
-        response1.content = """## Reasoning
-Two calcs
-
-## Response
-[
-  {"name": "calc", "arguments": {"x": 1}},
-  {"name": "calc", "arguments": {"x": 2}}
-]
-"""
+        response1.content = (
+            '{"thought": "Two calcs", "type": "tool_calls", "content": ['
+            '{"name": "calc", "arguments": {"x": 1}}, '
+            '{"name": "calc", "arguments": {"x": 2}}'
+            "]}"
+        )
         response2 = MagicMock()
-        response2.content = "## Response\nDone"
+        response2.content = '{"thought": "Done", "type": "answer", "content": "Done"}'
 
         self.agent.llm_manager.generate_response.side_effect = [response1, response2]
         self.agent.execute_tool = AsyncMock(side_effect=["Res1", "Res2"])
@@ -125,6 +107,50 @@ Two calcs
         # Verify both calls were made
         self.agent.execute_tool.assert_any_call("calc", {"x": 1})
         self.agent.execute_tool.assert_any_call("calc", {"x": 2})
+
+    async def test_invalid_json_retries_without_legacy_fallback(self):
+        """Test invalid JSON triggers retry instead of legacy markdown fallback."""
+        bad_response = MagicMock()
+        bad_response.content = "## Response\nLegacy fallback should not pass"
+        good_response = MagicMock()
+        good_response.content = (
+            '{"thought": "Recovered", "type": "answer", "content": "Done"}'
+        )
+
+        self.agent.llm_manager.generate_response.side_effect = [
+            bad_response,
+            good_response,
+        ]
+
+        result = await self.agent.process_input("Recover from invalid JSON")
+
+        self.assertEqual(result, "Done")
+        self.assertEqual(self.agent.llm_manager.generate_response.call_count, 2)
+
+    async def test_error_type_without_code_uses_plain_error_message(self):
+        """Test error payload without code returns plain error prefix."""
+        response_obj = MagicMock()
+        response_obj.content = (
+            '{"thought": "Bad request", "type": "error", '
+            '"content": {"message": "Missing code"}}'
+        )
+        self.agent.llm_manager.generate_response.return_value = response_obj
+
+        result = await self.agent.process_input("Trigger error")
+
+        self.assertEqual(result, "Error: Missing code")
+
+    async def test_error_type_with_non_object_content_returns_stringified_error(self):
+        """Test non-object error content uses generic error formatting."""
+        response_obj = MagicMock()
+        response_obj.content = (
+            '{"thought": "Bad request", "type": "error", "content": "Plain failure"}'
+        )
+        self.agent.llm_manager.generate_response.return_value = response_obj
+
+        result = await self.agent.process_input("Trigger error")
+
+        self.assertEqual(result, "Error: Plain failure")
 
 
 if __name__ == "__main__":

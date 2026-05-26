@@ -4,7 +4,6 @@ ReAct Agent Implementation
 
 import asyncio
 import inspect
-import json
 import logging
 from collections.abc import Callable
 from typing import Any
@@ -80,21 +79,20 @@ class ReActAgent(BaseAgent):
             try:
                 parsed_response = self.parser.parse(response_text)
             except ValueError as e:
-                parsed_response = self._parse_legacy_response(response_text)
-                if parsed_response is None:
-                    self.logger.error(f"Failed to parse JSON response: {e}")
-                    messages.append(LLMMessage(role="assistant", content=response_text))
-                    messages.append(
-                        LLMMessage(
-                            role="user",
-                            content=f"Error: Invalid JSON output. Please output valid JSON matching the schema. Error: {e}",
-                        )
+                self.logger.error(f"Failed to parse JSON response: {e}")
+                messages.append(LLMMessage(role="assistant", content=response_text))
+                messages.append(
+                    LLMMessage(
+                        role="user",
+                        content=f"Error: Invalid JSON output. Please output valid JSON matching the schema. Error: {e}",
                     )
-                    continue
+                )
+                continue
 
             thought = parsed_response.get("thought", "")
             msg_type = parsed_response.get("type", "answer")
             content = parsed_response.get("content", "")
+            self._record_protocol_response(response_text, parsed_response)
 
             messages.append(LLMMessage(role="assistant", content=response_text))
 
@@ -179,6 +177,14 @@ class ReActAgent(BaseAgent):
                             content="Error: Parallel tool calls must be a JSON array.",
                         )
                     )
+            elif msg_type == "error":
+                if isinstance(content, dict):
+                    error_code = content.get("code")
+                    error_message = content.get("message", "Unknown error")
+                    if error_code:
+                        return f"Error ({error_code}): {error_message}"
+                    return f"Error: {error_message}"
+                return f"Error: {content}"
             else:
                 self.logger.warning(f"Unknown message type: {msg_type}")
                 # Treat as continue?
@@ -229,43 +235,14 @@ class ReActAgent(BaseAgent):
         messages = self.prompt_manager.render_template("react_system")
         return messages
 
-    def _parse_legacy_response(self, response_text: str) -> dict[str, Any] | None:
-        """Parse older markdown-style ReAct outputs used by legacy tests."""
-        response_body = response_text
-        thought = ""
+    def _record_protocol_response(
+        self, raw_response: str, parsed_response: dict[str, Any]
+    ) -> None:
+        """
+        Record protocol-level response data for runtimes that need persistence.
 
-        if "## Response" in response_text:
-            before, after = response_text.split("## Response", 1)
-            response_body = after.strip()
-            if "## Reasoning" in before:
-                thought = before.split("## Reasoning", 1)[1].strip()
-        elif response_text.startswith("## Response"):
-            response_body = response_text[len("## Response") :].strip()
-
-        if not response_body:
-            return {"thought": thought, "type": "answer", "content": ""}
-
-        try:
-            parsed_body = json.loads(response_body)
-        except json.JSONDecodeError:
-            return {
-                "thought": thought,
-                "type": "answer",
-                "content": response_body,
-            }
-
-        if isinstance(parsed_body, list):
-            return {
-                "thought": thought,
-                "type": "tool_calls",
-                "content": parsed_body,
-            }
-
-        if isinstance(parsed_body, dict) and "name" in parsed_body:
-            return {
-                "thought": thought,
-                "type": "tool_call",
-                "content": parsed_body,
-            }
-
-        return {"thought": thought, "type": "answer", "content": parsed_body}
+        Args:
+            raw_response: Raw response string returned by the model.
+            parsed_response: Normalized parsed response object.
+        """
+        return None
