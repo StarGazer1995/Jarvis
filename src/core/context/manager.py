@@ -19,6 +19,7 @@ from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 
 from ..config.loader import load_llm_config
+from ..llm.types import LLMMessage
 
 
 @dataclass
@@ -111,19 +112,26 @@ class ConversationContext:
     and contextual information that helps ARK make better decisions.
     """
 
-    def __init__(self, max_history: int = 100, session_id: str | None = None):
+    def __init__(
+        self,
+        max_history: int = 100,
+        session_id: str | None = None,
+        llm_manager: Any | None = None,
+    ):
         """
         Initialize conversation context manager.
 
         Args:
             max_history: Maximum number of conversation turns to keep in memory
             session_id: Optional session identifier. If not provided, a new one will be generated
+            llm_manager: Optional shared LLM manager used for history compression
         """
         self.max_history = max_history
         self.conversation_history: list[ConversationTurn] = []
         self.user_preferences: dict[str, Any] = {}
         self.session_metadata: dict[str, Any] = {}
         self.current_context: dict[str, Any] = {}
+        self.llm_manager = llm_manager
         self.ark_logger = logging.getLogger("ark.context")
         self.ark_parent_logger = logging.getLogger("ark")
         # Reset leaked logger state from earlier tests, but preserve an explicit
@@ -246,6 +254,54 @@ class ConversationContext:
         self.ark_logger.debug(
             f"ARK context: Added turn with intent '{turn.intent}', tools: {turn.tools_used}"
         )
+
+    def update_last_exchange(
+        self,
+        agent_response: str,
+        raw_response: str | None = None,
+        tools_used: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """
+        Update the latest conversation turn without creating a new user exchange.
+
+        Args:
+            agent_response: Replacement response text for the last turn
+            raw_response: Optional raw model response to preserve protocol fidelity
+            tools_used: Optional replacement tool list for the last turn
+            metadata: Optional metadata values to merge into the last turn
+
+        Raises:
+            ValueError: If there is no conversation history to update
+        """
+        if not self.conversation_history:
+            raise ValueError("No conversation history available to update")
+
+        last_turn = self.conversation_history[-1]
+        last_turn.agent_response = agent_response
+        last_turn.raw_response = raw_response
+        if tools_used is not None:
+            last_turn.tools_used = list(tools_used)
+        if metadata:
+            last_turn.metadata.update(metadata)
+        last_turn.timestamp = datetime.now().timestamp()
+        self.last_activity = last_turn.timestamp
+        self.session_metadata["last_activity"] = datetime.fromtimestamp(
+            last_turn.timestamp
+        ).isoformat()
+
+        self.ark_logger.debug("ARK context: Updated last exchange")
+
+    def activate_session(self, session_id: str) -> None:
+        """
+        Point the context manager at a specific session identifier.
+
+        Args:
+            session_id: Session identifier that should become active.
+        """
+        self.session_id = session_id
+        self.session_metadata["session_id"] = session_id
+        self.ark_logger.debug("ARK context: Activated session %s", session_id)
 
     def update_memory(self, key: str, value: Any) -> None:
         """
@@ -533,6 +589,15 @@ class ConversationContext:
         self.current_context.clear()
         self.ark_logger.debug("ARK context: Cleared all context variables")
 
+    def set_llm_manager(self, llm_manager: Any | None) -> None:
+        """
+        Attach a shared LLM manager to the context manager.
+
+        Args:
+            llm_manager: Shared LLM manager used by compression flows
+        """
+        self.llm_manager = llm_manager
+
     def get_session_stats(self) -> dict[str, Any]:
         """
         Get statistics about the current session.
@@ -543,9 +608,11 @@ class ConversationContext:
         if not self.conversation_history:
             return {
                 "total_turns": 0,
+                "turn_count": 0,
                 "unique_intents": 0,
                 "tools_used": 0,
                 "session_duration": 0,
+                "duration_minutes": 0.0,
                 "average_response_time": 0.0,
             }
 
@@ -576,11 +643,45 @@ class ConversationContext:
 
         return {
             "total_turns": len(self.conversation_history),
+            "turn_count": len(self.conversation_history),
             "unique_intents": len(intents_used),
             "tools_used": len(all_tools),
             "session_duration": session_duration,
+            "duration_minutes": session_duration / 60.0,
             "average_response_time": average_response_time,
         }
+
+    async def _summarize_with_llm_manager(self, conversation_text: str) -> str:
+        """
+        Summarize conversation history via the shared LLM manager.
+
+        Args:
+            conversation_text: Flattened conversation text to summarize
+
+        Returns:
+            Summary text generated by the shared LLM manager
+        """
+        if self.llm_manager is None:
+            raise ValueError("LLM manager is not configured for compression")
+
+        messages = [
+            LLMMessage(
+                role="system",
+                content=(
+                    "Summarize the following conversation concisely, capturing "
+                    "key information, user preferences, and decisions made."
+                ),
+            ),
+            LLMMessage(
+                role="user",
+                content=f"Conversation:\n{conversation_text}\n\nSummary:",
+            ),
+        ]
+        response = await self.llm_manager.generate_response(messages, temperature=0.3)
+        summary = response.content.strip()
+        if not summary:
+            raise ValueError("Compression summary cannot be empty")
+        return summary
 
     def export_conversation(self, export_format: str = "json") -> str:
         """
@@ -660,73 +761,88 @@ class ConversationContext:
             conversation_text += f"Agent: {turn.agent_response}\n\n"
 
         try:
+            summary: str | None = None
+
+            if self.llm_manager is not None:
+                try:
+                    summary = await self._summarize_with_llm_manager(conversation_text)
+                except Exception as exc:
+                    self.ark_logger.warning(
+                        "ARK context: Shared LLM manager compression failed, "
+                        f"falling back to provider config. Error: {exc}"
+                    )
+
             # Load LLM config
-            llm_config = load_llm_config()
-            provider_name = llm_config.global_config.default_provider
-            provider_config = llm_config.providers.get(provider_name)
+            if summary is None:
+                llm_config = load_llm_config()
+                provider_name = llm_config.global_config.default_provider
+                provider_config = llm_config.providers.get(provider_name)
 
-            if not provider_config:
-                self.ark_logger.warning(
-                    f"ARK context: Provider {provider_name} not found, skipping compression"
+                if not provider_config:
+                    self.ark_logger.warning(
+                        f"ARK context: Provider {provider_name} not found, skipping compression"
+                    )
+                    return
+
+                # Initialize LangChain model based on provider
+                llm = None
+                provider_type = provider_config.type or provider_name
+
+                # Prepare common parameters
+                # Note: LangChain models expect 'model' or 'model_name' depending on the class,
+                # but most support 'model' as alias or kwargs.
+
+                if provider_type == "openai":
+                    params = {
+                        "model": provider_config.default_model,
+                        "temperature": 0.3,
+                    }
+                    if provider_config.api_key:
+                        params["api_key"] = provider_config.api_key
+                    if provider_config.base_url:
+                        params["openai_api_base"] = provider_config.base_url
+
+                    llm = ChatOpenAI(**params)
+
+                elif provider_type == "anthropic":
+                    params = {
+                        "model": provider_config.default_model,
+                        "temperature": 0.3,
+                    }
+                    if provider_config.api_key:
+                        params["api_key"] = provider_config.api_key
+                    if provider_config.base_url:
+                        params["anthropic_api_url"] = provider_config.base_url
+
+                    llm = ChatAnthropic(**params)
+
+                elif provider_type == "ollama":
+                    params = {
+                        "model": provider_config.default_model,
+                        "temperature": 0.3,
+                    }
+                    if provider_config.base_url:
+                        params["base_url"] = provider_config.base_url
+
+                    llm = ChatOllama(**params)
+
+                else:
+                    self.ark_logger.warning(
+                        f"ARK context: Unsupported provider type {provider_type} for compression"
+                    )
+                    return
+
+                # Create summarization chain
+                prompt = PromptTemplate.from_template(
+                    "Summarize the following conversation concisely, capturing key information, user preferences, and decisions made.\n\n"
+                    "Conversation:\n{conversation}\n\n"
+                    "Summary:"
                 )
-                return
 
-            # Initialize LangChain model based on provider
-            llm = None
-            provider_type = provider_config.type or provider_name
+                chain = prompt | llm | StrOutputParser()
 
-            # Prepare common parameters
-            # Note: LangChain models expect 'model' or 'model_name' depending on the class,
-            # but most support 'model' as alias or kwargs.
-
-            if provider_type == "openai":
-                params = {
-                    "model": provider_config.default_model,
-                    "temperature": 0.3,
-                }
-                if provider_config.api_key:
-                    params["api_key"] = provider_config.api_key
-                if provider_config.base_url:
-                    params["openai_api_base"] = provider_config.base_url
-
-                llm = ChatOpenAI(**params)
-
-            elif provider_type == "anthropic":
-                params = {
-                    "model": provider_config.default_model,
-                    "temperature": 0.3,
-                }
-                if provider_config.api_key:
-                    params["api_key"] = provider_config.api_key
-                if provider_config.base_url:
-                    params["anthropic_api_url"] = provider_config.base_url
-
-                llm = ChatAnthropic(**params)
-
-            elif provider_type == "ollama":
-                params = {"model": provider_config.default_model, "temperature": 0.3}
-                if provider_config.base_url:
-                    params["base_url"] = provider_config.base_url
-
-                llm = ChatOllama(**params)
-
-            else:
-                self.ark_logger.warning(
-                    f"ARK context: Unsupported provider type {provider_type} for compression"
-                )
-                return
-
-            # Create summarization chain
-            prompt = PromptTemplate.from_template(
-                "Summarize the following conversation concisely, capturing key information, user preferences, and decisions made.\n\n"
-                "Conversation:\n{conversation}\n\n"
-                "Summary:"
-            )
-
-            chain = prompt | llm | StrOutputParser()
-
-            # Generate summary
-            summary = await chain.ainvoke({"conversation": conversation_text})
+                # Generate summary
+                summary = await chain.ainvoke({"conversation": conversation_text})
 
             # Create summary turn
             summary_turn = ConversationTurn(

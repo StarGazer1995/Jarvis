@@ -13,6 +13,7 @@ Supports:
 """
 
 import asyncio
+import inspect
 import logging
 import re
 from collections.abc import Callable
@@ -170,6 +171,35 @@ class ParallelExecutor:
         """
         self.execute_fn = execute_fn
         self.max_concurrency = max_concurrency
+        self._execute_fn_accepts_tool_call_id = self._supports_tool_call_id(execute_fn)
+
+    @staticmethod
+    def _supports_tool_call_id(execute_fn: Callable[..., Any]) -> bool:
+        """
+        Detect whether the execute function can accept a tool call identifier.
+
+        Args:
+            execute_fn: Executor callable supplied by the caller
+
+        Returns:
+            True when the callable supports a third positional argument
+        """
+        signature = inspect.signature(execute_fn)
+        parameters = list(signature.parameters.values())
+        positional_params = [
+            parameter
+            for parameter in parameters
+            if parameter.kind
+            in (
+                inspect.Parameter.POSITIONAL_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            )
+        ]
+        has_varargs = any(
+            parameter.kind == inspect.Parameter.VAR_POSITIONAL
+            for parameter in parameters
+        )
+        return has_varargs or len(positional_params) >= 3
 
     async def run(
         self,
@@ -208,7 +238,10 @@ class ParallelExecutor:
                 resolved_args = self._resolve_refs(tc.arguments, results)
 
                 try:
-                    result = await self.execute_fn(tc.name, resolved_args)
+                    if self._execute_fn_accepts_tool_call_id:
+                        result = await self.execute_fn(tc.name, resolved_args, tc.id)
+                    else:
+                        result = await self.execute_fn(tc.name, resolved_args)
                     results[tid] = result
                     node.result = result
                     return tid, result, None

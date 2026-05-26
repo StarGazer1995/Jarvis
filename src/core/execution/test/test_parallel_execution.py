@@ -314,6 +314,27 @@ class TestParallelExecutor:
         assert peak_calls == 2
         assert results == {"a": "a_done", "b": "b_done", "c": "c_done"}
 
+    @pytest.mark.asyncio
+    async def test_passes_tool_call_id_when_supported(self):
+        """Executor should forward tool call IDs to opt-in execute functions."""
+        received_ids = []
+
+        async def tracking_tool(name: str, args: dict, tool_call_id: str) -> str:
+            received_ids.append(tool_call_id)
+            return f"{name}:{tool_call_id}"
+
+        executor = ParallelExecutor(execute_fn=tracking_tool)
+        results = await executor.run(
+            [
+                ToolCall(name="a", arguments={}, id="call_a"),
+                ToolCall(name="b", arguments={}, id="call_b"),
+            ]
+        )
+
+        assert set(received_ids) == {"call_a", "call_b"}
+        assert results["call_a"] == "a:call_a"
+        assert results["call_b"] == "b:call_b"
+
 
 # ═══════════════════════════════════════════════════════════════════
 # 4. Reference Resolution ($ref{...})

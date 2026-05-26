@@ -122,3 +122,169 @@ async def test_compress_history_provider_config_error(mock_llm_config):
 
         # Should log warning and return without changing history
         assert len(context.conversation_history) == 25
+
+
+@pytest.mark.asyncio
+async def test_summarize_with_llm_manager_requires_manager():
+    context = ConversationContext()
+
+    with pytest.raises(ValueError, match="LLM manager is not configured"):
+        await context._summarize_with_llm_manager("conversation")
+
+
+@pytest.mark.asyncio
+async def test_summarize_with_llm_manager_rejects_empty_summary():
+    llm_manager = MagicMock()
+    llm_manager.generate_response = AsyncMock(return_value=MagicMock(content="   "))
+    context = ConversationContext(llm_manager=llm_manager)
+
+    with pytest.raises(ValueError, match="Compression summary cannot be empty"):
+        await context._summarize_with_llm_manager("conversation")
+
+
+@pytest.mark.asyncio
+async def test_compress_history_falls_back_to_openai_provider_with_base_url(
+    mock_llm_config,
+):
+    context = ConversationContext(llm_manager=MagicMock())
+    context.llm_manager.generate_response = AsyncMock(side_effect=RuntimeError("boom"))
+    for i in range(25):
+        context.add_turn(ConversationTurn(f"Input {i}", f"Response {i}"))
+
+    mock_llm_config.providers["openai"].base_url = "https://openai.example.com"
+
+    with (
+        patch("src.core.context.manager.load_llm_config", return_value=mock_llm_config),
+        patch("src.core.context.manager.ChatOpenAI") as mock_chat_openai,
+        patch("src.core.context.manager.PromptTemplate") as mock_prompt_template,
+        patch("src.core.context.manager.StrOutputParser") as mock_output_parser,
+    ):
+        mock_chain = AsyncMock()
+        mock_chain.ainvoke.return_value = "OpenAI fallback summary"
+        mock_prompt_instance = MagicMock()
+        mock_intermediate = MagicMock()
+        mock_prompt_template.from_template.return_value = mock_prompt_instance
+        mock_prompt_instance.__or__.return_value = mock_intermediate
+        mock_intermediate.__or__.return_value = mock_chain
+        mock_output_parser.return_value = MagicMock()
+
+        await context.compress_history(threshold=20, keep_recent=5)
+
+        mock_chat_openai.assert_called_once()
+        assert (
+            mock_chat_openai.call_args.kwargs["openai_api_base"]
+            == "https://openai.example.com"
+        )
+        assert (
+            context.conversation_history[0].agent_response == "OpenAI fallback summary"
+        )
+
+
+@pytest.mark.asyncio
+async def test_compress_history_supports_anthropic_provider_fallback():
+    context = ConversationContext(llm_manager=MagicMock())
+    context.llm_manager.generate_response = AsyncMock(side_effect=RuntimeError("boom"))
+    for i in range(25):
+        context.add_turn(ConversationTurn(f"Input {i}", f"Response {i}"))
+
+    llm_config = MagicMock(spec=LLMConfig)
+    llm_config.global_config = MagicMock(spec=GlobalConfig)
+    llm_config.global_config.default_provider = "anthropic"
+    provider_config = MagicMock(spec=ProviderConfig)
+    provider_config.type = "anthropic"
+    provider_config.default_model = "claude-test"
+    provider_config.api_key = "anthropic-key"
+    provider_config.base_url = "https://anthropic.example.com"
+    llm_config.providers = {"anthropic": provider_config}
+
+    with (
+        patch("src.core.context.manager.load_llm_config", return_value=llm_config),
+        patch("src.core.context.manager.ChatAnthropic") as mock_chat_anthropic,
+        patch("src.core.context.manager.PromptTemplate") as mock_prompt_template,
+        patch("src.core.context.manager.StrOutputParser") as mock_output_parser,
+    ):
+        mock_chain = AsyncMock()
+        mock_chain.ainvoke.return_value = "Anthropic fallback summary"
+        mock_prompt_instance = MagicMock()
+        mock_intermediate = MagicMock()
+        mock_prompt_template.from_template.return_value = mock_prompt_instance
+        mock_prompt_instance.__or__.return_value = mock_intermediate
+        mock_intermediate.__or__.return_value = mock_chain
+        mock_output_parser.return_value = MagicMock()
+
+        await context.compress_history(threshold=20, keep_recent=5)
+
+        mock_chat_anthropic.assert_called_once()
+        assert mock_chat_anthropic.call_args.kwargs["api_key"] == "anthropic-key"
+        assert (
+            mock_chat_anthropic.call_args.kwargs["anthropic_api_url"]
+            == "https://anthropic.example.com"
+        )
+        assert (
+            context.conversation_history[0].agent_response
+            == "Anthropic fallback summary"
+        )
+
+
+@pytest.mark.asyncio
+async def test_compress_history_supports_ollama_provider_fallback():
+    context = ConversationContext(llm_manager=MagicMock())
+    context.llm_manager.generate_response = AsyncMock(side_effect=RuntimeError("boom"))
+    for i in range(25):
+        context.add_turn(ConversationTurn(f"Input {i}", f"Response {i}"))
+
+    llm_config = MagicMock(spec=LLMConfig)
+    llm_config.global_config = MagicMock(spec=GlobalConfig)
+    llm_config.global_config.default_provider = "ollama"
+    provider_config = MagicMock(spec=ProviderConfig)
+    provider_config.type = "ollama"
+    provider_config.default_model = "llama-test"
+    provider_config.api_key = None
+    provider_config.base_url = "http://ollama.local"
+    llm_config.providers = {"ollama": provider_config}
+
+    with (
+        patch("src.core.context.manager.load_llm_config", return_value=llm_config),
+        patch("src.core.context.manager.ChatOllama") as mock_chat_ollama,
+        patch("src.core.context.manager.PromptTemplate") as mock_prompt_template,
+        patch("src.core.context.manager.StrOutputParser") as mock_output_parser,
+    ):
+        mock_chain = AsyncMock()
+        mock_chain.ainvoke.return_value = "Ollama fallback summary"
+        mock_prompt_instance = MagicMock()
+        mock_intermediate = MagicMock()
+        mock_prompt_template.from_template.return_value = mock_prompt_instance
+        mock_prompt_instance.__or__.return_value = mock_intermediate
+        mock_intermediate.__or__.return_value = mock_chain
+        mock_output_parser.return_value = MagicMock()
+
+        await context.compress_history(threshold=20, keep_recent=5)
+
+        mock_chat_ollama.assert_called_once()
+        assert mock_chat_ollama.call_args.kwargs["base_url"] == "http://ollama.local"
+        assert (
+            context.conversation_history[0].agent_response == "Ollama fallback summary"
+        )
+
+
+@pytest.mark.asyncio
+async def test_compress_history_unsupported_provider_returns_without_changes():
+    context = ConversationContext(llm_manager=MagicMock())
+    context.llm_manager.generate_response = AsyncMock(side_effect=RuntimeError("boom"))
+    for i in range(25):
+        context.add_turn(ConversationTurn(f"Input {i}", f"Response {i}"))
+
+    llm_config = MagicMock(spec=LLMConfig)
+    llm_config.global_config = MagicMock(spec=GlobalConfig)
+    llm_config.global_config.default_provider = "custom"
+    provider_config = MagicMock(spec=ProviderConfig)
+    provider_config.type = "custom"
+    provider_config.default_model = "custom-model"
+    provider_config.api_key = None
+    provider_config.base_url = None
+    llm_config.providers = {"custom": provider_config}
+
+    with patch("src.core.context.manager.load_llm_config", return_value=llm_config):
+        await context.compress_history(threshold=20, keep_recent=5)
+
+    assert len(context.conversation_history) == 25

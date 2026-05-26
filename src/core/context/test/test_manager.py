@@ -1,4 +1,5 @@
 from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
@@ -326,13 +327,17 @@ class TestConversationContextDetailed:
         ctx.add_exchange("U2", "A2", tools_used=["search"])
         stats = ctx.get_session_stats()
         assert stats["total_turns"] == 2
+        assert stats["turn_count"] == 2
         assert stats["tools_used"] == 1
         assert stats["session_duration"] >= 0
+        assert stats["duration_minutes"] >= 0
 
     def test_get_session_stats_empty(self):
         ctx = ConversationContext()
         stats = ctx.get_session_stats()
         assert stats["total_turns"] == 0
+        assert stats["turn_count"] == 0
+        assert stats["duration_minutes"] == 0.0
 
     def test_export_json(self):
         ctx = ConversationContext(session_id="export-test")
@@ -449,3 +454,18 @@ class TestConversationContextRemaining:
             ctx.conversation_history[1].processing_time = 1.0
         stats = ctx.get_session_stats()
         assert stats["average_response_time"] > 0
+
+    @pytest.mark.asyncio
+    async def test_compress_history_prefers_shared_llm_manager(self):
+        llm_manager = MagicMock()
+        llm_manager.generate_response = AsyncMock(
+            return_value=MagicMock(content="Shared manager summary")
+        )
+        ctx = ConversationContext(llm_manager=llm_manager)
+        for i in range(25):
+            ctx.add_turn(ConversationTurn(f"Input {i}", f"Response {i}"))
+
+        await ctx.compress_history(threshold=20, keep_recent=5)
+
+        llm_manager.generate_response.assert_awaited_once()
+        assert ctx.conversation_history[0].agent_response == "Shared manager summary"

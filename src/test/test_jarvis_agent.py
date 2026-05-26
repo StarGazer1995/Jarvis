@@ -212,10 +212,14 @@ class TestJarvisAgent:
         ) as mock_process:
             mock_process.return_value = "Test response"
 
-            response = await agent.process_message("Hello")
+            response = await agent.process_message("Hello", user_id="user123")
 
             assert response == "Test response"
-            mock_process.assert_called_once_with("Hello", callbacks=None)
+            mock_process.assert_called_once_with(
+                "Hello",
+                callbacks=None,
+                user_id="user123",
+            )
 
     @pytest.mark.asyncio
     async def test_health_check(self, agent):
@@ -250,6 +254,41 @@ class TestJarvisAgent:
             result = await agent.end_conversation("user123")
             assert "5 messages" in result
             assert "10.5 minutes" in result
+
+    def test_get_pending_approvals(self, agent):
+        """Test listing pending approvals through the agent facade."""
+        with patch.object(
+            agent.ark_engine,
+            "get_pending_approvals",
+            return_value=[{"approval_id": "approval_1"}],
+        ) as mock_get:
+            result = agent.get_pending_approvals(session_id="session-1")
+            assert result == [{"approval_id": "approval_1"}]
+            mock_get.assert_called_once_with(session_id="session-1")
+
+    @pytest.mark.asyncio
+    async def test_approve_pending_tool(self, agent):
+        """Test approving a pending tool through the agent facade."""
+        with patch.object(
+            agent.ark_engine,
+            "approve_pending_tool",
+            new_callable=AsyncMock,
+            return_value={"status": "approved"},
+        ) as mock_approve:
+            result = await agent.approve_pending_tool("approval_1")
+            assert result == {"status": "approved"}
+            mock_approve.assert_awaited_once_with("approval_1")
+
+    def test_reject_pending_tool(self, agent):
+        """Test rejecting a pending tool through the agent facade."""
+        with patch.object(
+            agent.ark_engine,
+            "reject_pending_tool",
+            return_value={"status": "rejected"},
+        ) as mock_reject:
+            result = agent.reject_pending_tool("approval_1")
+            assert result == {"status": "rejected"}
+            mock_reject.assert_called_once_with("approval_1")
 
     @pytest.mark.asyncio
     async def test_get_conversation_export(self, agent):
