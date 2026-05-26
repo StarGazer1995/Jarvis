@@ -5,7 +5,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import ToolMessage, messages_from_dict, messages_to_dict
 from langchain_core.runnables import RunnableConfig
 
 from ...execution.engine import ParallelExecutor, ToolCall
@@ -18,6 +18,7 @@ from ...security.manager import (
 from ...security.manager import (
     ValidationResponse as _ValidationResponse,
 )
+from ..runtime_store import ApprovalRuntimeStore
 from ..state import JarvisState
 from ..tasks import execute_manage_tasks
 
@@ -88,6 +89,125 @@ class PendingApproval:
             "created_at": self.created_at,
         }
 
+    def to_persisted_dict(self) -> dict[str, Any]:
+        """
+        Convert the approval record to its durable JSON representation.
+
+        Returns:
+            Serializable dictionary used by the runtime store.
+        """
+        return self.to_dict()
+
+    @classmethod
+    def from_persisted_dict(cls, data: dict[str, Any]) -> "PendingApproval":
+        """
+        Restore a pending approval from durable storage.
+
+        Args:
+            data: Persisted approval payload.
+
+        Returns:
+            Restored pending approval instance.
+        """
+        validation_request = ARKSecurityManager.build_validation_request(
+            user_id=str(data.get("user_id") or "anonymous"),
+            session_id=str(data.get("session_id") or "unknown"),
+            execution_id=str(data.get("execution_id") or f"exec_{time.time_ns()}"),
+            tool_name=str(data["tool_name"]),
+            arguments=dict(data.get("arguments", {})),
+        )
+        return cls(
+            approval_id=str(data["approval_id"]),
+            tool_call_id=str(data["tool_call_id"]),
+            tool_name=str(data["tool_name"]),
+            arguments=dict(data.get("arguments", {})),
+            session_id=str(data.get("session_id") or "unknown"),
+            user_id=str(data.get("user_id") or "anonymous"),
+            policy_name=str(data.get("policy_name") or "unknown"),
+            execution_id=str(
+                data.get("execution_id") or validation_request.context.execution_id
+            ),
+            created_at=float(data.get("created_at", time.time())),
+            validation_request=validation_request,
+        )
+
+
+@dataclass
+class PendingContinuation:
+    """
+    Stores the minimum state required to resume graph execution after approval.
+
+    Attributes:
+        approval_id: Pending approval identifier associated with this continuation.
+        tool_call_id: Tool call that should be replaced with the approved result.
+        session_id: Session associated with the saved graph state.
+        user_id: User associated with the saved graph state.
+        state_snapshot: Post-tools graph state captured before reasoning continues.
+    """
+
+    approval_id: str
+    tool_call_id: str
+    session_id: str
+    user_id: str
+    state_snapshot: JarvisState
+
+    def to_persisted_dict(self) -> dict[str, Any]:
+        """
+        Convert the continuation state to a durable JSON representation.
+
+        Returns:
+            Serializable continuation payload.
+        """
+        snapshot = {
+            "messages": messages_to_dict(self.state_snapshot["messages"]),
+            "user_input": self.state_snapshot.get("user_input", ""),
+            "todo_list": [
+                task.copy() for task in self.state_snapshot.get("todo_list", [])
+            ],
+            "available_tools": dict(self.state_snapshot.get("available_tools", {})),
+            "scratchpad": dict(self.state_snapshot.get("scratchpad", {})),
+            "sender": self.state_snapshot.get("sender", "tools"),
+            "iteration_count": self.state_snapshot.get("iteration_count", 0),
+            "termination_reason": self.state_snapshot.get("termination_reason"),
+        }
+        return {
+            "approval_id": self.approval_id,
+            "tool_call_id": self.tool_call_id,
+            "session_id": self.session_id,
+            "user_id": self.user_id,
+            "state_snapshot": snapshot,
+        }
+
+    @classmethod
+    def from_persisted_dict(cls, data: dict[str, Any]) -> "PendingContinuation":
+        """
+        Restore a continuation state from durable storage.
+
+        Args:
+            data: Persisted continuation payload.
+
+        Returns:
+            Restored continuation instance.
+        """
+        snapshot = dict(data.get("state_snapshot", {}))
+        restored_state: JarvisState = {
+            "messages": messages_from_dict(snapshot.get("messages", [])),
+            "user_input": str(snapshot.get("user_input", "")),
+            "todo_list": [dict(task) for task in snapshot.get("todo_list", [])],
+            "available_tools": dict(snapshot.get("available_tools", {})),
+            "scratchpad": dict(snapshot.get("scratchpad", {})),
+            "sender": str(snapshot.get("sender", "tools")),
+            "iteration_count": int(snapshot.get("iteration_count", 0)),
+            "termination_reason": snapshot.get("termination_reason"),
+        }
+        return cls(
+            approval_id=str(data["approval_id"]),
+            tool_call_id=str(data["tool_call_id"]),
+            session_id=str(data.get("session_id") or "unknown"),
+            user_id=str(data.get("user_id") or "anonymous"),
+            state_snapshot=restored_state,
+        )
+
 
 class ToolsNode:
     """
@@ -108,6 +228,7 @@ class ToolsNode:
         mcp_client: ARKMCPClient,
         max_concurrency: int = 10,
         security_manager: ARKSecurityManager | None = None,
+        state_store_path: str | None = None,
     ):
         """
         Args:
@@ -115,15 +236,19 @@ class ToolsNode:
             max_concurrency: Maximum number of parallel tool executions.
             security_manager: Optional security manager for tool validation.
                 If ``None``, security validation is skipped (legacy mode).
+            state_store_path: Optional path used to persist approval runtime state.
         """
         self.mcp_client = mcp_client
         self.local_tools: dict[str, Any] = {}
         self.max_concurrency = max_concurrency
         self.security_manager = security_manager
+        self.runtime_store = ApprovalRuntimeStore(state_store_path)
         self._session_id: str = "unknown"
         self._user_id: str = "anonymous"
         self._execution_latencies: dict[str, float] = {}
         self._pending_approvals: dict[str, PendingApproval] = {}
+        self._pending_continuations: dict[str, PendingContinuation] = {}
+        self._restore_persistent_state()
 
     def register_tool(self, name: str, func: Any):
         """Register a local tool function."""
@@ -260,7 +385,90 @@ class ToolsNode:
             validation_request=validation_request,
         )
         self._pending_approvals[approval.approval_id] = approval
+        self._sync_persistent_state()
         return approval
+
+    def _store_pending_continuation(
+        self,
+        approval_ids: list[str],
+        state: JarvisState,
+        results: list[ToolMessage],
+        updated_todo_list: list[dict[str, Any]],
+    ) -> None:
+        """
+        Capture post-tools graph state for each approval created in the current turn.
+
+        Args:
+            approval_ids: Approval identifiers created during the current node call
+            state: Incoming graph state before tool results were appended
+            results: Tool messages produced for this turn
+            updated_todo_list: Updated todo list after tool execution
+        """
+        if not approval_ids:
+            return
+
+        state_snapshot: JarvisState = {
+            "messages": list(state["messages"]) + list(results),
+            "user_input": state.get("user_input", ""),
+            "todo_list": [task.copy() for task in updated_todo_list],
+            "available_tools": dict(state.get("available_tools", {})),
+            "scratchpad": dict(state.get("scratchpad", {})),
+            "sender": "tools",
+            "iteration_count": state.get("iteration_count", 0),
+            "termination_reason": None,
+        }
+        for approval_id in approval_ids:
+            approval = self._pending_approvals.get(approval_id)
+            if approval is None:
+                continue
+            self._pending_continuations[approval_id] = PendingContinuation(
+                approval_id=approval_id,
+                tool_call_id=approval.tool_call_id,
+                session_id=approval.session_id,
+                user_id=approval.user_id,
+                state_snapshot=state_snapshot,
+            )
+        self._sync_persistent_state()
+
+    def _build_resume_state(
+        self,
+        continuation: PendingContinuation,
+        tool_name: str,
+        result: Any,
+    ) -> JarvisState:
+        """
+        Replace the approval placeholder message with the approved tool result.
+
+        Args:
+            continuation: Stored continuation state for the pending approval
+            tool_name: Tool name used to rebuild the approved ToolMessage
+            result: Actual tool execution result
+
+        Returns:
+            Updated graph state ready to resume from the master node.
+        """
+        updated_messages = []
+        for message in continuation.state_snapshot["messages"]:
+            if (
+                isinstance(message, ToolMessage)
+                and message.tool_call_id == continuation.tool_call_id
+            ):
+                updated_messages.append(
+                    ToolMessage(
+                        tool_call_id=message.tool_call_id,
+                        name=tool_name,
+                        content=str(result),
+                    )
+                )
+                continue
+            updated_messages.append(message)
+
+        return {
+            **continuation.state_snapshot,
+            "messages": updated_messages,
+            "sender": "tools",
+            "termination_reason": None,
+        }
 
     def list_pending_approvals(
         self,
@@ -298,12 +506,14 @@ class ToolsNode:
         approval = self._pending_approvals.pop(approval_id, None)
         if approval is None:
             raise ValueError(f"Pending approval '{approval_id}' not found")
+        self._pending_continuations.pop(approval_id, None)
 
         if (
             self.security_manager is not None
             and approval.validation_request in self.security_manager.approval_queue
         ):
             self.security_manager.approval_queue.remove(approval.validation_request)
+        self._sync_persistent_state()
 
         return {
             "approval_id": approval_id,
@@ -328,12 +538,14 @@ class ToolsNode:
         approval = self._pending_approvals.pop(approval_id, None)
         if approval is None:
             raise ValueError(f"Pending approval '{approval_id}' not found")
+        continuation = self._pending_continuations.pop(approval_id, None)
 
         if (
             self.security_manager is not None
             and approval.validation_request in self.security_manager.approval_queue
         ):
             self.security_manager.approval_queue.remove(approval.validation_request)
+        self._sync_persistent_state()
 
         previous_session_id = self._session_id
         previous_user_id = self._user_id
@@ -356,8 +568,63 @@ class ToolsNode:
             "tool_name": approval.tool_name,
             "tool_call_id": approval.tool_call_id,
             "session_id": approval.session_id,
+            "user_id": approval.user_id,
             "result": result,
+            "resume_state": (
+                self._build_resume_state(continuation, approval.tool_name, result)
+                if continuation is not None
+                else None
+            ),
         }
+
+    def _restore_persistent_state(self) -> None:
+        """
+        Load persisted approvals and continuations into the current runtime.
+        """
+        payload = self.runtime_store.load()
+        restored_approvals: dict[str, PendingApproval] = {}
+        for item in payload.get("pending_approvals", []):
+            try:
+                approval = PendingApproval.from_persisted_dict(item)
+            except Exception as exc:
+                logger.warning("Failed to restore pending approval: %s", exc)
+                continue
+            restored_approvals[approval.approval_id] = approval
+            if (
+                self.security_manager is not None
+                and approval.validation_request
+                not in self.security_manager.approval_queue
+            ):
+                self.security_manager.approval_queue.append(approval.validation_request)
+
+        restored_continuations: dict[str, PendingContinuation] = {}
+        for item in payload.get("pending_continuations", []):
+            try:
+                continuation = PendingContinuation.from_persisted_dict(item)
+            except Exception as exc:
+                logger.warning("Failed to restore pending continuation: %s", exc)
+                continue
+            restored_continuations[continuation.approval_id] = continuation
+
+        self._pending_approvals = restored_approvals
+        self._pending_continuations = restored_continuations
+
+    def _sync_persistent_state(self) -> None:
+        """
+        Persist the current approval runtime state to disk.
+        """
+        self.runtime_store.save(
+            {
+                "pending_approvals": [
+                    approval.to_persisted_dict()
+                    for approval in self._pending_approvals.values()
+                ],
+                "pending_continuations": [
+                    continuation.to_persisted_dict()
+                    for continuation in self._pending_continuations.values()
+                ],
+            }
+        )
 
     @staticmethod
     def _policy_for_tool(tool_name: str) -> str:
@@ -427,6 +694,7 @@ class ToolsNode:
         security_requests: dict[str, Any] = {}
         # Pre-compute security result messages for denied tools
         security_messages: dict[str, str] = {}
+        created_approval_ids: list[str] = []
 
         for tc in tool_calls_data:
             name = tc["name"]
@@ -467,6 +735,7 @@ class ToolsNode:
                             policy_name=sec_resp.policy_applied,
                             validation_request=validation_request,
                         )
+                        created_approval_ids.append(pending_approval.approval_id)
                         security_messages[tool_call_id] = (
                             _REQUIRES_APPROVAL_MESSAGE.format(tool_name=name)
                             + f" Approval ID: {pending_approval.approval_id}"
@@ -573,6 +842,13 @@ class ToolsNode:
                     content=result_str,
                 )
             )
+
+        self._store_pending_continuation(
+            approval_ids=created_approval_ids,
+            state=state,
+            results=results,
+            updated_todo_list=updated_todo_list,
+        )
 
         return {
             "messages": results,

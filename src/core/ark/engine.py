@@ -144,6 +144,7 @@ class ARKEngine(ReActAgent):
             self.tools_node = ToolsNode(
                 self.mcp_client,
                 security_manager=self.security_manager,
+                state_store_path=self.config.get("approval_state_file"),
             )
             self.context_manager.set_llm_manager(self.llm_manager)
             self.graph = create_ark_graph(
@@ -262,27 +263,11 @@ class ARKEngine(ReActAgent):
             # 4. Extract Final Response
             messages = final_state.get("messages", [])
             logging.info(f"ARK: Final messages after graph execution: {messages}")
-            response = "No response generated."
-
-            if messages:
-                last_msg = messages[-1]
-                if isinstance(last_msg, AIMessage):
-                    response = last_msg.content
-                elif hasattr(last_msg, "content"):
-                    response = str(last_msg.content)
-                else:
-                    response = str(last_msg)
+            response, raw_response = self._extract_response_payload(final_state)
 
             # 5. Update Context (Legacy)
             if self.state != ARKState.ERROR:
                 try:
-                    # Try to get raw JSON response from additional_kwargs
-                    raw_response = None
-                    if messages:
-                        last_msg = messages[-1]
-                        if isinstance(last_msg, AIMessage):
-                            raw_response = last_msg.additional_kwargs.get("raw_json")
-
                     self.ark_logger.info(
                         f"ARK: Updating context for session {session_id} with "
                         f"response len {len(response)}"
@@ -344,7 +329,7 @@ class ARKEngine(ReActAgent):
 
     async def approve_pending_tool(self, approval_id: str) -> dict[str, Any]:
         """
-        Approve and execute a single pending tool request.
+        Approve a single pending tool request and continue reasoning if possible.
 
         Args:
             approval_id: Pending approval identifier
@@ -357,7 +342,56 @@ class ARKEngine(ReActAgent):
         """
         if not hasattr(self, "tools_node"):
             raise RuntimeError("Tools runtime is not initialized")
-        return await self.tools_node.approve_pending_approval(approval_id)
+        approval_result = await self.tools_node.approve_pending_approval(approval_id)
+        resume_state = approval_result.pop("resume_state", None)
+        if resume_state is None:
+            approval_result["continued"] = False
+            return approval_result
+        if not self.graph:
+            approval_result["continued"] = False
+            approval_result["continuation_error"] = "LangGraph not initialized"
+            return approval_result
+
+        session_id = str(approval_result.get("session_id") or "unknown")
+        user_id = str(approval_result.get("user_id") or "anonymous")
+        self.tools_node.set_execution_context(session_id=session_id, user_id=user_id)
+        self.context_manager.activate_session(session_id)
+
+        try:
+            final_state = await self.graph.ainvoke(resume_state, config={})
+            new_todo_list_dicts = final_state.get("todo_list", [])
+            self.todo_list = tasks_from_dicts(new_todo_list_dicts)
+            response, raw_response = self._extract_response_payload(final_state)
+            approval_result["continued"] = True
+            approval_result["response"] = response
+            approval_result["termination_reason"] = final_state.get(
+                "termination_reason"
+            )
+
+            self._finalize_approval_context(
+                approval_id=approval_id,
+                resume_state=resume_state,
+                response=response,
+                raw_response=raw_response,
+            )
+        except Exception as e:
+            self.ark_logger.error(
+                f"ARK: Approval continuation failed: {e}",
+                extra={
+                    "component": "ark.engine",
+                    "event": "approval_continuation_failed",
+                    "status": "error",
+                    "approval_id": approval_id,
+                    "session_id": session_id,
+                    "error": str(e),
+                },
+            )
+            MetricsRegistry.record_error(
+                component="ark.engine", error_type=type(e).__name__
+            )
+            approval_result["continued"] = False
+            approval_result["continuation_error"] = str(e)
+        return approval_result
 
     def reject_pending_tool(self, approval_id: str) -> dict[str, Any]:
         """
@@ -380,6 +414,73 @@ class ARKEngine(ReActAgent):
         """Legacy method, kept for compatibility if needed."""
         # This logic is now moved to MasterNode, but we keep it here just in case
         return super()._get_system_prompt()
+
+    def _extract_response_payload(
+        self, final_state: dict[str, Any]
+    ) -> tuple[str, str | None]:
+        """
+        Extract the final user-facing response and raw JSON payload from graph state.
+
+        Args:
+            final_state: Final LangGraph state
+
+        Returns:
+            Tuple of ``(response, raw_response)``.
+        """
+        messages = final_state.get("messages", [])
+        response = "No response generated."
+        raw_response = None
+        if not messages:
+            return response, raw_response
+
+        last_msg = messages[-1]
+        if isinstance(last_msg, AIMessage):
+            response = last_msg.content
+            raw_response = last_msg.additional_kwargs.get("raw_json")
+        elif hasattr(last_msg, "content"):
+            response = str(last_msg.content)
+        else:
+            response = str(last_msg)
+        return response, raw_response
+
+    def _finalize_approval_context(
+        self,
+        approval_id: str,
+        resume_state: dict[str, Any],
+        response: str,
+        raw_response: str | None,
+    ) -> None:
+        """
+        Persist the final approval-resumed answer into the conversation context.
+
+        Args:
+            approval_id: Approved request identifier
+            resume_state: Resumable graph state used for continuation
+            response: Final user-facing answer
+            raw_response: Raw JSON answer if available
+        """
+        tools_used = [task.description for task in self.todo_list]
+        metadata = {
+            "todo_count": len(self.todo_list),
+            "approval_id": approval_id,
+            "approval_continued": True,
+        }
+        try:
+            self.context_manager.update_last_exchange(
+                agent_response=response,
+                raw_response=raw_response,
+                tools_used=tools_used,
+                metadata=metadata,
+            )
+        except ValueError:
+            self.context_manager.add_exchange(
+                user_input=str(resume_state.get("user_input", "")),
+                agent_response=response,
+                intent="approval_resume",
+                tools_used=tools_used,
+                metadata=metadata,
+                raw_response=raw_response,
+            )
 
     async def execute_tool(self, name: str, params: Any) -> Any:
         """Legacy method. Tools are now executed by ToolsNode."""

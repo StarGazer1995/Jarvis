@@ -255,6 +255,54 @@ class ConversationContext:
             f"ARK context: Added turn with intent '{turn.intent}', tools: {turn.tools_used}"
         )
 
+    def update_last_exchange(
+        self,
+        agent_response: str,
+        raw_response: str | None = None,
+        tools_used: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """
+        Update the latest conversation turn without creating a new user exchange.
+
+        Args:
+            agent_response: Replacement response text for the last turn
+            raw_response: Optional raw model response to preserve protocol fidelity
+            tools_used: Optional replacement tool list for the last turn
+            metadata: Optional metadata values to merge into the last turn
+
+        Raises:
+            ValueError: If there is no conversation history to update
+        """
+        if not self.conversation_history:
+            raise ValueError("No conversation history available to update")
+
+        last_turn = self.conversation_history[-1]
+        last_turn.agent_response = agent_response
+        last_turn.raw_response = raw_response
+        if tools_used is not None:
+            last_turn.tools_used = list(tools_used)
+        if metadata:
+            last_turn.metadata.update(metadata)
+        last_turn.timestamp = datetime.now().timestamp()
+        self.last_activity = last_turn.timestamp
+        self.session_metadata["last_activity"] = datetime.fromtimestamp(
+            last_turn.timestamp
+        ).isoformat()
+
+        self.ark_logger.debug("ARK context: Updated last exchange")
+
+    def activate_session(self, session_id: str) -> None:
+        """
+        Point the context manager at a specific session identifier.
+
+        Args:
+            session_id: Session identifier that should become active.
+        """
+        self.session_id = session_id
+        self.session_metadata["session_id"] = session_id
+        self.ark_logger.debug("ARK context: Activated session %s", session_id)
+
     def update_memory(self, key: str, value: Any) -> None:
         """
         Update user memory with a key-value pair.

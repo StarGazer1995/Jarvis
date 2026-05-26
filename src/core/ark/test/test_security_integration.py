@@ -12,6 +12,7 @@ import pytest
 from langchain_core.messages import AIMessage, ToolMessage
 
 from src.core.ark.nodes.tools import ToolsNode
+from src.core.ark.runtime_store import ApprovalRuntimeStore
 from src.core.mcp.client import ARKMCPClient
 from src.core.observability import MetricsRegistry
 from src.core.security.manager import (
@@ -46,11 +47,12 @@ def mock_security_manager():
 
 
 @pytest.fixture
-def tools_node(mock_mcp_client, mock_security_manager):
+def tools_node(tmp_path, mock_mcp_client, mock_security_manager):
     """Create a ToolsNode with mocked dependencies."""
     node = ToolsNode(
         mcp_client=mock_mcp_client,
         security_manager=mock_security_manager,
+        state_store_path=str(tmp_path / "approval_state.json"),
     )
     return node
 
@@ -286,6 +288,9 @@ class TestToolsNodeSecurityIntegration:
         )
         assert approval_result["status"] == "approved"
         assert approval_result["result"] == "written"
+        assert approval_result["resume_state"] is not None
+        resumed_messages = approval_result["resume_state"]["messages"]
+        assert resumed_messages[-1].content == "written"
         assert tools_node.list_pending_approvals() == []
         assert mock_security_manager.approval_queue == []
 
@@ -313,6 +318,7 @@ class TestToolsNodeSecurityIntegration:
         assert result["status"] == "rejected"
         assert tools_node.list_pending_approvals() == []
         assert mock_security_manager.approval_queue == []
+        assert pending.approval_id not in tools_node._pending_continuations
 
     def test_list_pending_approvals_filters_by_session(
         self, tools_node, mock_security_manager
@@ -408,6 +414,245 @@ class TestToolsNodeSecurityIntegration:
         )
 
         assert isinstance(result, str)
+
+    @pytest.mark.asyncio
+    async def test_approval_required_tool_captures_resume_state(
+        self, tools_node, mock_security_manager
+    ):
+        """Approval-required calls should persist resumable post-tools state."""
+        mock_security_manager.validate_tool_execution.return_value = ValidationResponse(
+            result=ValidationResult.REQUIRES_APPROVAL,
+            policy_applied="high",
+            message="Requires approval",
+        )
+        state = {
+            "messages": [
+                AIMessage(
+                    content="Let me write.",
+                    tool_calls=[
+                        {
+                            "name": "write_file",
+                            "args": {"file_path": "/tmp/test.txt", "content": "data"},
+                            "id": "call_1",
+                        }
+                    ],
+                )
+            ],
+            "user_input": "write file",
+            "todo_list": [],
+            "available_tools": {"write_file": {"description": "Write a file"}},
+            "scratchpad": {"plan": "write"},
+            "sender": "master",
+            "iteration_count": 1,
+        }
+
+        result = await tools_node(state, config=None)
+        approval_id = tools_node.list_pending_approvals()[0]["approval_id"]
+        continuation = tools_node._pending_continuations[approval_id]
+
+        assert continuation.session_id == "unknown"
+        assert continuation.state_snapshot["sender"] == "tools"
+        assert continuation.state_snapshot["user_input"] == "write file"
+        assert continuation.state_snapshot["scratchpad"] == {"plan": "write"}
+        assert continuation.state_snapshot["messages"][-1] == result["messages"][-1]
+
+    @pytest.mark.asyncio
+    async def test_pending_approval_state_restores_after_restart(
+        self, tmp_path, mock_mcp_client, mock_security_manager
+    ):
+        """Pending approvals and continuation state should survive a node restart."""
+        store_path = tmp_path / "approval_state.json"
+        first_node = ToolsNode(
+            mcp_client=mock_mcp_client,
+            security_manager=mock_security_manager,
+            state_store_path=str(store_path),
+        )
+        first_node.set_execution_context(session_id="session-1", user_id="user-1")
+        mock_security_manager.validate_tool_execution.return_value = ValidationResponse(
+            result=ValidationResult.REQUIRES_APPROVAL,
+            policy_applied="high",
+            message="Requires approval",
+        )
+        state = {
+            "messages": [
+                AIMessage(
+                    content="Need approval",
+                    tool_calls=[
+                        {
+                            "name": "write_file",
+                            "args": {"file_path": "/tmp/test.txt", "content": "data"},
+                            "id": "call_1",
+                        }
+                    ],
+                )
+            ],
+            "user_input": "write file",
+            "todo_list": [],
+            "available_tools": {},
+            "scratchpad": {},
+            "sender": "master",
+            "iteration_count": 1,
+        }
+
+        await first_node(state, config=None)
+        approval_id = first_node.list_pending_approvals()[0]["approval_id"]
+
+        second_security_manager = MagicMock(spec=ARKSecurityManager)
+        second_security_manager.validate_tool_execution = AsyncMock()
+        second_security_manager.approval_queue = []
+        second_node = ToolsNode(
+            mcp_client=mock_mcp_client,
+            security_manager=second_security_manager,
+            state_store_path=str(store_path),
+        )
+
+        restored = second_node.list_pending_approvals()
+
+        assert store_path.exists()
+        assert restored[0]["approval_id"] == approval_id
+        assert approval_id in second_node._pending_continuations
+        assert len(second_security_manager.approval_queue) == 1
+
+    def test_restore_persistent_state_skips_invalid_entries(
+        self, tmp_path, mock_mcp_client, mock_security_manager
+    ):
+        """Invalid persisted approval entries should be skipped during restore."""
+        store_path = tmp_path / "approval_state.json"
+        ApprovalRuntimeStore(store_path).save(
+            {
+                "pending_approvals": [{"approval_id": "broken"}],
+                "pending_continuations": [
+                    {
+                        "approval_id": "approval_1",
+                        "tool_call_id": "call_1",
+                        "state_snapshot": {"messages": "bad"},
+                    }
+                ],
+            }
+        )
+
+        node = ToolsNode(
+            mcp_client=mock_mcp_client,
+            security_manager=mock_security_manager,
+            state_store_path=str(store_path),
+        )
+
+        assert node.list_pending_approvals() == []
+        assert node._pending_continuations == {}
+
+    def test_store_pending_continuation_ignores_missing_approval(self, tools_node):
+        """Continuation storage should ignore approval IDs that are no longer present."""
+        tools_node._store_pending_continuation(
+            approval_ids=["missing"],
+            state={
+                "messages": [],
+                "user_input": "",
+                "todo_list": [],
+                "available_tools": {},
+                "scratchpad": {},
+                "iteration_count": 0,
+            },
+            results=[],
+            updated_todo_list=[],
+        )
+
+        assert tools_node._pending_continuations == {}
+
+    def test_sync_persistent_state_clears_store_when_empty(
+        self, tmp_path, mock_mcp_client
+    ):
+        """Persistent state file should be removed when no approvals remain."""
+        store_path = tmp_path / "approval_state.json"
+        node = ToolsNode(
+            mcp_client=mock_mcp_client,
+            security_manager=None,
+            state_store_path=str(store_path),
+        )
+        node.runtime_store.save(
+            {
+                "pending_approvals": [{"approval_id": "approval_1"}],
+                "pending_continuations": [],
+            }
+        )
+
+        node._sync_persistent_state()
+
+        assert not store_path.exists()
+
+
+class TestApprovalRuntimeStore:
+    """Durable approval runtime store tests."""
+
+    def test_load_missing_file_returns_empty_state(self, tmp_path):
+        """Missing runtime state file should return the canonical empty payload."""
+        store = ApprovalRuntimeStore(tmp_path / "missing.json")
+
+        payload = store.load()
+
+        assert payload == {
+            "version": ApprovalRuntimeStore.STORE_VERSION,
+            "pending_approvals": [],
+            "pending_continuations": [],
+        }
+
+    def test_load_invalid_json_returns_empty_state(self, tmp_path):
+        """Corrupted runtime state should fall back to an empty payload."""
+        store_path = tmp_path / "invalid.json"
+        store_path.write_text("{invalid", encoding="utf-8")
+        store = ApprovalRuntimeStore(store_path)
+
+        payload = store.load()
+
+        assert payload["pending_approvals"] == []
+        assert payload["pending_continuations"] == []
+
+    def test_load_non_dict_json_returns_empty_state(self, tmp_path):
+        """Valid JSON that is not a dict should fall back to an empty payload."""
+        store_path = tmp_path / "non_dict.json"
+        store_path.write_text('["a", "b"]', encoding="utf-8")
+        store = ApprovalRuntimeStore(store_path)
+
+        payload = store.load()
+
+        assert payload == {
+            "version": ApprovalRuntimeStore.STORE_VERSION,
+            "pending_approvals": [],
+            "pending_continuations": [],
+        }
+
+    def test_default_file_path_resolves_to_cache_dir(self):
+        """Default store path should be under the project-level cache directory."""
+        store = ApprovalRuntimeStore()
+        path = store.file_path
+
+        assert "cache" in path.parts
+        assert path.name == "approval_runtime_state.json"
+
+    def test_default_file_path_unique_across_instances(self):
+        """Each default instance should share the same resolved file path."""
+        s1 = ApprovalRuntimeStore()
+        s2 = ApprovalRuntimeStore()
+
+        assert s1.file_path == s2.file_path
+
+    def test_save_and_load_round_trip(self, tmp_path):
+        """Runtime store should persist payloads with an atomic round trip."""
+        store_path = tmp_path / "approval_state.json"
+        store = ApprovalRuntimeStore(store_path)
+        expected = {
+            "pending_approvals": [{"approval_id": "approval_1"}],
+            "pending_continuations": [{"approval_id": "approval_1"}],
+        }
+
+        store.save(expected)
+        payload = store.load()
+
+        assert payload["pending_approvals"] == expected["pending_approvals"]
+        assert payload["pending_continuations"] == expected["pending_continuations"]
+
+
+class TestToolsNodeSecurityIntegrationAdditional:
+    """Additional ToolsNode integration coverage."""
 
     @pytest.mark.asyncio
     async def test_mixed_parallel_allowed_and_denied(
