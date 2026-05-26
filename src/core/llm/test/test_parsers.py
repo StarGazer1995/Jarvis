@@ -1,6 +1,15 @@
 import pytest
+from pydantic import BaseModel
 
-from src.core.llm.parsers import AgentResponse, JSONOutputParser
+from src.core.llm.parsers import JSONOutputParser
+
+
+class SimpleAgentResponse(BaseModel):
+    """Test-only schema used to verify generic Pydantic validation support."""
+
+    thought: str
+    type: str
+    content: str | dict
 
 
 def test_json_output_parser_simple():
@@ -28,10 +37,10 @@ def test_json_output_parser_markdown():
 
 
 def test_json_output_parser_pydantic():
-    parser = JSONOutputParser(pydantic_model=AgentResponse)
+    parser = JSONOutputParser(pydantic_model=SimpleAgentResponse)
     text = '{"thought": "foo", "type": "answer", "content": "bar"}'
     result = parser.parse(text)
-    assert isinstance(result, AgentResponse)
+    assert isinstance(result, SimpleAgentResponse)
     assert result.thought == "foo"
     assert result.type == "answer"
 
@@ -44,9 +53,200 @@ def test_json_output_parser_invalid_json():
 
 
 def test_json_output_parser_schema_fail():
-    parser = JSONOutputParser(pydantic_model=AgentResponse)
+    parser = JSONOutputParser(pydantic_model=SimpleAgentResponse)
     text = '{"thought": "foo"}'  # Missing required fields
     with pytest.raises(ValueError, match="Schema validation failed"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_answer_protocol():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = '{"thought": "foo", "type": "answer", "content": "bar"}'
+    result = parser.parse(text)
+    assert result == {"thought": "foo", "type": "answer", "content": "bar"}
+
+
+def test_json_output_parser_deep_research_tool_call_protocol():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = """
+    {
+        "type": "tool_call",
+        "content": {"name": "search", "arguments": {"query": ["a"]}},
+        "thought": "search first"
+    }
+    """
+    result = parser.parse(text)
+    assert result["type"] == "tool_call"
+    assert result["content"]["name"] == "search"
+
+
+def test_json_output_parser_deep_research_tool_calls_protocol():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = """
+    {
+        "thought": "parallel search",
+        "type": "tool_calls",
+        "content": [
+            {"name": "search", "arguments": {"query": ["a"]}},
+            {"name": "google_scholar", "arguments": {"query": ["b"]}}
+        ]
+    }
+    """
+    result = parser.parse(text)
+    assert result["type"] == "tool_calls"
+    assert len(result["content"]) == 2
+
+
+def test_json_output_parser_deep_research_error_protocol():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = """
+    {
+        "thought": "invalid input",
+        "type": "error",
+        "content": {"code": "INVALID_TOOL_ARGUMENTS", "message": "bad args"}
+    }
+    """
+    result = parser.parse(text)
+    assert result["type"] == "error"
+    assert result["content"]["code"] == "INVALID_TOOL_ARGUMENTS"
+
+
+def test_json_output_parser_deep_research_invalid_type():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = '{"thought": "foo", "type": "no_tool_call", "content": "bar"}'
+    with pytest.raises(ValueError, match="requires 'type' to be one of"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_rejects_depends_on():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = """
+    {
+        "thought": "invalid dependency graph",
+        "type": "tool_calls",
+        "content": [
+            {
+                "name": "search",
+                "arguments": {"query": ["a"]},
+                "depends_on": ["tool-1"]
+            }
+        ]
+    }
+    """
+    with pytest.raises(ValueError, match="does not support 'depends_on'"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_requires_error_shape():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = """
+    {
+        "thought": "bad error",
+        "type": "error",
+        "content": {"message": "missing code"}
+    }
+    """
+    with pytest.raises(ValueError, match="error.code"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_requires_thought():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = '{"type": "answer", "content": "bar"}'
+    with pytest.raises(ValueError, match="requires 'thought'"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_requires_content():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = '{"thought": "foo", "type": "answer"}'
+    with pytest.raises(ValueError, match="requires a 'content'"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_requires_answer_string():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = '{"thought": "foo", "type": "answer", "content": {"bad": true}}'
+    with pytest.raises(ValueError, match="answer' content to be a string"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_requires_tool_call_object():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = '{"thought": "foo", "type": "tool_call", "content": "bad"}'
+    with pytest.raises(ValueError, match="tool calls to be objects"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_requires_tool_arguments_object():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = """
+    {
+        "thought": "foo",
+        "type": "tool_call",
+        "content": {"name": "search", "arguments": "bad"}
+    }
+    """
+    with pytest.raises(ValueError, match="object 'arguments'"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_requires_non_empty_tool_name():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = """
+    {
+        "thought": "foo",
+        "type": "tool_call",
+        "content": {"name": "", "arguments": {}}
+    }
+    """
+    with pytest.raises(ValueError, match="non-empty 'name'"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_requires_tool_calls_array():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = """
+    {
+        "thought": "foo",
+        "type": "tool_calls",
+        "content": {"name": "search", "arguments": {}}
+    }
+    """
+    with pytest.raises(ValueError, match="'tool_calls' content to be an array"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_requires_error_object():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = '{"thought": "foo", "type": "error", "content": "bad"}'
+    with pytest.raises(ValueError, match="'error' content to be an object"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_requires_error_message():
+    parser = JSONOutputParser(protocol="deep_research")
+    text = """
+    {
+        "thought": "foo",
+        "type": "error",
+        "content": {"code": "BAD_REQUEST", "message": ""}
+    }
+    """
+    with pytest.raises(ValueError, match="error.message"):
+        parser.parse(text)
+
+
+def test_json_output_parser_deep_research_requires_object_top_level():
+    parser = JSONOutputParser(protocol="deep_research")
+    with pytest.raises(ValueError, match="Expected JSON object"):
+        parser.parse('[{"thought": "foo", "type": "answer", "content": "bar"}]')
+
+
+def test_json_output_parser_rejects_unsupported_protocol():
+    parser = JSONOutputParser(protocol="unknown_protocol")
+    text = '{"thought": "foo", "type": "answer", "content": "bar"}'
+    with pytest.raises(ValueError, match="Unsupported parser protocol"):
         parser.parse(text)
 
 
@@ -77,7 +277,7 @@ def test_json_output_parser_clean_markdown_variants():
 
 def test_json_output_parser_pydantic_non_dict():
     """测试 pydantic 模型收到非 dict 数据"""
-    parser = JSONOutputParser(pydantic_model=AgentResponse)
+    parser = JSONOutputParser(pydantic_model=SimpleAgentResponse)
     # Simulate data that is a list (e.g., from json_repair)
     # We need to bypass the JSON parsing and inject a list
     # Use a raw call to internal logic or mock

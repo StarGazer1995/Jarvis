@@ -3,11 +3,13 @@ Deep Research Agent Implementation
 """
 
 import logging
+from copy import deepcopy
 from datetime import datetime
 from typing import Any
 
 from src.capabilities.deep_research_tools import DeepResearchTools
 from src.core.agent.react import ReActAgent
+from src.core.llm.parsers import JSONOutputParser
 
 
 class DeepResearchAgent(ReActAgent):
@@ -21,7 +23,12 @@ class DeepResearchAgent(ReActAgent):
         self.logger = logging.getLogger("agent.deep_research")
         # Deep research typically requires more steps
         self.max_steps = self.config.get("max_steps", 30)
+        self.parser = JSONOutputParser(protocol="deep_research")
         self.tools = DeepResearchTools(self.llm_manager)
+        self.raw_response_history: list[str] = []
+        self.parsed_response_history: list[dict[str, Any]] = []
+        self.last_raw_response: str | None = None
+        self.last_parsed_response: dict[str, Any] | None = None
 
     def _get_system_prompt(self) -> list[Any]:
         """Override system prompt with Deep Research specific prompt."""
@@ -60,3 +67,18 @@ class DeepResearchAgent(ReActAgent):
 
         except Exception as e:
             return f"Error executing tool '{name}': {str(e)}"
+
+    def _record_protocol_response(
+        self, raw_response: str, parsed_response: dict[str, Any]
+    ) -> None:
+        """
+        Persist Deep Research protocol responses for debugging and future replay.
+
+        Args:
+            raw_response: Raw response string returned by the model.
+            parsed_response: Normalized parsed response object.
+        """
+        self.last_raw_response = raw_response
+        self.last_parsed_response = deepcopy(parsed_response)
+        self.raw_response_history.append(raw_response)
+        self.parsed_response_history.append(deepcopy(parsed_response))

@@ -313,13 +313,12 @@ You MUST output your response in the following JSON format:
     "description": "You MUST output ONLY a valid JSON object. No markdown, no code blocks, no other text.",
     "schema": {{
       "thought": "Step-by-step reasoning...",
-      "type": "answer | tool_call | tool_calls",
-      "content": "Final answer string OR {{ 'name': 'tool_name', 'arguments': {{...}} }} OR [{{ 'name': 'tool_name', 'arguments': {{...}}, 'depends_on': ['optional_tool_call_id'] }}]"
-    }},
-    "constraint": "CRITICAL: The 'thought' field MUST be the first field in the JSON object."
+      "type": "answer | tool_call | tool_calls | error",
+      "content": "For answer: final answer string. For tool_call: {{ 'name': 'tool_name', 'arguments': {{...}} }}. For tool_calls: [{{ 'name': 'tool_name', 'arguments': {{...}} }}]. For error: {{ 'code': 'ERROR_CODE', 'message': 'error details' }}."
+    }}
   }},
   "tools": {{
-    "instructions": "You may call one or more functions to assist with the user query.",
+    "instructions": "You may call one or more functions to assist with the user query. When using tool_calls, every entry must be independently executable. Do not express dependencies between tool calls.",
     "definitions": [
       {{
         "type": "function",

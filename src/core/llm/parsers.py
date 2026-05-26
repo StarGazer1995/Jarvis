@@ -42,6 +42,7 @@ class JSONOutputParser(BaseOutputParser):
         self,
         pydantic_model: type[BaseModel] | None = None,
         allow_repair: bool = False,
+        protocol: str | None = None,
     ):
         """
         Initialize the parser.
@@ -49,9 +50,11 @@ class JSONOutputParser(BaseOutputParser):
         Args:
             pydantic_model: Optional Pydantic model to validate against.
             allow_repair: Whether to attempt JSON repair when parsing fails.
+            protocol: Optional protocol name for additional structural validation.
         """
         self.pydantic_model = pydantic_model
         self.allow_repair = allow_repair
+        self.protocol = protocol
         self.logger = logging.getLogger("llm.parsers.json")
 
     def parse(self, text: str) -> dict[str, Any] | BaseModel:
@@ -101,6 +104,11 @@ class JSONOutputParser(BaseOutputParser):
                 )
                 raise ValueError(f"Invalid JSON output: {e}")
 
+        if self.protocol:
+            if not isinstance(data, dict):
+                raise ValueError(f"Expected JSON object, got {type(data)}")
+            self._validate_protocol(data)
+
         if self.pydantic_model:
             try:
                 # If data is a list (e.g. from json_repair), validation might fail if model expects dict
@@ -112,6 +120,111 @@ class JSONOutputParser(BaseOutputParser):
                 raise ValueError(f"Schema validation failed: {e}")
 
         return data
+
+    def _validate_protocol(self, data: dict[str, Any]) -> None:
+        """
+        Validate a parsed JSON object against a known protocol contract.
+
+        Args:
+            data: Parsed JSON object.
+
+        Raises:
+            ValueError: If the object does not satisfy the selected protocol.
+        """
+        if self.protocol == "deep_research":
+            self._validate_deep_research_response(data)
+            return
+
+        raise ValueError(f"Unsupported parser protocol: {self.protocol}")
+
+    def _validate_deep_research_response(self, data: dict[str, Any]) -> None:
+        """
+        Validate the formal Deep Research response protocol.
+
+        Args:
+            data: Parsed response object.
+
+        Raises:
+            ValueError: If the response violates the Deep Research protocol.
+        """
+        thought = data.get("thought")
+        if not isinstance(thought, str):
+            raise ValueError("Deep Research protocol requires 'thought' to be a string")
+
+        msg_type = data.get("type")
+        allowed_types = {"answer", "tool_call", "tool_calls", "error"}
+        if msg_type not in allowed_types:
+            raise ValueError(
+                f"Deep Research protocol requires 'type' to be one of {sorted(allowed_types)}"
+            )
+
+        if "content" not in data:
+            raise ValueError("Deep Research protocol requires a 'content' field")
+
+        content = data["content"]
+        if msg_type == "answer":
+            if not isinstance(content, str):
+                raise ValueError(
+                    "Deep Research protocol requires 'answer' content to be a string"
+                )
+            return
+
+        if msg_type == "tool_call":
+            self._validate_tool_call(content)
+            return
+
+        if msg_type == "tool_calls":
+            if not isinstance(content, list):
+                raise ValueError(
+                    "Deep Research protocol requires 'tool_calls' content to be an array"
+                )
+            for tool_call in content:
+                self._validate_tool_call(tool_call)
+            return
+
+        if msg_type == "error":
+            if not isinstance(content, dict):
+                raise ValueError(
+                    "Deep Research protocol requires 'error' content to be an object"
+                )
+            code = content.get("code")
+            message = content.get("message")
+            if not isinstance(code, str) or not code:
+                raise ValueError(
+                    "Deep Research protocol requires 'error.code' to be a non-empty string"
+                )
+            if not isinstance(message, str) or not message:
+                raise ValueError(
+                    "Deep Research protocol requires 'error.message' to be a non-empty string"
+                )
+
+    def _validate_tool_call(self, tool_call: Any) -> None:
+        """
+        Validate a Deep Research tool call object.
+
+        Args:
+            tool_call: Tool call payload to validate.
+
+        Raises:
+            ValueError: If the tool call shape is invalid.
+        """
+        if not isinstance(tool_call, dict):
+            raise ValueError("Deep Research protocol requires tool calls to be objects")
+
+        name = tool_call.get("name")
+        arguments = tool_call.get("arguments")
+        if not isinstance(name, str) or not name:
+            raise ValueError(
+                "Deep Research protocol requires tool calls to include a non-empty 'name'"
+            )
+        if not isinstance(arguments, dict):
+            raise ValueError(
+                "Deep Research protocol requires tool calls to include an object 'arguments'"
+            )
+        if "depends_on" in tool_call:
+            raise ValueError(
+                "Deep Research protocol does not support 'depends_on' in tool calls"
+            )
 
     def _clean_json_text(self, text: str) -> str:
         """
@@ -130,11 +243,3 @@ class JSONOutputParser(BaseOutputParser):
             return json_block_match.group(1).strip()
 
         return text
-
-
-class AgentResponse(BaseModel):
-    """Standard Agent Response Schema"""
-
-    thought: str
-    type: str  # "answer", "tool_call", "error"
-    content: str | dict[str, Any]
