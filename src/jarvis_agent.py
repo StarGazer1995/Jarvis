@@ -282,7 +282,11 @@ class JarvisAgent:
                     self.logger.warning(f"Message callback failed: {e}")
 
             # Process through ARK engine
-            response = await self.ark_engine.process_input(message, callbacks=callbacks)
+            response = await self.ark_engine.process_input(
+                message,
+                callbacks=callbacks,
+                user_id=user_id,
+            )
 
             self.logger.debug(f"Generated response: '{response[:50]}...'")
             return response
@@ -290,6 +294,45 @@ class JarvisAgent:
         except Exception as e:
             self.logger.error(f"Error processing message: {e}")
             return f"I encountered an error while processing your message: {str(e)}"
+
+    def get_pending_approvals(
+        self,
+        session_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Get pending tool approvals for the current agent runtime.
+
+        Args:
+            session_id: Optional session filter
+
+        Returns:
+            Serializable list of pending approvals.
+        """
+        return self.ark_engine.get_pending_approvals(session_id=session_id)
+
+    async def approve_pending_tool(self, approval_id: str) -> dict[str, Any]:
+        """
+        Approve and execute a pending tool request.
+
+        Args:
+            approval_id: Pending approval identifier
+
+        Returns:
+            Result payload for the approved tool execution.
+        """
+        return await self.ark_engine.approve_pending_tool(approval_id)
+
+    def reject_pending_tool(self, approval_id: str) -> dict[str, Any]:
+        """
+        Reject a pending tool request.
+
+        Args:
+            approval_id: Pending approval identifier
+
+        Returns:
+            Result payload describing the rejection.
+        """
+        return self.ark_engine.reject_pending_tool(approval_id)
 
     async def start_conversation(self, user_id: str | None = None) -> str:
         """

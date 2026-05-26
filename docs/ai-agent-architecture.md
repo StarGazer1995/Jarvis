@@ -12,6 +12,32 @@ This document captures key concepts, patterns, and architectural decisions for b
 
 **Jarvis** serves as the conversational AI interface that users interact with, while **ARK** (Agent Reactor Kernel) is the core engine that powers all of Jarvis's capabilities through **LangGraph orchestration**, **MCP integration**, and intelligent decision-making.
 
+## Deep Research Service Boundary
+
+Deep Research is an important **exception path** in the current Jarvis architecture. It follows Jarvis protocol conventions, but it is intentionally **not** implemented as an ARK `MasterNode -> ToolsNode` branch.
+
+Instead, the current Deep Research path is:
+
+```text
+Jarvis UI / caller
+    -> DeepResearchAgent
+    -> JSON protocol parser
+    -> Deep Research tools
+    -> structured final answer rendering
+    -> shared Deep Research auditor
+```
+
+Key characteristics of this boundary:
+- Deep Research is treated as an **independent agent service**, not an ARK graph node.
+- It owns its own prompt contract, parser path, tool execution loop, and response persistence behavior.
+- It preserves both rendered observations and raw `observation_data` so final answers can be audited against collected evidence.
+- Its final answer gate now runs through a shared auditor that combines:
+  - structural claim/source checks
+  - deterministic evidence support checks
+  - observation-backed traceability review
+
+This split is intentional: ARK remains the general orchestration engine, while Deep Research can evolve a stricter evidence protocol and auditing pipeline without being forced into the main ARK runtime.
+
 ## Core Components of an AI Agent
 
 ### 1. Agent Orchestration: LangGraph (Current Implementation)
@@ -101,6 +127,11 @@ class ToolsNode:
 
 ### 1. ReAct Pattern (Native Support)
 The core loop `MasterNode -> ToolsNode -> MasterNode` naturally implements the **ReAct** (Reasoning + Acting) pattern. The model reasons about the task, emits a tool call (Act), the system executes it (Observe), and the model processes the result (Reason again).
+
+For Deep Research, a lighter service-specific ReAct loop is used instead of the ARK graph. The same reasoning pattern still applies, but the runtime is specialized for:
+- structured JSON protocol validation
+- evidence-preserving tool observations
+- final-answer audit gating
 
 ### 2. Multi-Agent Systems (Supervisor Pattern)
 Jarvis supports a **Supervisor** architecture where the MasterNode delegates work to specialized agents.

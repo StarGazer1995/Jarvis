@@ -73,7 +73,8 @@ class ARKEngine(ReActAgent):
         # Initialize core components
         self.mcp_client = ARKMCPClient()
         self.context_manager = ConversationContext(
-            max_history=self.config.get("max_conversation_history", 100)
+            max_history=self.config.get("max_conversation_history", 100),
+            llm_manager=self.llm_manager,
         )
 
         # Security manager
@@ -144,6 +145,7 @@ class ARKEngine(ReActAgent):
                 self.mcp_client,
                 security_manager=self.security_manager,
             )
+            self.context_manager.set_llm_manager(self.llm_manager)
             self.graph = create_ark_graph(
                 self.llm_manager, self.mcp_client, tools_node_instance=self.tools_node
             )
@@ -198,6 +200,12 @@ class ARKEngine(ReActAgent):
         # 1. Prepare Initial State
         history_messages = self.context_manager.get_cleaned_history(max_messages=20)
         session_id = self.context_manager.session_id
+        user_id = str(kwargs.get("user_id") or "anonymous")
+        if hasattr(self, "tools_node"):
+            self.tools_node.set_execution_context(
+                session_id=session_id,
+                user_id=user_id,
+            )
         self.ark_logger.info(
             f"ARK: Retrieved {len(history_messages)} history messages "
             f"for session {session_id}"
@@ -316,6 +324,57 @@ class ARKEngine(ReActAgent):
 
             self.ark_logger.error(traceback.format_exc())
             return f"Error executing request: {str(e)}"
+
+    def get_pending_approvals(
+        self,
+        session_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Get pending approval requests from the tools runtime.
+
+        Args:
+            session_id: Optional session filter
+
+        Returns:
+            Serializable list of pending approvals.
+        """
+        if not hasattr(self, "tools_node"):
+            return []
+        return self.tools_node.list_pending_approvals(session_id=session_id)
+
+    async def approve_pending_tool(self, approval_id: str) -> dict[str, Any]:
+        """
+        Approve and execute a single pending tool request.
+
+        Args:
+            approval_id: Pending approval identifier
+
+        Returns:
+            Result payload from the approved tool execution.
+
+        Raises:
+            RuntimeError: If the tools runtime is unavailable.
+        """
+        if not hasattr(self, "tools_node"):
+            raise RuntimeError("Tools runtime is not initialized")
+        return await self.tools_node.approve_pending_approval(approval_id)
+
+    def reject_pending_tool(self, approval_id: str) -> dict[str, Any]:
+        """
+        Reject and remove a single pending tool request.
+
+        Args:
+            approval_id: Pending approval identifier
+
+        Returns:
+            Result payload describing the rejection.
+
+        Raises:
+            RuntimeError: If the tools runtime is unavailable.
+        """
+        if not hasattr(self, "tools_node"):
+            raise RuntimeError("Tools runtime is not initialized")
+        return self.tools_node.reject_pending_approval(approval_id)
 
     def _get_system_prompt(self) -> str:
         """Legacy method, kept for compatibility if needed."""

@@ -86,6 +86,9 @@ class TestARKEngine(unittest.IsolatedAsyncioTestCase):
             self.mock_mcp_client,
             security_manager=self.engine.security_manager,
         )
+        self.mock_context_manager.set_llm_manager.assert_called_with(
+            self.engine.llm_manager
+        )
         self.assertIsNotNone(self.engine.graph)
 
     async def test_initialize_failure(self):
@@ -105,6 +108,7 @@ class TestARKEngine(unittest.IsolatedAsyncioTestCase):
         self.engine.state = ARKState.READY
         mock_graph = AsyncMock()
         self.engine.graph = mock_graph
+        self.engine.tools_node = self.mock_tools_node
 
         # Mock graph response
         final_state = {
@@ -118,7 +122,7 @@ class TestARKEngine(unittest.IsolatedAsyncioTestCase):
         mock_graph.ainvoke.return_value = final_state
 
         # Run process_input
-        response = await self.engine.process_input("Add task")
+        response = await self.engine.process_input("Add task", user_id="user-123")
 
         # Verify
         self.assertEqual(response, "I added the task.")
@@ -136,6 +140,10 @@ class TestARKEngine(unittest.IsolatedAsyncioTestCase):
 
         # Check context update
         self.mock_context_manager.add_exchange.assert_called()
+        self.mock_tools_node.set_execution_context.assert_called_once_with(
+            session_id=self.mock_context_manager.session_id,
+            user_id="user-123",
+        )
 
     async def test_process_input_not_ready(self):
         """Test process_input when engine is not ready."""
@@ -327,6 +335,50 @@ class TestARKEngine(unittest.IsolatedAsyncioTestCase):
 
         res = await self.engine.process_input("hi")
         self.assertEqual(res, "ok")  # Should still return response
+
+    async def test_pending_approval_helpers_delegate_to_tools_node(self):
+        """Test approval helper methods delegate to ToolsNode."""
+        self.engine.tools_node = self.mock_tools_node
+        self.mock_tools_node.list_pending_approvals.return_value = [
+            {"approval_id": "approval_1"}
+        ]
+        self.mock_tools_node.approve_pending_approval = AsyncMock(
+            return_value={"status": "approved"}
+        )
+        self.mock_tools_node.reject_pending_approval.return_value = {
+            "status": "rejected"
+        }
+
+        pending = self.engine.get_pending_approvals(session_id="session-1")
+        approved = await self.engine.approve_pending_tool("approval_1")
+        rejected = self.engine.reject_pending_tool("approval_1")
+
+        self.assertEqual(pending, [{"approval_id": "approval_1"}])
+        self.assertEqual(approved, {"status": "approved"})
+        self.assertEqual(rejected, {"status": "rejected"})
+        self.mock_tools_node.list_pending_approvals.assert_called_once_with(
+            session_id="session-1"
+        )
+        self.mock_tools_node.approve_pending_approval.assert_awaited_once_with(
+            "approval_1"
+        )
+        self.mock_tools_node.reject_pending_approval.assert_called_once_with(
+            "approval_1"
+        )
+
+    async def test_pending_approval_helpers_without_tools_node(self):
+        """Test approval helpers handle an uninitialized tools runtime."""
+        if hasattr(self.engine, "tools_node"):
+            delattr(self.engine, "tools_node")
+
+        pending = self.engine.get_pending_approvals(session_id="session-1")
+        self.assertEqual(pending, [])
+
+        with self.assertRaisesRegex(RuntimeError, "Tools runtime is not initialized"):
+            await self.engine.approve_pending_tool("approval_1")
+
+        with self.assertRaisesRegex(RuntimeError, "Tools runtime is not initialized"):
+            self.engine.reject_pending_tool("approval_1")
 
     async def test_get_engine_status(self):
         """Test get_engine_status full report."""

@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import time
+import uuid
+from dataclasses import dataclass
 from typing import Any
 
 from langchain_core.messages import ToolMessage
@@ -38,6 +40,55 @@ _RATE_LIMITED_MESSAGE = (
 _VALIDATION_ERROR_MESSAGE = "Security: tool '{tool_name}' validation error: {error}"
 
 
+@dataclass
+class PendingApproval:
+    """
+    Represents a single tool call waiting for user approval.
+
+    Attributes:
+        approval_id: Stable identifier used to approve or reject the request.
+        tool_call_id: Original tool call ID emitted by the model.
+        tool_name: Tool name awaiting approval.
+        arguments: Tool arguments to execute once approved.
+        session_id: Session associated with the pending request.
+        user_id: User associated with the pending request.
+        policy_name: Policy that required approval.
+        execution_id: Execution identifier for the original validation turn.
+        created_at: Unix timestamp when the pending request was created.
+        validation_request: Original validation request object stored for auditing.
+    """
+
+    approval_id: str
+    tool_call_id: str
+    tool_name: str
+    arguments: dict[str, Any]
+    session_id: str
+    user_id: str
+    policy_name: str
+    execution_id: str
+    created_at: float
+    validation_request: Any
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Convert the pending approval record to a user-facing dictionary.
+
+        Returns:
+            Serializable dictionary containing approval metadata.
+        """
+        return {
+            "approval_id": self.approval_id,
+            "tool_call_id": self.tool_call_id,
+            "tool_name": self.tool_name,
+            "arguments": self.arguments,
+            "session_id": self.session_id,
+            "user_id": self.user_id,
+            "policy_name": self.policy_name,
+            "execution_id": self.execution_id,
+            "created_at": self.created_at,
+        }
+
+
 class ToolsNode:
     """
     Node responsible for executing tool calls (both internal and MCP).
@@ -71,10 +122,25 @@ class ToolsNode:
         self.security_manager = security_manager
         self._session_id: str = "unknown"
         self._user_id: str = "anonymous"
+        self._execution_latencies: dict[str, float] = {}
+        self._pending_approvals: dict[str, PendingApproval] = {}
 
     def register_tool(self, name: str, func: Any):
         """Register a local tool function."""
         self.local_tools[name] = func
+
+    def set_execution_context(
+        self, session_id: str, user_id: str | None = None
+    ) -> None:
+        """
+        Update execution-scoped identity used by security and logging.
+
+        Args:
+            session_id: Active conversation session identifier
+            user_id: Optional user identifier for audit and rate limiting
+        """
+        self._session_id = session_id
+        self._user_id = user_id or "anonymous"
 
     async def _invoke_local_tool(self, func: Any, args: Any) -> Any:
         if asyncio.iscoroutinefunction(func):
@@ -86,6 +152,7 @@ class ToolsNode:
         name: str,
         args: Any,
         updated_todo_list: list[dict[str, Any]] | None = None,
+        tool_call_id: str | None = None,
     ) -> Any:
         """
         Execute a single tool call (no security gate – gate already applied).
@@ -94,31 +161,39 @@ class ToolsNode:
             name: Tool name.
             args: Tool arguments.
             updated_todo_list: Mutable todo list for ``manage_tasks``.
+            tool_call_id: Optional tool call identifier used for latency tracking.
 
         Returns:
             Tool execution result.
         """
-        # ── Actual execution ─────────────────────────────────────
-        if name == "manage_tasks":
-            if updated_todo_list is None:
-                updated_todo_list = []
-            return execute_manage_tasks(
-                args,
-                updated_todo_list,
-                invalid_params_message=(
-                    "Error: manage_tasks arguments must be a dictionary/JSON."
-                ),
-            )
-        if name in self.local_tools:
-            return await self._invoke_local_tool(self.local_tools[name], args)
-        return await self.mcp_client.execute_tool(name, args)
+        start_time = time.perf_counter()
+        try:
+            # ── Actual execution ─────────────────────────────────────
+            if name == "manage_tasks":
+                if updated_todo_list is None:
+                    updated_todo_list = []
+                return execute_manage_tasks(
+                    args,
+                    updated_todo_list,
+                    invalid_params_message=(
+                        "Error: manage_tasks arguments must be a dictionary/JSON."
+                    ),
+                )
+            if name in self.local_tools:
+                return await self._invoke_local_tool(self.local_tools[name], args)
+            return await self.mcp_client.execute_tool(name, args)
+        finally:
+            if tool_call_id is not None:
+                self._execution_latencies[tool_call_id] = (
+                    time.perf_counter() - start_time
+                )
 
     async def _validate_tool_call(
         self,
         tool_name: str,
         arguments: dict[str, Any],
         execution_id: str,
-    ) -> Any:
+    ) -> tuple[Any, Any]:
         """
         Build and run security validation for a single tool call.
 
@@ -128,11 +203,11 @@ class ToolsNode:
             execution_id: Unique execution ID for this turn.
 
         Returns:
-            ``ValidationResponse`` from the security manager, or ``None``
+            Tuple of ``(ValidationResponse, ValidationRequest)``, or ``(None, None)``
             if no security manager is configured.
         """
         if self.security_manager is None:
-            return None
+            return None, None
 
         request = ARKSecurityManager.build_validation_request(
             user_id=self._user_id,
@@ -144,9 +219,145 @@ class ToolsNode:
 
         # Choose policy based on tool name
         policy_name = self._policy_for_tool(tool_name)
-        return await self.security_manager.validate_tool_execution(
+        response = await self.security_manager.validate_tool_execution(
             request, policy_name=policy_name
         )
+        return response, request
+
+    def _store_pending_approval(
+        self,
+        tool_call_id: str,
+        tool_name: str,
+        arguments: dict[str, Any],
+        execution_id: str,
+        policy_name: str,
+        validation_request: Any,
+    ) -> PendingApproval:
+        """
+        Persist a pending approval record for later user action.
+
+        Args:
+            tool_call_id: Original tool call ID from the model
+            tool_name: Tool name awaiting approval
+            arguments: Tool arguments to reuse after approval
+            execution_id: Execution identifier for the current turn
+            policy_name: Security policy that requested approval
+            validation_request: Validation request stored by the security manager
+
+        Returns:
+            The newly stored pending approval object.
+        """
+        approval = PendingApproval(
+            approval_id=f"approval_{uuid.uuid4().hex[:12]}",
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+            arguments=dict(arguments),
+            session_id=self._session_id,
+            user_id=self._user_id,
+            policy_name=policy_name,
+            execution_id=execution_id,
+            created_at=time.time(),
+            validation_request=validation_request,
+        )
+        self._pending_approvals[approval.approval_id] = approval
+        return approval
+
+    def list_pending_approvals(
+        self,
+        session_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        List pending approvals, optionally filtered by session.
+
+        Args:
+            session_id: Optional session identifier filter
+
+        Returns:
+            Serializable list of pending approvals.
+        """
+        approvals = self._pending_approvals.values()
+        if session_id is not None:
+            approvals = [
+                approval for approval in approvals if approval.session_id == session_id
+            ]
+        return [approval.to_dict() for approval in approvals]
+
+    def reject_pending_approval(self, approval_id: str) -> dict[str, Any]:
+        """
+        Reject and remove a pending approval request.
+
+        Args:
+            approval_id: Pending approval identifier
+
+        Returns:
+            Result payload describing the rejected request.
+
+        Raises:
+            ValueError: If the approval ID does not exist.
+        """
+        approval = self._pending_approvals.pop(approval_id, None)
+        if approval is None:
+            raise ValueError(f"Pending approval '{approval_id}' not found")
+
+        if (
+            self.security_manager is not None
+            and approval.validation_request in self.security_manager.approval_queue
+        ):
+            self.security_manager.approval_queue.remove(approval.validation_request)
+
+        return {
+            "approval_id": approval_id,
+            "status": "rejected",
+            "tool_name": approval.tool_name,
+            "session_id": approval.session_id,
+        }
+
+    async def approve_pending_approval(self, approval_id: str) -> dict[str, Any]:
+        """
+        Approve and execute a pending tool call under its original context.
+
+        Args:
+            approval_id: Pending approval identifier
+
+        Returns:
+            Result payload describing the executed tool call.
+
+        Raises:
+            ValueError: If the approval ID does not exist.
+        """
+        approval = self._pending_approvals.pop(approval_id, None)
+        if approval is None:
+            raise ValueError(f"Pending approval '{approval_id}' not found")
+
+        if (
+            self.security_manager is not None
+            and approval.validation_request in self.security_manager.approval_queue
+        ):
+            self.security_manager.approval_queue.remove(approval.validation_request)
+
+        previous_session_id = self._session_id
+        previous_user_id = self._user_id
+        try:
+            self.set_execution_context(
+                session_id=approval.session_id,
+                user_id=approval.user_id,
+            )
+            result = await self._execute_tool_call(
+                approval.tool_name,
+                dict(approval.arguments),
+                tool_call_id=approval.tool_call_id,
+            )
+        finally:
+            self.set_execution_context(previous_session_id, previous_user_id)
+
+        return {
+            "approval_id": approval_id,
+            "status": "approved",
+            "tool_name": approval.tool_name,
+            "tool_call_id": approval.tool_call_id,
+            "session_id": approval.session_id,
+            "result": result,
+        }
 
     @staticmethod
     def _policy_for_tool(tool_name: str) -> str:
@@ -205,6 +416,7 @@ class ToolsNode:
 
         tool_calls_data = last_message.tool_calls
         updated_todo_list = [t.copy() for t in state.get("todo_list", [])]
+        self._execution_latencies = {}
 
         # Generate a single execution_id for this turn
         execution_id = f"exec_{time.time_ns()}"
@@ -212,6 +424,7 @@ class ToolsNode:
         tool_calls: list[ToolCall] = []
         # Pre-compute security responses for every tool call
         security_responses: dict[str, Any] = {}
+        security_requests: dict[str, Any] = {}
         # Pre-compute security result messages for denied tools
         security_messages: dict[str, str] = {}
 
@@ -234,8 +447,11 @@ class ToolsNode:
 
             # ── Security validation ──────────────────────────────────
             try:
-                sec_resp = await self._validate_tool_call(name, args, execution_id)
+                sec_resp, validation_request = await self._validate_tool_call(
+                    name, args, execution_id
+                )
                 security_responses[tool_call_id] = sec_resp
+                security_requests[tool_call_id] = validation_request
 
                 if sec_resp is not None and sec_resp.result != ValidationResult.ALLOWED:
                     if sec_resp.result == ValidationResult.DENIED:
@@ -243,8 +459,17 @@ class ToolsNode:
                             tool_name=name, policy=sec_resp.policy_applied
                         )
                     elif sec_resp.result == ValidationResult.REQUIRES_APPROVAL:
+                        pending_approval = self._store_pending_approval(
+                            tool_call_id=tool_call_id,
+                            tool_name=name,
+                            arguments=args,
+                            execution_id=execution_id,
+                            policy_name=sec_resp.policy_applied,
+                            validation_request=validation_request,
+                        )
                         security_messages[tool_call_id] = (
                             _REQUIRES_APPROVAL_MESSAGE.format(tool_name=name)
+                            + f" Approval ID: {pending_approval.approval_id}"
                         )
                     elif sec_resp.result == ValidationResult.RATE_LIMITED:
                         security_messages[tool_call_id] = _RATE_LIMITED_MESSAGE.format(
@@ -279,8 +504,8 @@ class ToolsNode:
         exec_results: dict[str, Any] = {}
         if allowed_calls:
             executor = ParallelExecutor(
-                execute_fn=lambda n, a: self._execute_tool_call(
-                    n, a, updated_todo_list
+                execute_fn=lambda n, a, tid=None: self._execute_tool_call(
+                    n, a, updated_todo_list, tid
                 ),
                 max_concurrency=self.max_concurrency,
             )
@@ -322,7 +547,7 @@ class ToolsNode:
                     tool_name=tc.name,
                     server=server,
                     status=metric_status,
-                    latency=0.0,
+                    latency=self._execution_latencies.get(tid, 0.0),
                 )
                 MetricsRegistry.graph_iterations_total.labels(node="tools").inc()
             except Exception:
@@ -365,7 +590,7 @@ class ToolsNode:
         for tc in tool_calls:
             try:
                 result = await self._execute_tool_call(
-                    tc.name, tc.arguments, updated_todo_list
+                    tc.name, tc.arguments, updated_todo_list, tc.id
                 )
                 results[tc.id] = result
             except Exception as e:

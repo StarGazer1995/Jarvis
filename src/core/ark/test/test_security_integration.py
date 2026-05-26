@@ -41,6 +41,7 @@ def mock_security_manager():
             message="Allowed",
         )
     )
+    mgr.approval_queue = []
     return mgr
 
 
@@ -56,6 +57,46 @@ def tools_node(mock_mcp_client, mock_security_manager):
 
 class TestToolsNodeSecurityIntegration:
     """Security validation integration tests for ToolsNode."""
+
+    @pytest.mark.asyncio
+    async def test_allowed_tool_uses_execution_context_and_latency(
+        self, tools_node, mock_security_manager
+    ):
+        """Allowed tools should carry session identity and record real latency."""
+
+        async def local_tool(delay: float) -> str:
+            import asyncio
+
+            await asyncio.sleep(delay)
+            return "done"
+
+        tools_node.register_tool("delayed_tool", local_tool)
+        tools_node.set_execution_context(session_id="session-123", user_id="user-456")
+
+        last_message = AIMessage(
+            content="Run delayed tool.",
+            tool_calls=[
+                {
+                    "name": "delayed_tool",
+                    "args": {"delay": 0.01},
+                    "id": "call_1",
+                }
+            ],
+        )
+        state = {
+            "messages": [last_message],
+            "todo_list": [],
+            "sender": "master",
+        }
+
+        with patch.object(MetricsRegistry, "record_tool_call") as record_tool_call:
+            result = await tools_node(state, config=None)
+
+        request = mock_security_manager.validate_tool_execution.await_args.args[0]
+        assert request.context.session_id == "session-123"
+        assert request.context.user_id == "user-456"
+        assert result["messages"][0].content == "done"
+        assert record_tool_call.call_args.kwargs["latency"] > 0
 
     @pytest.mark.asyncio
     async def test_allowed_tool_execution(self, tools_node, mock_mcp_client):
@@ -201,6 +242,172 @@ class TestToolsNodeSecurityIntegration:
             assert len(result["messages"]) == 1
             msg = result["messages"][0]
             assert "approval" in msg.content.lower()
+            assert "approval_" in msg.content
+            assert len(tools_node.list_pending_approvals()) == 1
+
+    @pytest.mark.asyncio
+    async def test_approve_pending_tool_executes_and_clears_queue(
+        self, tools_node, mock_security_manager
+    ):
+        """Approving a pending tool should execute it and clear pending state."""
+        mock_security_manager.validate_tool_execution.return_value = ValidationResponse(
+            result=ValidationResult.REQUIRES_APPROVAL,
+            policy_applied="high",
+            message="Requires approval",
+        )
+
+        last_message = AIMessage(
+            content="Let me write.",
+            tool_calls=[
+                {
+                    "name": "write_file",
+                    "args": {"file_path": "/tmp/test.txt", "content": "data"},
+                    "id": "call_1",
+                }
+            ],
+        )
+        state = {
+            "messages": [last_message],
+            "todo_list": [],
+            "sender": "master",
+        }
+
+        with patch.object(
+            tools_node.mcp_client, "execute_tool", AsyncMock(return_value="written")
+        ) as mock_exec:
+            await tools_node(state, config=None)
+            pending = tools_node.list_pending_approvals()
+            approval_id = pending[0]["approval_id"]
+
+            approval_result = await tools_node.approve_pending_approval(approval_id)
+
+        mock_exec.assert_awaited_once_with(
+            "write_file", {"file_path": "/tmp/test.txt", "content": "data"}
+        )
+        assert approval_result["status"] == "approved"
+        assert approval_result["result"] == "written"
+        assert tools_node.list_pending_approvals() == []
+        assert mock_security_manager.approval_queue == []
+
+    def test_reject_pending_tool_clears_queue(self, tools_node, mock_security_manager):
+        """Rejecting a pending tool should remove it from pending state."""
+        request = ARKSecurityManager.build_validation_request(
+            user_id="user-1",
+            session_id="session-1",
+            execution_id="exec-1",
+            tool_name="write_file",
+            arguments={"file_path": "/tmp/test.txt", "content": "data"},
+        )
+        mock_security_manager.approval_queue.append(request)
+        pending = tools_node._store_pending_approval(
+            tool_call_id="call_1",
+            tool_name="write_file",
+            arguments={"file_path": "/tmp/test.txt", "content": "data"},
+            execution_id="exec-1",
+            policy_name="high",
+            validation_request=request,
+        )
+
+        result = tools_node.reject_pending_approval(pending.approval_id)
+
+        assert result["status"] == "rejected"
+        assert tools_node.list_pending_approvals() == []
+        assert mock_security_manager.approval_queue == []
+
+    def test_list_pending_approvals_filters_by_session(
+        self, tools_node, mock_security_manager
+    ):
+        """Pending approvals should support session-scoped filtering."""
+        request_one = ARKSecurityManager.build_validation_request(
+            user_id="user-1",
+            session_id="session-1",
+            execution_id="exec-1",
+            tool_name="write_file",
+            arguments={"file_path": "/tmp/a.txt", "content": "a"},
+        )
+        request_two = ARKSecurityManager.build_validation_request(
+            user_id="user-2",
+            session_id="session-2",
+            execution_id="exec-2",
+            tool_name="write_file",
+            arguments={"file_path": "/tmp/b.txt", "content": "b"},
+        )
+        tools_node.set_execution_context(session_id="session-1", user_id="user-1")
+        tools_node._store_pending_approval(
+            tool_call_id="call_1",
+            tool_name="write_file",
+            arguments={"file_path": "/tmp/a.txt", "content": "a"},
+            execution_id="exec-1",
+            policy_name="high",
+            validation_request=request_one,
+        )
+        tools_node.set_execution_context(session_id="session-2", user_id="user-2")
+        tools_node._store_pending_approval(
+            tool_call_id="call_2",
+            tool_name="write_file",
+            arguments={"file_path": "/tmp/b.txt", "content": "b"},
+            execution_id="exec-2",
+            policy_name="high",
+            validation_request=request_two,
+        )
+
+        filtered = tools_node.list_pending_approvals(session_id="session-1")
+
+        assert len(filtered) == 1
+        assert filtered[0]["session_id"] == "session-1"
+
+    def test_reject_pending_tool_raises_for_unknown_id(self, tools_node):
+        """Rejecting an unknown approval should raise a clear error."""
+        with pytest.raises(ValueError, match="Pending approval 'missing' not found"):
+            tools_node.reject_pending_approval("missing")
+
+    @pytest.mark.asyncio
+    async def test_approve_pending_tool_raises_for_unknown_id(self, tools_node):
+        """Approving an unknown approval should raise a clear error."""
+        with pytest.raises(ValueError, match="Pending approval 'missing' not found"):
+            await tools_node.approve_pending_approval("missing")
+
+    @pytest.mark.asyncio
+    async def test_approve_pending_tool_removes_request_from_queue(
+        self, tools_node, mock_security_manager
+    ):
+        """Approving should remove the original validation request from the queue."""
+        request = ARKSecurityManager.build_validation_request(
+            user_id="user-1",
+            session_id="session-1",
+            execution_id="exec-1",
+            tool_name="write_file",
+            arguments={"file_path": "/tmp/test.txt", "content": "data"},
+        )
+        mock_security_manager.approval_queue.append(request)
+        tools_node.set_execution_context(session_id="session-1", user_id="user-1")
+        pending = tools_node._store_pending_approval(
+            tool_call_id="call_1",
+            tool_name="write_file",
+            arguments={"file_path": "/tmp/test.txt", "content": "data"},
+            execution_id="exec-1",
+            policy_name="high",
+            validation_request=request,
+        )
+
+        with patch.object(
+            tools_node.mcp_client, "execute_tool", AsyncMock(return_value="written")
+        ):
+            result = await tools_node.approve_pending_approval(pending.approval_id)
+
+        assert result["status"] == "approved"
+        assert mock_security_manager.approval_queue == []
+
+    @pytest.mark.asyncio
+    async def test_manage_tasks_without_todo_list_uses_default(self, tools_node):
+        """manage_tasks should initialize a default todo list when none is provided."""
+        result = await tools_node._execute_tool_call(
+            "manage_tasks",
+            {"action": "list"},
+            updated_todo_list=None,
+        )
+
+        assert isinstance(result, str)
 
     @pytest.mark.asyncio
     async def test_mixed_parallel_allowed_and_denied(
